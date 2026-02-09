@@ -4,13 +4,30 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <!-- ===== Smart Price SSOT ===== -->
-  <title>Smart Price v20.0.0</title>
+   <!-- ===== Smart Price SSOT (唯一の正本) =====
+  APP: Smart Price
+  AUTHOR: YUI
+  VERSION: v20.0.1
+  DATE(JST): 2026-02-09 10:02 JST
+  BUILD_ID(b): 2026-02-09_1002_v20.0.1
+  DEBUG: &debug=1
+  POLICY: VERSION SSOT / 単一HTML / UI_FREEZE
+  =========================================== -->
+
+  <title>Smart Price v20.0.1</title>
   <script>
-    window.VERSION_INFO = 'v20.0.0';
-    window.APP_VERSION  = 'v20.0.0';
-    window.BUILD_ID     = '2026-02-09_0001_init';
+    // SSOT: ここだけを更新すれば、表示・デバッグ・判定が全部そろう
+    window.APP_NAME    = 'Smart Price';
+    window.AUTHOR      = 'YUI';
+
+    window.VERSION     = 'v20.0.1';         // ←毎回必ず上げる（1つ上げる）
+    window.VERSION_INFO = window.VERSION;   // 互換（旧参照対策）
+    window.APP_VERSION  = window.VERSION;   // 互換（旧参照対策）
+
+    window.BUILD_JST   = '2026-02-09 10:02 JST';      // ←この時刻も毎回更新
+    window.BUILD_ID    = '2026-02-09_1002_v20.0.1';   // ←URLの ?b= で必ず使う
   </script>
+
   <!-- =========================== -->
 
   <style>
