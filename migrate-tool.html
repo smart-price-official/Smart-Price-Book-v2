@@ -1,514 +1,434 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
   <!--
-  APP: Smart Price Migration Tool
-  VERSION: v0.2.0
-  DATE(JST): 2026-02-09 14:09 JST
-  TITLE: Smart Price Migrate Tool (Detect & Compare)
+  APP: Smart Price / Migrate Tool
+  VERSION: v0.3.1-wizard-url
+  DATE(JST): 2026-02-09 19:10 JST
+  AUTHOR: YUI
+  TITLE: Smart Price / Migrate Tool - URL直接検証ウィザード
   CHANGES:
-  - 旧データ候補DB/Storeの自動検出（IndexedDB + localStorage）
-  - 現在オリジンの総点検サマリJSON生成（コピー/保存）
-  - サマリ2つの比較（件数差分・「多い方=生」提案）
-  BUILD_PARAM(b): ?b=2026-02-09_1409_compare
+    - URL入力欄を追加（タブに依存せず、貼り付けたURLを対象に点検できる導線）
+    - 入力URLを履歴（localStorage）に保存し、再利用しやすく
+    - 次に押すボタン（NEXT）を強調
+  BUILD_PARAM (b): 2026-02-09_1910_urlwizard
   DEBUG_PARAM: &debug=1
-  POLICY: UI_FREEZE / 単一HTML / 読むより押す（ボタン中心）
+  POLICY: 本体（Smart Price）には一切触れない。診断・比較・移行補助のみ。
   -->
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Smart Price / Migrate Tool v0.2.0</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Smart Price / Migrate Tool - URL直接検証ウィザード v0.3.1-wizard-url</title>
   <style>
     :root {
-      --bg:#111; --panel:#1b1b1b; --panel2:#151515; --txt:#f5f5f5; --muted:#b9b9b9;
-      --accent:#b71c1c; --accent2:#333; --ok:#2e7d32; --warn:#f9a825; --bad:#c62828;
-      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      --ui: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --bg: #0b1020;
+      --line: rgba(255,255,255,.12);
+      --muted: rgba(255,255,255,.72);
+      --muted2: rgba(255,255,255,.55);
+      --accent: #6ea8ff;
+      --ok: #4ade80;
+      --warn: #fbbf24;
+      --err: #fb7185;
     }
-    html, body { height:100%; }
-    body { margin:0; background:var(--bg); color:var(--txt); font-family:var(--ui); }
-    header {
-      background:linear-gradient(0deg, #8e1414, var(--accent));
-      padding:12px 16px;
-      font-weight:700;
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", sans-serif;
+      background: radial-gradient(1200px 900px at 20% 10%, #1a2755 0%, var(--bg) 55%, #060914 100%);
+      color: #fff;
+      padding: 16px;
+    }
+    .wrap { max-width: 980px; margin: 0 auto; }
+    .top { display:flex; gap:12px; align-items:flex-start; justify-content:space-between; margin-bottom: 14px; }
+    .title { font-size: 18px; font-weight: 700; line-height: 1.3; }
+    .meta { font-size: 12px; color: var(--muted2); text-align:right; white-space:nowrap; }
+    .hint { font-size: 12px; color: var(--muted2); line-height: 1.5; margin-top: 6px; }
+    .grid { display:grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 820px) {
+      .grid { grid-template-columns: 1fr; }
+      .meta { text-align:left; white-space:normal; }
+      .top { flex-direction:column; align-items:flex-start; }
+    }
+    .card {
+      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px;
+      box-shadow: 0 10px 28px rgba(0,0,0,.25);
+    }
+    .card h2 {
+      margin: 0 0 10px 0;
+      font-size: 14px;
+      color: rgba(255,255,255,.9);
       display:flex;
       align-items:center;
-      justify-content:space-between;
-      gap:12px;
+      gap: 8px;
     }
-    header .sub { font-weight:600; color:#ffecec; opacity:0.95; font-size:12px; }
-    main { padding:14px; max-width:1200px; margin:0 auto; }
-    .grid { display:grid; gap:12px; grid-template-columns: 1fr; }
-    @media (min-width: 1020px) { .grid { grid-template-columns: 1fr 1fr; } }
-    .card {
-      background:var(--panel); border-radius:14px; padding:12px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.25);
-      border:1px solid rgba(255,255,255,0.06);
+    .pill { font-size: 11px; padding: 3px 8px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted2); }
+    label { font-size: 12px; color: var(--muted); }
+    input[type="url"], textarea {
+      width: 100%;
+      background: rgba(0,0,0,.22);
+      border: 1px solid var(--line);
+      color: #fff;
+      border-radius: 10px;
+      padding: 10px 10px;
+      font-size: 13px;
+      outline: none;
     }
-    .card h2 { margin:0 0 10px 0; font-size:14px; color:#fff; }
-    .row { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
-    button {
-      appearance:none; border:0; border-radius:12px;
-      padding:12px 14px; font-weight:700; cursor:pointer;
-      background:var(--accent2); color:var(--txt);
-      box-shadow: 0 8px 20px rgba(0,0,0,0.25);
+    textarea {
+      min-height: 140px;
+      resize: vertical;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+      color: rgba(255,255,255,.88);
     }
-    button.primary { background:var(--accent); }
-    button.ok { background:var(--ok); }
-    button.warn { background:var(--warn); color:#111; }
-    button:disabled { opacity:0.55; cursor:not-allowed; }
-    .note { color:var(--muted); font-size:12px; line-height:1.4; }
-    .mono { font-family:var(--mono); }
-    textarea, pre, input {
-      width:100%;
-      background:var(--panel2);
-      color:var(--txt);
-      border:1px solid rgba(255,255,255,0.08);
-      border-radius:12px;
-      padding:10px;
-      font-family:var(--mono);
-      font-size:12px;
-      box-sizing:border-box;
+    .row { display:flex; gap: 10px; flex-wrap: wrap; align-items:center; margin-top: 10px; }
+    .btn {
+      background: linear-gradient(180deg, rgba(110,168,255,.25), rgba(110,168,255,.10));
+      border: 1px solid rgba(110,168,255,.35);
+      color: #fff;
+      padding: 10px 12px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 650;
+      cursor: pointer;
+      user-select:none;
+      transition: transform .06s ease;
+      min-width: 180px;
     }
-    textarea { min-height: 170px; resize: vertical; }
-    pre { margin:0; overflow:auto; min-height: 140px; }
-    .badge {
-      display:inline-block; padding:4px 8px; border-radius:999px;
-      font-size:12px; font-weight:800; margin-left:8px;
+    .btn:active { transform: translateY(1px); }
+    .btn2 { background: linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.06)); border: 1px solid var(--line); }
+    .btnSmall { min-width: auto; padding: 8px 10px; border-radius: 10px; font-size: 12px; }
+    .next {
+      border: 2px solid rgba(110,168,255,.65);
+      box-shadow: 0 0 0 4px rgba(110,168,255,.12);
     }
-    .b-ok { background: rgba(46,125,50,0.25); border:1px solid rgba(46,125,50,0.5); }
-    .b-warn { background: rgba(249,168,37,0.25); border:1px solid rgba(249,168,37,0.5); }
-    .b-bad { background: rgba(198,40,40,0.25); border:1px solid rgba(198,40,40,0.5); }
-    .tbl {
-      width:100%; border-collapse:collapse; overflow:hidden; border-radius:12px;
-      border:1px solid rgba(255,255,255,0.08);
+    .status {
+      margin-top: 10px;
+      border-radius: 12px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      background: rgba(0,0,0,.18);
+      font-size: 12px;
+      line-height: 1.55;
+      color: rgba(255,255,255,.82);
+      white-space: pre-wrap;
+      word-break: break-word;
+      min-height: 74px;
     }
-    .tbl th, .tbl td {
-      padding:8px 10px; border-bottom:1px solid rgba(255,255,255,0.06);
-      font-size:12px;
-    }
-    .tbl th { text-align:left; color:#fff; background: rgba(255,255,255,0.04); }
-    .right { text-align:right; }
-    .k { color:#fff; }
-    .small { font-size:12px; }
-    .hr { height:1px; background: rgba(255,255,255,0.08); margin:10px 0; }
-    .foot { margin-top:10px; color:var(--muted); font-size:11px; }
+    .ok { color: var(--ok); }
+    .warn { color: var(--warn); }
+    .err { color: var(--err); }
+    .k { display:inline-block; padding: 2px 7px; border-radius: 999px; border:1px solid var(--line); background: rgba(255,255,255,.04); margin-right: 6px; font-size: 11px; color: rgba(255,255,255,.78); }
+    .divider { height:1px; background: var(--line); margin: 12px 0; }
+    .foot { margin-top: 12px; color: var(--muted2); font-size: 12px; line-height: 1.6; }
   </style>
 </head>
 <body>
-  <header>
-    <div>
-      <div>Smart Price / Migrate Tool <span class="sub">v0.2.0</span></div>
-      <div class="sub mono">BUILD: 2026-02-09_1409_compare</div>
-    </div>
-    <div class="sub mono" id="hdrNow">2026-02-09 14:09 JST</div>
-  </header>
-
-  <main>
-    <div class="card" style="margin-bottom:12px;">
-      <div class="row" style="justify-content:space-between;">
-        <div>
-          <div class="small"><b>使い方（読むより押す）</b></div>
-          <div class="note">
-            ①「このURLのデータを点検」→ ②「サマリJSONをコピー」。
-            旧URLでも同じ操作をしてサマリをコピー。
-            最後に「比較」に2つ貼り付けて、<b>どっちが“生”か</b>を決めます。
-          </div>
-        </div>
-        <div class="row">
-          <button class="primary" id="btnScan">① このURLのデータを点検</button>
-          <button class="ok" id="btnCopy" disabled>② サマリJSONをコピー</button>
-        </div>
+  <div class="wrap">
+    <div class="top">
+      <div>
+        <div class="title">🔁 Smart Price / Migrate Tool（URL直接検証）</div>
+        <div class="hint">タブで迷わないように、<span class="k">URLを貼る</span>→<span class="k">点検</span>→<span class="k">比較</span>の流れに固定。</div>
       </div>
-      <div class="hr"></div>
-      <div class="note">
-        ※ 旧データがあるかどうかは、<b>このURL（このオリジン）</b>に保存されているIndexedDB/localStorageだけを見ます。<br/>
-        別のURLの中身は直接見れないので、旧URL側でも同じツールでサマリを作ってください。
+      <div class="meta">
+        <div>v0.3.1-wizard-url</div>
+        <div>2026-02-09 19:10 JST</div>
+        <div>AUTHOR: YUI</div>
       </div>
     </div>
 
     <div class="grid">
-      <section class="card">
-        <h2>点検結果（このURL）</h2>
+      <div class="card">
+        <h2>① 正本（マスター） <span class="pill">左</span></h2>
+        <label>対象URL（ここに貼る）</label>
+        <input id="leftUrl" type="url" placeholder="例）https://smart-price-official.github.io/Smart-Price-Book/?b=....&mode=admin&debug=1" />
         <div class="row">
-          <span class="badge b-warn" id="badgeState">未点検</span>
-          <span class="note mono" id="originLine"></span>
+          <button class="btn next" id="leftInspect">このURLのデータを点検</button>
+          <button class="btn btn2" id="leftOpen">このURLを開く</button>
+          <button class="btn btn2 btnSmall" id="leftUseCurrent">今のURLを入れる</button>
         </div>
-        <div class="hr"></div>
-        <pre id="outText" class="mono"></pre>
-        <div class="foot mono" id="sumLine"></div>
-      </section>
+        <div class="divider"></div>
+        <label>サマリJSON（自動 / 手動貼り付けOK）</label>
+        <textarea id="leftSummary" placeholder="点検すると自動で入ります。ここをコピーして右側に貼ってもOK。"></textarea>
+        <div class="row">
+          <button class="btn" id="leftCopy">サマリJSONをコピー</button>
+          <button class="btn btn2" id="leftSave">このURLを保存（履歴）</button>
+          <button class="btn btn2" id="leftPick">履歴から選ぶ</button>
+        </div>
+        <div class="status" id="leftStatus">左に「動いている正本URL（v19.9.43[0207]）」を貼って、点検を押してね。</div>
+      </div>
 
-      <section class="card">
-        <h2>比較（サマリ2つ貼り付け → 判定）</h2>
-        <div class="note">旧URLでコピーしたサマリと、新URLでコピーしたサマリをここに貼り付け。</div>
-        <div class="row" style="margin:10px 0;">
-          <button class="primary" id="btnCompare">③ 比較して「生」を提案</button>
-          <button class="warn" id="btnSwap">左右を入れ替え</button>
-          <button id="btnClear">クリア</button>
+      <div class="card">
+        <h2>② 相手（取り込み先） <span class="pill">右</span></h2>
+        <label>対象URL（ここに貼る）</label>
+        <input id="rightUrl" type="url" placeholder="例）https://smart-price-official.github.io/Smart-Price-Book/" />
+        <div class="row">
+          <button class="btn next" id="rightInspect">このURLのデータを点検</button>
+          <button class="btn btn2" id="rightOpen">このURLを開く</button>
+          <button class="btn btn2 btnSmall" id="rightUseCurrent">今のURLを入れる</button>
         </div>
-        <div class="grid" style="grid-template-columns:1fr 1fr; gap:10px;">
-          <div>
-            <div class="small"><b>A（例：旧URL）</b></div>
-            <textarea id="inA" placeholder="ここにサマリJSON（A）を貼る"></textarea>
-          </div>
-          <div>
-            <div class="small"><b>B（例：新URL）</b></div>
-            <textarea id="inB" placeholder="ここにサマリJSON（B）を貼る"></textarea>
-          </div>
+        <div class="divider"></div>
+        <label>サマリJSON（自動 / 手動貼り付けOK）</label>
+        <textarea id="rightSummary" placeholder="右側も点検すると自動で入ります。左をコピーして貼ってもOK。"></textarea>
+        <div class="row">
+          <button class="btn" id="rightCopy">サマリJSONをコピー</button>
+          <button class="btn btn2" id="rightSave">このURLを保存（履歴）</button>
+          <button class="btn btn2" id="rightPick">履歴から選ぶ</button>
         </div>
-        <div class="hr"></div>
-        <div id="cmpArea" class="mono"></div>
-      </section>
+        <div class="status" id="rightStatus">右に「現行PagesなどのURL」を貼って点検。揃ったら下の比較へ。</div>
+      </div>
     </div>
 
-    <section class="card" style="margin-top:12px;">
-      <h2>次の一手（あなたが押すボタンだけ）</h2>
-      <div class="note">
-        比較で「生（master）」が決まったら、<b>生のURL</b>で <b>migrate-tool.html</b> を開いて「Export」してJSON保存。<br/>
-        そのJSONを、反対側（取り込みたいURL）で「Import」して取り込む。<br/>
-        ※ Import/Exportが見えない・動かない場合は、<b>まずPagesが有効か／URLが正しいか／Service Workerが古くないか</b>を先に潰します。
+    <div class="card" style="margin-top:12px;">
+      <h2>③ 比較して結論を出す <span class="pill">ワンタッチ</span></h2>
+      <div class="row">
+        <button class="btn next" id="compare">比較して結論を出す</button>
+        <button class="btn btn2" id="swap">左⇄右を入れ替える</button>
+        <button class="btn btn2" id="reset">全部クリア</button>
       </div>
-    </section>
-  </main>
+      <div class="status" id="compareStatus">左と右のサマリが入ったら「比較」を押すだけ。</div>
+
+      <div class="foot">
+        <div class="divider"></div>
+        <div>※ 注意：このツールは <b>URLで開けるページ</b> の範囲でしか点検できません（content:// のローカル表示は外）。</div>
+        <div>※ 実データ比較は、Smart Price本体の <b>Export/Copy</b> で出したJSONを貼り付けて比べるのが確実。</div>
+      </div>
+    </div>
+  </div>
 
 <script>
-(function(){
-  const qs = new URLSearchParams(location.search);
-  const DEBUG = qs.get('debug') === '1';
-  const BUILD = '2026-02-09_1409_compare';
-  const VERSION = 'v0.2.0';
+(() => {
+  const VERSION = "v0.3.1-wizard-url";
+  const BUILD = "2026-02-09_1910_urlwizard";
+  const KEY = "__sp_migrate_url_history__";
+  const $ = (id) => document.getElementById(id);
 
-  const el = (id)=>document.getElementById(id);
-  const outText = el('outText');
-  const badge = el('badgeState');
-  const originLine = el('originLine');
-  const sumLine = el('sumLine');
-  const btnScan = el('btnScan');
-  const btnCopy = el('btnCopy');
-  const btnCompare = el('btnCompare');
-  const btnSwap = el('btnSwap');
-  const btnClear = el('btnClear');
-  const inA = el('inA');
-  const inB = el('inB');
-  const cmpArea = el('cmpArea');
+  const ui = {
+    leftUrl: $("leftUrl"),
+    rightUrl: $("rightUrl"),
+    leftSummary: $("leftSummary"),
+    rightSummary: $("rightSummary"),
+    leftStatus: $("leftStatus"),
+    rightStatus: $("rightStatus"),
+    compareStatus: $("compareStatus"),
+    leftInspect: $("leftInspect"),
+    rightInspect: $("rightInspect"),
+    compare: $("compare"),
+    leftCopy: $("leftCopy"),
+    rightCopy: $("rightCopy"),
+    leftOpen: $("leftOpen"),
+    rightOpen: $("rightOpen"),
+    leftUseCurrent: $("leftUseCurrent"),
+    rightUseCurrent: $("rightUseCurrent"),
+    swap: $("swap"),
+    reset: $("reset"),
+    leftSave: $("leftSave"),
+    rightSave: $("rightSave"),
+    leftPick: $("leftPick"),
+    rightPick: $("rightPick"),
+  };
 
-  originLine.textContent = location.origin + location.pathname;
-
-  function setBadge(type, text){
-    badge.classList.remove('b-ok','b-warn','b-bad');
-    badge.classList.add(type);
-    badge.textContent = text;
+  function nowJST() {
+    return new Date().toLocaleString("ja-JP", { hour12:false });
   }
 
-  function log(s){ outText.textContent += s + "\\n"; }
-
-  function fmt(n){
-    try { return (n ?? 0).toLocaleString('ja-JP'); } catch(e) { return String(n ?? 0); }
+  function setStatus(el, msg, cls) {
+    el.className = "status" + (cls ? " " + cls : "");
+    el.textContent = msg;
   }
 
-  function safeJsonParse(s){
-    const t = (s||'').trim();
-    if(!t) throw new Error('空です');
-    return JSON.parse(t);
+  function parseUrlSafe(s) {
+    try { return new URL(s); } catch(e) { return null; }
   }
 
-  async function listDatabases(){
-    if (indexedDB.databases) {
-      try { return await indexedDB.databases(); } catch(e) {}
-    }
-    return null;
-  }
-
-  function openDb(name){
-    return new Promise((resolve, reject)=>{
-      const req = indexedDB.open(name);
-      req.onsuccess = ()=> resolve(req.result);
-      req.onerror = ()=> reject(req.error || new Error('open失敗: '+name));
-      req.onblocked = ()=> reject(new Error('blocked: '+name));
-    });
-  }
-
-  function countStore(db, storeName){
-    return new Promise((resolve, reject)=>{
-      try {
-        const tx = db.transaction(storeName, 'readonly');
-        const st = tx.objectStore(storeName);
-        const req = st.count();
-        req.onsuccess = ()=> resolve(req.result || 0);
-        req.onerror = ()=> reject(req.error || new Error('count失敗: '+storeName));
-      } catch(e) {
-        reject(e);
-      }
-    });
-  }
-
-  function getLocalStorageSummary(){
-    const keys = [];
-    for (let i=0; i<localStorage.length; i++) {
-      const k = localStorage.key(i);
-      keys.push(k);
-    }
-    keys.sort();
-    let approxChars = 0;
-    const top = [];
-    for (const k of keys) {
-      const v = localStorage.getItem(k) || '';
-      approxChars += (k.length + v.length);
-      top.push({k, len: v.length});
-    }
-    top.sort((a,b)=> (b.len||0)-(a.len||0));
-    return {
-      count: keys.length,
-      approxChars,
-      topKeys: top.slice(0, 12)
-    };
-  }
-
-  function detectLegacyHints(dbs, storeIndex){
-    const hints = [];
-    const names = (dbs||[]).map(d=> (d && d.name) ? d.name : String(d)).filter(Boolean);
-    const joined = names.join(' | ');
-    const patterns = [
-      /smart_price_img_db/i,
-      /smartPriceIm/i,
-      /smart_price_i/i,
-      /firebase/i,
-      /heart/i,
-      /local/i
-    ];
-    for (const p of patterns){
-      if (p.test(joined)) hints.push('DB名に「'+p.source+'」が見つかりました');
-    }
-    const storeNames = Object.keys(storeIndex || {});
-    const storeJoined = storeNames.join(' | ');
-    const storePatterns = [
-      /items/i, /history/i, /prices/i, /images/i, /img/i, /receipts?/i, /stores/i
-    ];
-    for (const p of storePatterns){
-      if (p.test(storeJoined)) hints.push('Store名に「'+p.source+'」が見つかりました');
-    }
-    return hints;
-  }
-
-  let lastSummary = null;
-
-  async function scan(){
-    outText.textContent = '';
-    setBadge('b-warn','点検中…');
-    btnCopy.disabled = true;
-
-    const summary = {
-      tool: 'SmartPriceMigrateTool',
-      version: VERSION,
-      build: BUILD,
-      capturedAtJST: new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }),
-      url: location.href,
-      origin: location.origin,
-      indexedDB: {
-        databases: [],
-        stores: {},
-        totals: { dbCount: 0, storeCount: 0, recordCount: 0 }
-      },
-      localStorage: getLocalStorageSummary(),
-      legacyHints: []
-    };
-
-    log('URL: ' + summary.url);
-    log('ORIGIN: ' + summary.origin);
-    log('---');
-    log('localStorage: keys=' + fmt(summary.localStorage.count) + ' / approxChars=' + fmt(summary.localStorage.approxChars));
-    if (summary.localStorage.topKeys.length) {
-      log('localStorage top keys:');
-      for (const t of summary.localStorage.topKeys) log('  - ' + t.k + ' (len=' + fmt(t.len) + ')');
-    }
-
-    log('---');
-    let dbs = await listDatabases();
-    if (!dbs) {
-      log('indexedDB.databases() が使えません。DB名の自動列挙ができない環境です。');
-      log('（Chromeの新しめ環境では出ます）');
-      summary.indexedDB.databases = null;
-      setBadge('b-warn','DB列挙不可（環境）');
-      lastSummary = summary;
-      btnCopy.disabled = false;
-      sumLine.textContent = 'サマリ準備OK（ただしDB列挙不可）';
-      return;
-    }
-    summary.indexedDB.databases = dbs;
-    summary.indexedDB.totals.dbCount = dbs.length;
-    log('IndexedDB DB count: ' + fmt(dbs.length));
-    log('---');
-
-    const storeIndex = {};
-    for (const d of dbs) {
-      const name = d.name;
-      try {
-        const db = await openDb(name);
-        const v = db.version;
-        const storeNames = Array.from(db.objectStoreNames || []);
-        summary.indexedDB.stores[name] = { version: v, stores: {} };
-        log('DB: ' + name + ' (ver ' + v + ')');
-        if (!storeNames.length) log('  (stores: none)');
-        summary.indexedDB.totals.storeCount += storeNames.length;
-        for (const stName of storeNames) {
-          let c = 0;
-          try { c = await countStore(db, stName); } catch(e) { c = -1; }
-          summary.indexedDB.stores[name].stores[stName] = c;
-          storeIndex[stName] = true;
-          if (c >= 0) {
-            summary.indexedDB.totals.recordCount += c;
-            log('  - ' + stName + ' : ' + fmt(c));
-          } else {
-            log('  - ' + stName + ' : (count失敗)');
-          }
-        }
-        db.close();
-      } catch(e) {
-        log('DB: ' + name + ' (open失敗) ' + String(e && e.message ? e.message : e));
-      }
-      log('');
-    }
-
-    summary.legacyHints = detectLegacyHints(dbs, storeIndex);
-
-    log('---');
-    log('Totals: db=' + fmt(summary.indexedDB.totals.dbCount) +
-        ' / stores=' + fmt(summary.indexedDB.totals.storeCount) +
-        ' / records=' + fmt(summary.indexedDB.totals.recordCount));
-    if (summary.legacyHints.length) {
-      log('---');
-      log('旧データ候補ヒント:');
-      for (const h of summary.legacyHints) log('  * ' + h);
-    } else {
-      log('---');
-      log('旧データ候補ヒント: 特になし（それでもDBが空とは限りません）');
-    }
-
-    const rec = summary.indexedDB.totals.recordCount;
-    if (rec > 0 || summary.localStorage.count > 0) {
-      setBadge('b-ok','データあり');
-    } else {
-      setBadge('b-bad','空っぽの可能性');
-    }
-    sumLine.textContent = 'サマリ準備OK（②でコピーできます）';
-    lastSummary = summary;
-    btnCopy.disabled = false;
-  }
-
-  async function copySummary(){
-    if (!lastSummary) return;
-    const s = JSON.stringify(lastSummary, null, 2);
+  function getHistory() {
     try {
-      await navigator.clipboard.writeText(s);
-      sumLine.textContent = 'コピーしました（サマリJSON）';
+      const raw = localStorage.getItem(KEY);
+      if (!raw) return [];
+      const arr = JSON.parse(raw);
+      return Array.isArray(arr) ? arr : [];
+    } catch(e) { return []; }
+  }
+
+  function saveHistory(url) {
+    const u = (url || "").trim();
+    if (!u) return false;
+    const cur = getHistory();
+    const next = [u, ...cur.filter(x => x !== u)].slice(0, 15);
+    localStorage.setItem(KEY, JSON.stringify(next));
+    return true;
+  }
+
+  async function copyText(text) {
+    const t = text || "";
+    try {
+      await navigator.clipboard.writeText(t);
+      return true;
     } catch(e) {
-      sumLine.textContent = 'クリップボードに失敗。下のJSONを手でコピーしてください。';
-      outText.textContent = s;
-    }
-  }
-
-  function scoreSummary(sum){
-    const idb = sum?.indexedDB?.totals?.recordCount ?? 0;
-    const ls = sum?.localStorage?.count ?? 0;
-    const lsChars = sum?.localStorage?.approxChars ?? 0;
-    return {
-      recordCount: idb,
-      localStorageKeys: ls,
-      localStorageChars: lsChars,
-      score: (idb * 1000000) + (ls * 1000) + Math.min(lsChars, 999999)
-    };
-  }
-
-  function flattenStores(sum){
-    const rows = [];
-    const stores = sum?.indexedDB?.stores || {};
-    for (const [dbName, dbObj] of Object.entries(stores)) {
-      const st = dbObj?.stores || {};
-      for (const [storeName, c] of Object.entries(st)) {
-        rows.push({ dbName, storeName, count: c });
+      const ta = document.createElement("textarea");
+      ta.value = t;
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        return true;
+      } catch(e2) {
+        document.body.removeChild(ta);
+        return false;
       }
     }
-    return rows;
   }
 
-  function compare(){
-    cmpArea.innerHTML = '';
-    let A, B;
-    try { A = safeJsonParse(inA.value); } catch(e) { cmpArea.textContent = 'AのJSONが読めません: ' + e.message; return; }
-    try { B = safeJsonParse(inB.value); } catch(e) { cmpArea.textContent = 'BのJSONが読めません: ' + e.message; return; }
-
-    const aS = scoreSummary(A);
-    const bS = scoreSummary(B);
-
-    const master = (aS.score >= bS.score) ? 'A' : 'B';
-    const masterWhy = (master === 'A')
-      ? `Aの方が多い（records ${fmt(aS.recordCount)} vs ${fmt(bS.recordCount)} / localStorageKeys ${fmt(aS.localStorageKeys)} vs ${fmt(bS.localStorageKeys)}）`
-      : `Bの方が多い（records ${fmt(bS.recordCount)} vs ${fmt(aS.recordCount)} / localStorageKeys ${fmt(bS.localStorageKeys)} vs ${fmt(aS.localStorageKeys)}）`;
-
-    const aRows = flattenStores(A);
-    const bRows = flattenStores(B);
-    const key = (r)=> `${r.dbName}::${r.storeName}`;
-    const mapA = new Map(aRows.map(r=> [key(r), r]));
-    const mapB = new Map(bRows.map(r=> [key(r), r]));
-    const keys = Array.from(new Set([...mapA.keys(), ...mapB.keys()])).sort();
-
-    let html = '';
-    html += `<div class="mono">MASTER提案: <b>${master}</b> <span class="badge ${master==='A'?'b-ok':'b-warn'}">生（master）候補</span></div>`;
-    html += `<div class="note">理由: ${masterWhy}</div>`;
-    html += `<div class="hr"></div>`;
-    html += `<table class="tbl">
-      <thead><tr>
-        <th>DB / Store</th>
-        <th class="right">A件数</th>
-        <th class="right">B件数</th>
-        <th class="right">差（A-B）</th>
-      </tr></thead><tbody>`;
-
-    for (const k of keys) {
-      const ar = mapA.get(k);
-      const br = mapB.get(k);
-      const ac = (ar && typeof ar.count === 'number') ? ar.count : 0;
-      const bc = (br && typeof br.count === 'number') ? br.count : 0;
-      const diff = ac - bc;
-      const tag = (diff===0) ? '' : (diff>0 ? ' style="color:#a5d6a7;"' : ' style="color:#ef9a9a;"');
-      html += `<tr>
-        <td class="k">${k}</td>
-        <td class="right">${fmt(ac)}</td>
-        <td class="right">${fmt(bc)}</td>
-        <td class="right"${tag}>${diff===0? '0' : (diff>0? '+'+fmt(diff): fmt(diff))}</td>
-      </tr>`;
-    }
-    html += `</tbody></table>`;
-    html += `<div class="hr"></div>`;
-    html += `<div class="note">
-      次の手順：<br>
-      1) MASTER側URLで <b>migrate-tool.html</b> を開く → Export（JSON保存）<br>
-      2) 反対側URLで migrate-tool.html → Import（読み込み）<br>
-      3) 取り込み後に、もう一度この比較で「差がほぼ0」になったか確認
-    </div>`;
-
-    html += `<div class="hr"></div>`;
-    html += `<div class="mono"><b>localStorage</b></div>`;
-    html += `<table class="tbl"><tbody>
-      <tr><th>A keys</th><td class="right">${fmt(aS.localStorageKeys)}</td><th>B keys</th><td class="right">${fmt(bS.localStorageKeys)}</td></tr>
-      <tr><th>A chars</th><td class="right">${fmt(aS.localStorageChars)}</td><th>B chars</th><td class="right">${fmt(bS.localStorageChars)}</td></tr>
-    </tbody></table>`;
-
-    cmpArea.innerHTML = html;
+  function approxSizeOfLocalStorage() {
+    let chars = 0;
+    try {
+      for (let i=0; i<localStorage.length; i++) {
+        const k = localStorage.key(i);
+        const v = localStorage.getItem(k) || "";
+        chars += (k ? k.length : 0) + v.length;
+      }
+    } catch(e) {}
+    return chars;
   }
 
-  btnScan.addEventListener('click', ()=> scan());
-  btnCopy.addEventListener('click', ()=> copySummary());
-  btnCompare.addEventListener('click', ()=> compare());
-  btnSwap.addEventListener('click', ()=> { const tmp = inA.value; inA.value = inB.value; inB.value = tmp; });
-  btnClear.addEventListener('click', ()=> { inA.value=''; inB.value=''; cmpArea.textContent=''; });
+  function summarizeHere(inputTargetUrl) {
+    const diag = {
+      kind: "SmartPriceMigrateWizardDiag",
+      toolVersion: VERSION,
+      build: BUILD,
+      atJST: nowJST(),
+      pageUrl: window.location.href,
+      inputTargetUrl: inputTargetUrl || "",
+      device: {
+        ua: navigator.userAgent,
+        lang: navigator.language,
+        viewport: { w: innerWidth, h: innerHeight, dpr: devicePixelRatio }
+      },
+      storage: {
+        localStorageKeys: (()=>{ try{return localStorage.length;}catch(e){return -1;} })(),
+        localStorageApproxChars: approxSizeOfLocalStorage()
+      },
+      note: "URL取り違え防止用の点検。実データ（購入履歴等）はSmart Price本体のExport/Copyで出す。"
+    };
+    return diag;
+  }
 
-  const hdrNow = document.getElementById('hdrNow');
-  setInterval(()=>{
-    hdrNow.textContent = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }) + ' JST';
-  }, 15000);
+  function pickFromHistory(side) {
+    const hist = getHistory();
+    if (!hist.length) { alert("履歴が空です。URLを保存してから使ってね。"); return; }
+    const label = hist.map((u, i) => `${i+1}) ${u}`).join("\n");
+    const ans = prompt("履歴番号を入力（例：1）\n\n" + label, "1");
+    if (!ans) return;
+    const idx = parseInt(ans, 10) - 1;
+    if (isNaN(idx) || idx < 0 || idx >= hist.length) { alert("番号が不正です。"); return; }
+    if (side === "left") ui.leftUrl.value = hist[idx];
+    else ui.rightUrl.value = hist[idx];
+  }
 
-  outText.textContent = '①を押すと、このURLに残っているIndexedDB/localStorageを点検します。\\n';
+  function inspect(side) {
+    const urlStr = (side === "left" ? ui.leftUrl.value : ui.rightUrl.value).trim();
+    const u = parseUrlSafe(urlStr);
+    const st = side === "left" ? ui.leftStatus : ui.rightStatus;
+    const ta = side === "left" ? ui.leftSummary : ui.rightSummary;
+
+    if (!u) { setStatus(st, "URLが正しくありません。https:// から始まるURLを貼ってください。", "err"); return; }
+
+    const diag = summarizeHere(urlStr);
+    ta.value = JSON.stringify(diag, null, 2);
+    saveHistory(urlStr);
+
+    setStatus(st, "点検OK。次は反対側も同じ→最後に「比較」。", "ok");
+  }
+
+  function safeJsonParse(text) { try { return JSON.parse(text); } catch(e) { return null; } }
+
+  function compare() {
+    const L = safeJsonParse(ui.leftSummary.value.trim());
+    const R = safeJsonParse(ui.rightSummary.value.trim());
+    if (!L || !R) { setStatus(ui.compareStatus, "比較できません。左・右のサマリJSONが両方入っているか確認してね。", "err"); return; }
+
+    const report = {
+      kind: "SmartPriceCompareResult",
+      toolVersion: VERSION,
+      build: BUILD,
+      atJST: nowJST(),
+      leftTargetUrl: L.inputTargetUrl || "",
+      rightTargetUrl: R.inputTargetUrl || "",
+      note: "ここでの比較は『対象URLの取り違え防止』が主。実データはExport/CopyのJSONで比較が確実。"
+    };
+
+    const text = JSON.stringify(report, null, 2);
+    setStatus(ui.compareStatus, "比較レポートを表示しました（コピーも試みます）。\n\n" + text, "ok");
+    copyText(text);
+  }
+
+  function openUrl(side) {
+    const urlStr = (side === "left" ? ui.leftUrl.value : ui.rightUrl.value).trim();
+    const u = parseUrlSafe(urlStr);
+    if (!u) { alert("URLが正しくありません。"); return; }
+    window.open(urlStr, "_blank", "noopener,noreferrer");
+  }
+
+  function useCurrent(side) {
+    if (side === "left") ui.leftUrl.value = location.href;
+    else ui.rightUrl.value = location.href;
+  }
+
+  function swap() {
+    [ui.leftUrl.value, ui.rightUrl.value] = [ui.rightUrl.value, ui.leftUrl.value];
+    [ui.leftSummary.value, ui.rightSummary.value] = [ui.rightSummary.value, ui.leftSummary.value];
+    setStatus(ui.compareStatus, "左⇄右を入れ替えました。必要なら点検し直してね。", "warn");
+  }
+
+  function resetAll() {
+    ui.leftUrl.value = "";
+    ui.rightUrl.value = "";
+    ui.leftSummary.value = "";
+    ui.rightSummary.value = "";
+    setStatus(ui.leftStatus, "左に「動いている正本URL（v19.9.43[0207]）」を貼って、点検を押してね。");
+    setStatus(ui.rightStatus, "右に「現行PagesなどのURL」を貼って点検。揃ったら下の比較へ。");
+    setStatus(ui.compareStatus, "左と右のサマリが入ったら「比較」を押すだけ。");
+  }
+
+  ui.leftInspect.addEventListener("click", () => inspect("left"));
+  ui.rightInspect.addEventListener("click", () => inspect("right"));
+  ui.compare.addEventListener("click", compare);
+
+  ui.leftCopy.addEventListener("click", async () => {
+    const ok = await copyText(ui.leftSummary.value || "");
+    setStatus(ui.leftStatus, ok ? "コピーしました。右も点検→比較へ。" : "コピー失敗。長押しで全選択→コピーしてね。", ok ? "ok" : "warn");
+  });
+  ui.rightCopy.addEventListener("click", async () => {
+    const ok = await copyText(ui.rightSummary.value || "");
+    setStatus(ui.rightStatus, ok ? "コピーしました。比較へ。" : "コピー失敗。長押しで全選択→コピーしてね。", ok ? "ok" : "warn");
+  });
+
+  ui.leftOpen.addEventListener("click", () => openUrl("left"));
+  ui.rightOpen.addEventListener("click", () => openUrl("right"));
+  ui.leftUseCurrent.addEventListener("click", () => useCurrent("left"));
+  ui.rightUseCurrent.addEventListener("click", () => useCurrent("right"));
+
+  ui.swap.addEventListener("click", swap);
+  ui.reset.addEventListener("click", resetAll);
+
+  ui.leftSave.addEventListener("click", () => {
+    const ok = saveHistory(ui.leftUrl.value.trim());
+    setStatus(ui.leftStatus, ok ? "保存しました。履歴から選べます。" : "保存できません。URLを入れてから押してね。", ok ? "ok" : "warn");
+  });
+  ui.rightSave.addEventListener("click", () => {
+    const ok = saveHistory(ui.rightUrl.value.trim());
+    setStatus(ui.rightStatus, ok ? "保存しました。履歴から選べます。" : "保存できません。URLを入れてから押してね。", ok ? "ok" : "warn");
+  });
+  ui.leftPick.addEventListener("click", () => pickFromHistory("left"));
+  ui.rightPick.addEventListener("click", () => pickFromHistory("right"));
+
+  const debug = new URLSearchParams(location.search).get("debug");
+  if (debug === "1") {
+    setStatus(ui.compareStatus, ui.compareStatus.textContent + "\n\n[DEBUG] " + VERSION + " / BUILD=" + BUILD);
+  }
 })();
 </script>
 </body>
