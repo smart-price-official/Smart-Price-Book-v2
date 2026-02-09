@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <!--
+  APP: Smart Price Helper (Same-Origin Tool)
+  VERSION: v0.1.0
+  BUILD_ID: 2026-02-09_1305_migrate-tool
+  DATE_JST: 2026-02-09 13:05 JST
+  AUTHOR: Yui
+  TITLE: SMART PRICE 作業画面（診断/エクスポート/インポート）
+  POLICY: UIはこのファイル内だけ。Smart Price本体のUIは触らない。
+  NOTE: IndexedDB/LocalStorageは「同一オリジン」でしか読めません。
+        必ず Smart-Price-Book と同じ GitHub Pages ドメイン/パス配下で開いてください。
+  -->
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SMART PRICE 作業画面（診断/エクスポート/インポート） v0.1.0 / 2026-02-09_1305_migrate-tool</title>
+  <style>
+    :root {
+      --bg:#111; --fg:#eee; --muted:#a9a9a9; --card:#1b1b1b; --bd:#333;
+      --ok:#5bd16a; --ng:#ff6b6b;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      --ui: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", sans-serif;
+    }
+    body { margin:0; background:var(--bg); color:var(--fg); font-family:var(--ui); }
+    header {
+      position:sticky; top:0; z-index:10;
+      background:linear-gradient(135deg,#D50000,#9b0000);
+      padding:12px 14px; border-bottom:1px solid rgba(255,255,255,.08);
+      display:flex; gap:10px; align-items:center; justify-content:space-between;
+    }
+    header .left { display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; }
+    .badge { background:rgba(0,0,0,.25); border:1px solid rgba(255,255,255,.18); padding:2px 8px; border-radius:999px; font-size:12px; }
+    .wrap { max-width:1100px; margin:0 auto; padding:14px; }
+    .grid { display:grid; grid-template-columns: 1fr; gap:12px; }
+    @media (min-width: 920px) { .grid { grid-template-columns: 420px 1fr; } }
+    .card {
+      background:var(--card); border:1px solid var(--bd); border-radius:14px; overflow:hidden;
+      box-shadow: 0 6px 18px rgba(0,0,0,.35);
+    }
+    .card h2 { margin:0; padding:12px 14px; font-size:14px; border-bottom:1px solid var(--bd); color:#fff; }
+    .card .body { padding:12px 14px; }
+    .btn {
+      width:100%;
+      appearance:none; border:1px solid #444; background:#222; color:#fff;
+      padding:10px 12px; border-radius:12px; font-weight:700; cursor:pointer;
+      text-align:left;
+    }
+    .btn:active { transform: translateY(1px); }
+    .btn.primary { border-color: rgba(255,82,82,.75); background: rgba(213,0,0,.18); }
+    .btn.ng { border-color: rgba(255,107,107,.65); background: rgba(255,107,107,.12); }
+    .btnrow { display:grid; gap:10px; }
+    .mini { font-size:12px; color:var(--muted); line-height:1.55; }
+    .mono { font-family:var(--mono); font-size:12px; }
+    textarea {
+      width:100%; min-height:150px; resize:vertical;
+      background:#0d0d0d; color:#eaeaea; border:1px solid #333; border-radius:12px;
+      padding:10px; font-family:var(--mono); font-size:12px;
+    }
+    .status {
+      border:1px solid var(--bd); border-radius:12px; padding:10px; background:#141414;
+      display:flex; flex-direction:column; gap:6px;
+    }
+    .kv { display:flex; gap:10px; flex-wrap:wrap; align-items:baseline; }
+    .k { color:var(--muted); font-size:12px; }
+    .v { font-family:var(--mono); font-size:12px; }
+    .pill { display:inline-flex; align-items:center; gap:6px; padding:2px 8px; border-radius:999px; font-size:12px; border:1px solid #444; }
+    .pill.ok { border-color: rgba(91,209,106,.6); color: var(--ok); }
+    .pill.ng { border-color: rgba(255,107,107,.6); color: var (--ng); }
+    .log {
+      background:#0d0d0d; border:1px solid #333; border-radius:12px; padding:10px;
+      font-family:var(--mono); font-size:12px; line-height:1.55;
+      white-space:pre-wrap; word-break:break-word; min-height:260px;
+      max-height:60vh; overflow:auto;
+    }
+    .sep { height:1px; background:var(--bd); margin:10px 0; }
+    .smallbtn {
+      appearance:none; border:1px solid #444; background:#1a1a1a; color:#fff;
+      padding:7px 10px; border-radius:10px; font-weight:700; cursor:pointer;
+      font-size:12px;
+    }
+    .smallbtn:active { transform: translateY(1px); }
+    .inline { display:flex; gap:8px; flex-wrap:wrap; }
+  </style>
+</head>
+<body>
+<header>
+  <div class="left">
+    <div style="font-weight:900;">Smart Price 作業画面</div>
+    <div class="badge">v0.1.0</div>
+    <div class="badge mono">BUILD 2026-02-09_1305_migrate-tool</div>
+  </div>
+  <div class="badge mono" id="now"></div>
+</header>
+
+<div class="wrap">
+  <div class="grid">
+    <div class="card">
+      <h2>1) することボタン（A→C→B）</h2>
+      <div class="body">
+        <div class="status">
+          <div class="kv"><span class="k">URL</span><span class="v" id="stUrl"></span></div>
+          <div class="kv"><span class="k">Origin</span><span class="v" id="stOrigin"></span></div>
+          <div class="kv"><span class="k">Build(param b)</span><span class="v" id="stB"></span></div>
+          <div class="kv"><span class="k">Same-Origin 判定</span><span class="pill" id="stSame">未判定</span></div>
+          <div class="mini">※同一オリジンでしか IndexedDB/LocalStorage を読めません。</div>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="btnrow">
+          <button class="btn primary" id="btnA">A：環境チェック（同一オリジン / Service Worker / Build）</button>
+          <button class="btn" id="btnC">C：データ箱を一覧（LocalStorage / IndexedDB / ObjectStore）</button>
+          <button class="btn" id="btnB">B：エクスポート（JSON作成→右に出す）</button>
+          <button class="btn" id="btnImport">インポート（右のJSONを読み込む）</button>
+          <button class="btn ng" id="btnDanger">危険：このオリジンの Smart Price データを全消去（LocalStorage+IDB）</button>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="mini"><b>迷ったら：</b> A → C → B。JSONは「JSONを保存」で確保。</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>2) 結果（ここだけ見ればOK）</h2>
+      <div class="body">
+        <div class="inline" style="justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <div class="mini">ログ（最新が下）</div>
+          <div class="inline">
+            <button class="smallbtn" id="btnCopyLog">ログをコピー</button>
+            <button class="smallbtn" id="btnClearLog">ログを消す</button>
+          </div>
+        </div>
+        <div class="log" id="log"></div>
+
+        <div class="sep"></div>
+
+        <div class="mini" style="margin-bottom:6px;">エクスポート/インポート JSON</div>
+        <textarea id="jsonBox" spellcheck="false" placeholder="Bを押すとここにJSONが出ます。インポートしたいときはここに貼って「インポート」。"></textarea>
+        <div class="inline" style="margin-top:10px;">
+          <button class="smallbtn" id="btnCopyJson">JSONをコピー</button>
+          <button class="smallbtn" id="btnDownloadJson">JSONを保存</button>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="mini">※画像（IndexedDBのBlob）の完全復元は次段階。まず“箱の名前”を確定。</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const VERSION = "v0.1.0";
+  const BUILD = "2026-02-09_1305_migrate-tool";
+
+  const $ = (id) => document.getElementById(id);
+  const logEl = $('log');
+  const jsonBox = $('jsonBox');
+
+  function nowJst() {
+    return new Date().toLocaleString('ja-JP', { timeZone:'Asia/Tokyo', hour12:false });
+  }
+  $('now').textContent = nowJst();
+  setInterval(()=> $('now').textContent = nowJst(), 1000);
+
+  function appendLog(line) {
+    const stamp = new Date().toLocaleTimeString('ja-JP', { timeZone:'Asia/Tokyo', hour12:false });
+    logEl.textContent += "[" + stamp + "] " + line + "\n";
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function getParam(name) {
+    try { return new URL(location.href).searchParams.get(name); } catch(e) { return null; }
+  }
+
+  function setStatus() {
+    $('stUrl').textContent = location.href;
+    $('stOrigin').textContent = location.origin;
+    $('stB').textContent = getParam('b') || '(none)';
+  }
+  setStatus();
+
+  function setPill(ok, text) {
+    const pill = $('stSame');
+    pill.classList.remove('ok','ng');
+    pill.classList.add(ok ? 'ok' : 'ng');
+    pill.textContent = text;
+  }
+
+  function checkSameOriginHeuristic() {
+    const path = location.pathname || '';
+    const ok = path.indexOf('/Smart-Price-Book/') >= 0;
+    setPill(ok, ok ? 'OK（/Smart-Price-Book/ 配下）' : 'NG（別の場所で開いてます）');
+    return ok;
+  }
+
+  async function listServiceWorkers() {
+    if (!('serviceWorker' in navigator)) return [];
+    try {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      return regs.map(r => (r.scope || '(no-scope)'));
+    } catch(e) {
+      return ['ERROR: ' + (e && e.message ? e.message : String(e))];
+    }
+  }
+
+  function listLocalStorageKeys() {
+    try {
+      const keys = [];
+      for (let i=0;i<localStorage.length;i++) {
+        const k = localStorage.key(i);
+        if (k) keys.push(k);
+      }
+      keys.sort();
+      return keys;
+    } catch(e) {
+      return ['ERROR: ' + (e.message || e)];
+    }
+  }
+
+  async function inspectDb(name) {
+    try {
+      const stores = await new Promise((resolve) => {
+        const req = indexedDB.open(name);
+        req.onsuccess = () => {
+          const db = req.result;
+          const list = Array.from(db.objectStoreNames || []);
+          db.close();
+          resolve(list);
+        };
+        req.onupgradeneeded = () => { try { req.result.close(); } catch(e) {} resolve([]); };
+        req.onerror = () => resolve(null);
+      });
+      if (stores === null) return null;
+      return "DB: " + name + " / stores: [" + stores.join(", ") + "]";
+    } catch(e) {
+      return "DB: " + name + " / ERROR: " + (e.message || e);
+    }
+  }
+
+  async function listIndexedDb() {
+    const out = [];
+    if (!('indexedDB' in window)) return ['(indexedDB unsupported)'];
+    let dbs = [];
+    if (indexedDB.databases) {
+      try { dbs = await indexedDB.databases(); } catch(e) { dbs = []; }
+    }
+    if (!dbs || dbs.length === 0) {
+      out.push('IndexedDB: databases() で一覧取得できません（環境/権限/未使用の可能性）');
+      const candidates = ['smart_price_img_db_v1', 'smartPriceImg', 'smart_price_images', 'smartPriceImages', 'smartPriceIm'];
+      for (const name of candidates) {
+        const info = await inspectDb(name);
+        if (info) out.push(info);
+      }
+      return out;
+    }
+    for (const dbinfo of dbs) {
+      const name = (dbinfo && dbinfo.name) ? dbinfo.name : '(no-name)';
+      const info = await inspectDb(name);
+      if (info) out.push(info);
+    }
+    return out;
+  }
+
+  function tryReadSmartPriceDb() {
+    const candidates = ['smartPriceDB','smart_price_db','smartPrice','smart_price','db','smartPriceData'];
+    for (const k of candidates) {
+      try {
+        const v = localStorage.getItem(k);
+        if (v && v.trim().startsWith('{')) {
+          const parsed = JSON.parse(v);
+          if (parsed && typeof parsed === 'object') return { key:k, data:parsed };
+        }
+      } catch(e) {}
+    }
+    return null;
+  }
+
+  function makeExportPayload() {
+    const payload = {
+      meta: { toolVersion: VERSION, toolBuild: BUILD, exportedAtJst: nowJst(), url: location.href, origin: location.origin },
+      localStorage: { keys: listLocalStorageKeys(), smartPrice: {} },
+      indexedDb: { summary: [] },
+      smartPriceDbGuess: null
+    };
+
+    try {
+      for (const k of payload.localStorage.keys) {
+        if (!k || k.indexOf('smartPrice') !== 0) continue;
+        payload.localStorage.smartPrice[k] = localStorage.getItem(k);
+      }
+    } catch(e) {
+      payload.localStorage.error = e.message || String(e);
+    }
+
+    const guessed = tryReadSmartPriceDb();
+    if (guessed) payload.smartPriceDbGuess = { foundKey: guessed.key, data: guessed.data };
+    return payload;
+  }
+
+  async function fillIndexedDbSummary(payload) {
+    try { payload.indexedDb.summary = await listIndexedDb(); }
+    catch(e) { payload.indexedDb.error = e.message || String(e); }
+    return payload;
+  }
+
+  function applyImportPayload(payload) {
+    const sp = payload && payload.localStorage && payload.localStorage.smartPrice ? payload.localStorage.smartPrice : null;
+    if (sp && typeof sp === 'object') {
+      let n=0;
+      for (const k of Object.keys(sp)) {
+        try { localStorage.setItem(k, String(sp[k])); n++; }
+        catch(e) { appendLog('localStorage書込失敗: ' + k + ' / ' + (e.message||e)); }
+      }
+      appendLog('localStorage 復元: ' + n + '件');
+    } else {
+      appendLog('インポート: localStorage.smartPrice が見つかりません');
+    }
+    appendLog('注意: IndexedDB(画像) はこのツールでは復元しません（次段階）');
+  }
+
+  async function wipeAll() {
+    appendLog('=== 危険操作：削除開始 ===');
+    try {
+      const keys = listLocalStorageKeys();
+      let n=0;
+      for (const k of keys) { try { localStorage.removeItem(k); n++; } catch(e) {} }
+      appendLog('localStorage削除: ' + n + '件');
+    } catch(e) { appendLog('localStorage削除エラー: ' + (e.message||e)); }
+
+    try {
+      if (indexedDB.databases) {
+        const dbs = await indexedDB.databases();
+        let dn=0;
+        for (const info of dbs) {
+          const name = (info && info.name) ? info.name : '';
+          if (!name) continue;
+          await new Promise((res)=> {
+            const req = indexedDB.deleteDatabase(name);
+            req.onsuccess = ()=> res();
+            req.onerror = ()=> res();
+            req.onblocked = ()=> res();
+          });
+          dn++;
+        }
+        appendLog('IndexedDB削除: ' + dn + '件');
+      } else {
+        appendLog('IndexedDB削除: databases() 非対応（手動必要）');
+      }
+    } catch(e) { appendLog('IndexedDB削除エラー: ' + (e.message||e)); }
+
+    appendLog('=== 削除終了（ページ再読み込み） ===');
+  }
+
+  async function copyText(t) {
+    try { await navigator.clipboard.writeText(t); appendLog('コピーしました'); }
+    catch(e) {
+      const ta = document.createElement('textarea');
+      ta.value = t; document.body.appendChild(ta);
+      ta.select(); document.execCommand('copy'); ta.remove();
+      appendLog('コピーしました（fallback）');
+    }
+  }
+
+  $('btnA').addEventListener('click', async () => {
+    appendLog('A：環境チェック 開始');
+    const okPath = checkSameOriginHeuristic();
+    appendLog('同一オリジン判定: ' + (okPath ? 'OK' : 'NG'));
+    appendLog('URL param b: ' + (getParam('b') || '(none)'));
+    const sw = await listServiceWorkers();
+    appendLog('ServiceWorker 登録数: ' + sw.length);
+    for (const s of sw) appendLog('SW scope: ' + s);
+    appendLog('A：完了');
+  });
+
+  $('btnC').addEventListener('click', async () => {
+    appendLog('C：箱の一覧 開始');
+    checkSameOriginHeuristic();
+    const keys = listLocalStorageKeys();
+    appendLog('LocalStorage keys: ' + keys.length);
+    const spKeys = keys.filter(k => k && k.indexOf('smartPrice') === 0);
+    appendLog('  smartPrice* keys: ' + spKeys.length);
+    for (const k of spKeys.slice(0, 80)) appendLog('  - ' + k);
+    if (spKeys.length > 80) appendLog('  ...省略（80件まで）');
+    const idbLines = await listIndexedDb();
+    appendLog('IndexedDB: ' + idbLines.length + '行');
+    for (const line of idbLines) appendLog(line);
+    appendLog('C：完了');
+  });
+
+  $('btnB').addEventListener('click', async () => {
+    appendLog('B：エクスポート 開始');
+    checkSameOriginHeuristic();
+    let payload = makeExportPayload();
+    payload = await fillIndexedDbSummary(payload);
+    jsonBox.value = JSON.stringify(payload, null, 2);
+    appendLog('B：完了（JSONを出しました）');
+    appendLog('  smartPrice keys: ' + Object.keys(payload.localStorage.smartPrice || {}).length);
+    appendLog('  smartPriceDbGuess: ' + (payload.smartPriceDbGuess ? ('FOUND: ' + payload.smartPriceDbGuess.foundKey) : 'NOT FOUND'));
+  });
+
+  $('btnImport').addEventListener('click', async () => {
+    appendLog('インポート 開始');
+    checkSameOriginHeuristic();
+    const txt = (jsonBox.value || '').trim();
+    if (!txt) { appendLog('中止：JSONが空'); return; }
+    try { applyImportPayload(JSON.parse(txt)); appendLog('インポート 完了（再読み込みで反映する場合あり）'); }
+    catch(e) { appendLog('失敗：' + (e.message || e)); }
+  });
+
+  $('btnDanger').addEventListener('click', async () => {
+    const ok = confirm('危険：このオリジンの Smart Price データを全消去します。\n先にBでJSONを確保しましたか？\n\nOKなら「はい」');
+    if (!ok) return;
+    await wipeAll();
+  });
+
+  $('btnClearLog').addEventListener('click', () => { logEl.textContent=''; appendLog('ログを消しました'); });
+  $('btnCopyLog').addEventListener('click', () => copyText(logEl.textContent || ''));
+  $('btnCopyJson').addEventListener('click', () => copyText(jsonBox.value || ''));
+
+  $('btnDownloadJson').addEventListener('click', () => {
+    const txt = (jsonBox.value || '').trim();
+    if (!txt) { appendLog('保存できません：JSONが空'); return; }
+    const blob = new Blob([txt], {type:'application/json'});
+    const a = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    a.href = url;
+    a.download = "smart-price-export_2026-02-09_1305_migrate-tool.json";
+    a.click();
+    setTimeout(()=>URL.revokeObjectURL(url), 2000);
+    appendLog('JSONを保存しました');
+  });
+
+  appendLog('起動: ' + VERSION + ' / ' + BUILD);
+  appendLog('まず A → C → B の順で押してください。');
+})();
+</script>
+</body>
+</html>
