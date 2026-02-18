@@ -1,0 +1,298 @@
+
+<!doctype html>
+<html lang="ja">
+<head>
+  <!--
+    APP: Smart Price
+    FILE: diagnostics.html
+    VERSION: v1.0.0
+    DATE(JST): 2026-02-04 19:13 JST
+    TITLE: Smart Price 原因調査アプリ（diagnostics.html）修正版
+    CHANGES:
+    - GitHub Pages 直置き用に単体で動く diagnostics.html を再作成（仮ページではなく本体）
+    - Service Worker / Cache / Storage 状態表示 + 解除ボタン
+    - 設定URL・build(b=)・debug(debug=1) を画面で確認できるよう整理
+    BUILD_PARAM: ?b=2026-02-04_1913_diagfix
+    DEBUG_PARAM: &debug=1
+    AUTHOR: Yui
+    POLICY: UIは増やしすぎず、スマホ検証で迷わない最小導線
+  -->
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Smart Price Diagnostics</title>
+  <style>
+    :root{--bg:#121212;--panel:#1e1e1e;--line:#444;--text:#e0e0e0;--muted:#bdbdbd;--accent:#ff9800;--btn:#ff9800;--btnText:#121212;--danger:#d32f2f;}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"BIZ UDゴシック","Meiryo",sans-serif;line-height:1.6}
+    header{padding:18px 16px 10px;border-bottom:3px solid var(--accent)}
+    header h1{margin:0;font-size:20px;color:var(--accent);letter-spacing:.3px}
+    header .sub{margin-top:6px;color:var(--muted);font-size:12px;word-break:break-all}
+    .wrap{padding:14px 12px 26px;max-width:980px;margin:0 auto}
+    .section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;margin:12px 0}
+    .section-title{font-weight:800;color:var(--accent);margin:0 0 10px;display:flex;gap:8px;align-items:center}
+    .row{display:grid;grid-template-columns:220px 1fr;gap:10px;padding:8px 0;border-top:1px solid rgba(255,255,255,.06)}
+    .row:first-of-type{border-top:none}
+    .k{color:var(--muted);font-size:12px}
+    .v{font-size:13px;word-break:break-all}
+    .btnbar{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+    button{appearance:none;border:none;background:var(--btn);color:var(--btnText);font-weight:800;padding:12px 14px;border-radius:10px;cursor:pointer}
+    button.secondary{background:transparent;color:var(--text);border:1px solid rgba(255,255,255,.22);font-weight:700}
+    button.danger{background:var(--danger);color:#fff}
+    .note{color:var(--muted);font-size:12px;margin-top:6px}
+    .badge{display:inline-block;padding:3px 8px;border-radius:999px;font-size:12px;font-weight:800;background:rgba(255,152,0,.18);border:1px solid rgba(255,152,0,.35);color:var(--accent)}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace}
+    textarea{width:100%;min-height:150px;background:#0f0f0f;color:var(--text);border:1px solid rgba(255,255,255,.18);border-radius:10px;padding:10px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;font-size:12px}
+    @media (max-width:720px){.row{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🔎 Smart Price 原因調査アプリ</h1>
+    <div class="sub">
+      <span class="badge">DIAG v1.0.0</span>
+      <span class="mono">b=<span id="qBuild"></span></span>
+      <span class="mono">debug=<span id="qDebug"></span></span>
+      <div class="mono" id="locLine"></div>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <div class="section" id="secA">
+      <div class="section-title">📌 A) 読み込んだHTMLの情報</div>
+      <div class="row"><div class="k">FULL VERSION</div><div class="v mono" id="aFull">確認中…</div></div>
+      <div class="row"><div class="k">BUILD ID</div><div class="v mono" id="aBuild">確認中…</div></div>
+      <div class="row"><div class="k">BUILD PARAM (?b=)</div><div class="v mono" id="aB">確認中…</div></div>
+      <div class="row"><div class="k">Firebase</div><div class="v mono" id="aFb">確認中…</div></div>
+      <div class="row"><div class="k">読み込んだURL</div><div class="v mono" id="aUrl">確認中…</div></div>
+      <div class="row"><div class="k">Date.now()</div><div class="v mono" id="aNow">確認中…</div></div>
+      <div class="btnbar"><button id="btnRefresh">ページ情報を更新</button></div>
+      <div class="note">※ ここが埋まらない/変なら「キャッシュ」「Service Worker」が疑い。</div>
+    </div>
+
+    <div class="section" id="secB">
+      <div class="section-title">🧹 B) Service Worker / キャッシュの状態</div>
+      <div class="row"><div class="k">SW Controller</div><div class="v mono" id="bCtrl">確認中…</div></div>
+      <div class="row"><div class="k">SW 登録数</div><div class="v mono" id="bRegs">確認中…</div></div>
+      <div class="row"><div class="k">キャッシュ数</div><div class="v mono" id="bCaches">確認中…</div></div>
+      <div class="btnbar">
+        <button class="danger" id="btnNuke">SW解除＋キャッシュ削除＋リロード</button>
+        <button class="secondary" id="btnOnlyReload">（削除しない）リロード</button>
+      </div>
+      <div class="note">※ PWA（ホーム追加）だとキャッシュが強い。まず通常ブラウザで開くのが安全。</div>
+    </div>
+
+    <div class="section" id="secC">
+      <div class="section-title">🗃️ C) ストレージ系の状態</div>
+      <div class="row"><div class="k">localStorage 使用量（概算）</div><div class="v mono" id="cLsSize">確認中…</div></div>
+      <div class="row"><div class="k">localStorage キー</div><div class="v mono" id="cLsKeys">確認中…</div></div>
+      <div class="row"><div class="k">IndexedDB</div><div class="v mono" id="cIdb">確認中…</div></div>
+      <div class="btnbar">
+        <button id="btnExport">バックアップ出力（localStorage）</button>
+        <button class="secondary" id="btnCopy">コピー</button>
+      </div>
+      <div class="note">※ ここは将来“バックアップ”ボタン配下に移す想定。まず診断では最小実装。</div>
+      <div style="margin-top:10px;">
+        <textarea id="backupArea" placeholder="ここにバックアップJSONが出ます（または貼り付けて復元）"></textarea>
+        <div class="btnbar">
+          <button class="danger" id="btnImport">バックアップ読み込み（localStorageへ復元）</button>
+          <button class="secondary" id="btnClearLs">localStorage 全消し</button>
+        </div>
+        <div class="note" style="color:#ef9a9a;">※「読み込み」は上書き。必要なら先に“出力”して保管してから。</div>
+      </div>
+    </div>
+
+    <div class="section" id="secD">
+      <div class="section-title">🌐 D) 通信・設定ファイルの確認（任意）</div>
+      <div class="row"><div class="k">config.json（同階層）</div><div class="v mono" id="dCfg">未実行</div></div>
+      <div class="row"><div class="k">dev/config.json（フォールバック）</div><div class="v mono" id="dCfg2">未実行</div></div>
+      <div class="btnbar"><button id="btnFetchCfg">config.json を読んでみる</button></div>
+      <div class="note">※ GitHub Pages 配布で config.json が想定場所に無いと、本体が途中で止まることがあります。</div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">✅ ここが見えていればOK</div>
+      <div class="note">
+        このページが表示できていれば、少なくとも <span class="mono">/diagnostics.html</span> の 404 は解消しています。<br>
+        もし「本体URLは動くのに diagnostics だけ変」なら、<b>配布元のズレ</b> または <b>古いキャッシュ</b> が濃厚です。
+      </div>
+    </div>
+  </div>
+
+<script>
+(()=> {
+  const qs = new URLSearchParams(location.search);
+  const qBuild = qs.get('b') || '';
+  const qDebug = qs.get('debug') || '';
+  document.getElementById('qBuild').textContent = qBuild || '(なし)';
+  document.getElementById('qDebug').textContent = qDebug || '(なし)';
+  document.getElementById('locLine').textContent = location.href;
+
+  const safeGet=(fn,fb)=>{try{return fn()}catch(e){return fb}};
+  const approxLocalStorageBytes=()=>{
+    let bytes=0;
+    for(let i=0;i<localStorage.length;i++){
+      const k=localStorage.key(i);
+      const v=localStorage.getItem(k)||'';
+      bytes+=(k.length+v.length)*2;
+    }
+    return bytes;
+  };
+  const humanBytes=(n)=>{
+    if(!isFinite(n)) return '不明';
+    const u=['B','KB','MB','GB']; let i=0,x=n;
+    while(x>=1024 && i<u.length-1){x/=1024;i++}
+    return x.toFixed(i===0?0:2)+u[i];
+  };
+
+  const refreshA=async()=>{
+    document.getElementById('aUrl').textContent=location.href;
+    document.getElementById('aNow').textContent=String(Date.now());
+
+    const full =
+      window.FULL_VERSION ||
+      window.VERSION_INFO ||
+      document.querySelector('#versionBadge, .version-badge, [data-version]')?.textContent ||
+      '(親ページから取得不可)';
+    document.getElementById('aFull').textContent=String(full).trim();
+
+    const build =
+      window.BUILD_ID ||
+      window.DEFAULT_BUILD ||
+      (window.VERSION_INFO && window.VERSION_INFO.buildId) ||
+      '(親ページから取得不可)';
+    document.getElementById('aBuild').textContent=String(build).trim();
+
+    document.getElementById('aB').textContent=qBuild? qBuild : 'なし';
+
+    const fb=safeGet(()=>localStorage.getItem('smartPriceFirebaseUrl')||localStorage.getItem('firebaseUrl')||'','');
+    document.getElementById('aFb').textContent=fb?fb:'OFF';
+  };
+
+  const refreshB=async()=>{
+    if(!('serviceWorker' in navigator)){
+      document.getElementById('bCtrl').textContent='未対応';
+      document.getElementById('bRegs').textContent='未対応';
+      document.getElementById('bCaches').textContent='未対応';
+      return;
+    }
+    document.getElementById('bCtrl').textContent=navigator.serviceWorker.controller?'あり':'なし';
+    const regs=await navigator.serviceWorker.getRegistrations();
+    document.getElementById('bRegs').textContent=String(regs.length);
+
+    if('caches' in window){
+      const names=await caches.keys();
+      document.getElementById('bCaches').textContent=names.length + (names.length?` （${names.join(', ')}）`:'');
+    }else{
+      document.getElementById('bCaches').textContent='未対応';
+    }
+  };
+
+  const refreshC=async()=>{
+    const bytes=approxLocalStorageBytes();
+    document.getElementById('cLsSize').textContent=humanBytes(bytes)+`（キー数 ${localStorage.length}）`;
+    const keys=[];
+    for(let i=0;i<localStorage.length;i++) keys.push(localStorage.key(i));
+    keys.sort();
+    document.getElementById('cLsKeys').textContent=keys.length?keys.join(', '):'(空)';
+    document.getElementById('cIdb').textContent=safeGet(()=>window.indexedDB?'利用可':'不可','不明');
+  };
+
+  const fetchText=async(url)=>{
+    const res=await fetch(url,{cache:'no-store'});
+    if(!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    return await res.text();
+  };
+
+  const checkCfg=async()=>{
+    const el1=document.getElementById('dCfg');
+    const el2=document.getElementById('dCfg2');
+    el1.textContent='確認中…'; el2.textContent='確認中…';
+    try{
+      const t=await fetchText('./config.json?b='+encodeURIComponent(qBuild||Date.now()));
+      el1.textContent='OK（読めた）: '+t.slice(0,120).replace(/\s+/g,' ')+(t.length>120?'…':'');
+    }catch(e){
+      el1.textContent='NG: '+(e?.message||e);
+    }
+    try{
+      const t2=await fetchText('./dev/config.json?b='+encodeURIComponent(qBuild||Date.now()));
+      el2.textContent='OK（読めた）: '+t2.slice(0,120).replace(/\s+/g,' ')+(t2.length>120?'…':'');
+    }catch(e){
+      el2.textContent='NG: '+(e?.message||e);
+    }
+  };
+
+  const nukeSWAndCaches=async()=>{
+    if('serviceWorker' in navigator){
+      const regs=await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r=>r.unregister().catch(()=>null)));
+    }
+    if('caches' in window){
+      const names=await caches.keys();
+      await Promise.all(names.map(n=>caches.delete(n).catch(()=>null)));
+    }
+  };
+
+  const exportLS=()=>{
+    const obj={};
+    for(let i=0;i<localStorage.length;i++){
+      const k=localStorage.key(i);
+      obj[k]=localStorage.getItem(k);
+    }
+    return JSON.stringify({
+      app:'Smart Price',
+      kind:'localStorage-backup',
+      version:'v1.0.0',
+      exportedAt:new Date().toISOString(),
+      url:location.href,
+      data:obj
+    },null,2);
+  };
+
+  const importLS=(txt)=>{
+    const payload=JSON.parse(txt);
+    if(!payload||payload.kind!=='localStorage-backup'||!payload.data) throw new Error('形式が違います（localStorage-backup ではない）');
+    const data=payload.data;
+    Object.keys(data).forEach(k=>{
+      const v=data[k];
+      if(v===null||typeof v==='undefined') localStorage.removeItem(k);
+      else localStorage.setItem(k,String(v));
+    });
+  };
+
+  document.getElementById('btnRefresh').addEventListener('click',async()=>{await refreshA();await refreshB();await refreshC();});
+  document.getElementById('btnOnlyReload').addEventListener('click',()=>location.reload());
+  document.getElementById('btnNuke').addEventListener('click',async()=>{
+    if(!confirm('Service Worker とキャッシュを削除してリロードします。よろしいですか？')) return;
+    await nukeSWAndCaches(); location.reload();
+  });
+
+  document.getElementById('btnExport').addEventListener('click',async()=>{
+    document.getElementById('backupArea').value=exportLS();
+    await refreshC();
+  });
+  document.getElementById('btnCopy').addEventListener('click',async()=>{
+    const txt=document.getElementById('backupArea').value||'';
+    if(!txt) return alert('先に「バックアップ出力」を押してね。');
+    try{await navigator.clipboard.writeText(txt); alert('コピーしました。');}
+    catch(e){alert('コピーできませんでした。手動で選択してコピーしてね。');}
+  });
+  document.getElementById('btnImport').addEventListener('click',async()=>{
+    const txt=document.getElementById('backupArea').value||'';
+    if(!txt.trim()) return alert('貼り付けが空です。');
+    if(!confirm('localStorage を上書き復元します。よろしいですか？')) return;
+    try{importLS(txt); alert('復元しました。'); await refreshA(); await refreshC();}
+    catch(e){alert('復元できませんでした: '+(e?.message||e));}
+  });
+  document.getElementById('btnClearLs').addEventListener('click',async()=>{
+    if(!confirm('localStorage を全消しします。よろしいですか？')) return;
+    localStorage.clear(); document.getElementById('backupArea').value='';
+    await refreshA(); await refreshC();
+  });
+
+  document.getElementById('btnFetchCfg').addEventListener('click',checkCfg);
+
+  (async()=>{await refreshA();await refreshB();await refreshC();})();
+})();
+</script>
+</body>
+</html>
