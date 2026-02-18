@@ -1,0 +1,326 @@
+
+<!doctype html>
+<html lang="ja">
+<head>
+<!--
+APP: Smart Price Purchase History Rescue (Importer)
+VERSION: v22.7.5-importer-r2
+DATE(JST): 2026-02-16 11:17 JST
+TITLE: 購入履歴レスキュー｜JSON貼り付け失敗の原因表示＋ファイル読み込み対応
+CHANGES:
+- JSON貼り付け時の「どこが壊れているか」を表示（先頭/末尾/文字数）
+- ファイル(.txt/.json)から読み込み対応（スマホで貼り付けが切れる対策）
+- smart_price_db が「文字列JSON」でも「オブジェクト」でも復元できるように対応
+BUILD PARAM (b): ?b=2026-02-16_1117_importer-r2
+DEBUG PARAM: &debug=1
+POLICY: same-origin only / localStorage only (外部送信なし)
+-->
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Smart Price｜購入履歴レスキュー</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", sans-serif;
+    background: #0b0b0d;
+    color: #e9e9ee;
+  }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 18px 14px 28px; }
+  h1 { font-size: 20px; margin: 10px 0 6px; font-weight: 800; letter-spacing: .2px; }
+  .meta { opacity: .85; font-size: 12px; margin-bottom: 14px; }
+  .card {
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 16px;
+    padding: 14px;
+    box-shadow: 0 12px 40px rgba(0,0,0,.45);
+  }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 10px 0 12px; }
+  .btn {
+    appearance: none;
+    border: 1px solid rgba(255,255,255,.18);
+    background: rgba(255,255,255,.10);
+    color: #fff;
+    border-radius: 14px;
+    padding: 12px 14px;
+    font-weight: 800;
+    cursor: pointer;
+  }
+  .btn.primary { background: #2f6fed; border-color: rgba(0,0,0,0); }
+  .btn.danger { background: #d34a56; border-color: rgba(0,0,0,0); }
+  textarea {
+    width: 100%;
+    height: 260px;
+    padding: 12px 12px;
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,.16);
+    background: rgba(0,0,0,.25);
+    color: #e9e9ee;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    box-sizing: border-box;
+  }
+  .hint { opacity: .85; font-size: 13px; line-height: 1.6; margin: 10px 0 6px; }
+  .log {
+    margin-top: 10px;
+    padding: 12px;
+    border-radius: 16px;
+    background: rgba(0,0,0,.35);
+    border: 1px solid rgba(255,255,255,.10);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    min-height: 72px;
+  }
+  .pill {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: rgba(255,255,255,.10);
+    border: 1px solid rgba(255,255,255,.14);
+    font-size: 12px;
+    margin-right: 6px;
+  }
+  .small { font-size: 12px; opacity: .85; }
+  input[type="file"] {
+    width: 100%;
+    padding: 10px;
+    border-radius: 14px;
+    border: 1px dashed rgba(255,255,255,.20);
+    background: rgba(255,255,255,.06);
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Smart Price｜購入履歴レスキュー（この端末へ戻す）</h1>
+    <div class="meta">
+      <span class="pill">v22.7.5-importer-r2</span>
+      <span class="pill">BUILD: 2026-02-16_1117_importer-r2</span>
+      <span class="pill">2026-02-16 11:17 JST</span>
+    </div>
+
+    <div class="card">
+      <div class="hint">
+        ① 下に「エクスポートJSON」を <b>全部</b> 貼るか、② ファイル（.txt/.json）を選んでください。<br/>
+        このページは <b>localStorage（端末内の保存）</b> に書き戻すだけで、外部へ送信しません。
+      </div>
+
+      <div class="row">
+        <input id="file" type="file" accept=".txt,.json,application/json,text/plain" />
+      </div>
+
+      <textarea id="raw" placeholder='ここに {"kind":"SmartPriceExport", ... } を先頭から末尾まで貼り付け'></textarea>
+
+      <div class="row">
+        <button class="btn primary" id="btnImport">インポートしてSmart Priceへ戻る</button>
+        <button class="btn" id="btnCheck">中身をチェック</button>
+        <button class="btn danger" id="btnWipe">この端末のローカル購入履歴を消す（注意）</button>
+        <button class="btn" id="btnBack">この端末へ戻す</button>
+      </div>
+
+      <div class="small">
+        書き込み先キー：
+        <span class="pill">smart_price_db</span>
+        <span class="pill">smartPriceDeviceId</span>
+        <span class="pill">sp_personal_id</span>
+        <span class="pill">sp_personal_id_source</span>
+      </div>
+
+      <div class="log" id="log">準備OK</div>
+    </div>
+  </div>
+
+<script>
+(function(){
+  const $ = (id)=>document.getElementById(id);
+  const logEl = $('log');
+
+  function log(msg){ logEl.textContent = msg; }
+
+  function safeTrim(s){
+    if (typeof s !== 'string') return '';
+    return s.replace(/^\uFEFF/, '').trim();
+  }
+
+  function previewEdges(s){
+    const t = safeTrim(s);
+    const head = t.slice(0, 80);
+    const tail = t.slice(-80);
+    return `len=${t.length}\nHEAD(80): ${head}\nTAIL(80): ${tail}`;
+  }
+
+  function tryParseExport(raw){
+    const t = safeTrim(raw);
+    if (!t) throw new Error('入力が空です');
+
+    try {
+      return JSON.parse(t);
+    } catch (e1) {
+      const first = t.indexOf('{');
+      const last = t.lastIndexOf('}');
+      if (first >= 0 && last > first) {
+        const sliced = t.slice(first, last + 1);
+        try {
+          return JSON.parse(sliced);
+        } catch (e2) {
+          const hint = [
+            'JSONとして読めませんでした（切れている可能性が高いです）',
+            '',
+            previewEdges(t),
+            '',
+            '---',
+            '救済：{...} だけ抜き出しても失敗しました',
+            '',
+            String(e2)
+          ].join('\n');
+          throw new Error(hint);
+        }
+      }
+      const hint = [
+        'JSONとして読めませんでした（貼り付けが途中で切れている/欠けている可能性が高いです）',
+        '',
+        previewEdges(t),
+        '',
+        String(e1),
+        '',
+        '対策：このページの「ファイル選択」から .txt/.json を読み込むと切れにくいです。'
+      ].join('\n');
+      throw new Error(hint);
+    }
+  }
+
+  function normalizeSmartPriceDB(exportObj){
+    if (!exportObj || typeof exportObj !== 'object') throw new Error('exportObj が不正です');
+
+    let spdb = exportObj.smart_price_db;
+    if (typeof spdb === 'string') {
+      const t = safeTrim(spdb);
+      try { spdb = JSON.parse(t); }
+      catch (e) { throw new Error('smart_price_db の中身が JSON として読めませんでした\n' + String(e)); }
+    }
+    if (!spdb || typeof spdb !== 'object') throw new Error('smart_price_db が空、または形式が不正です');
+    if (!spdb.products || typeof spdb.products !== 'object') throw new Error('smart_price_db.products が見つかりません');
+    const count = Object.keys(spdb.products).length;
+    return { spdb, count };
+  }
+
+  function setLocal(key, value){ localStorage.setItem(key, value); }
+  function getLocal(key){ return localStorage.getItem(key); }
+
+  function inferDeviceId(exportObj){
+    const existing = safeTrim(getLocal('smartPriceDeviceId'));
+    if (existing) return existing;
+    const seed = safeTrim(exportObj.exportedAtJST || exportObj.exportedAt || exportObj.build || '');
+    if (!seed) return 'device_' + Math.random().toString(36).slice(2, 10);
+    return 'device_' + btoa(unescape(encodeURIComponent(seed))).replace(/[^a-zA-Z0-9]/g,'').slice(0, 12);
+  }
+
+  function inferPersonalId(exportObj){
+    const existing = safeTrim(getLocal('sp_personal_id'));
+    const fromExport = safeTrim(exportObj.personalId || exportObj.sp_personal_id || exportObj.personal_id || '');
+    return fromExport || existing || '';
+  }
+
+  function doCheck(){
+    const raw = $('raw').value;
+    const exp = tryParseExport(raw);
+    const { spdb, count } = normalizeSmartPriceDB(exp);
+    const keys = Object.keys(spdb);
+    log([
+      'OK: 読み取り成功',
+      `kind: ${exp.kind || '(none)'}`,
+      `export.version: ${exp.version || '(none)'}`,
+      `build: ${exp.build || '(none)'}`,
+      `exportedAtJST: ${exp.exportedAtJST || '(none)'}`,
+      `products: ${count} 件`,
+      `smart_price_db keys: ${keys.slice(0, 12).join(', ')}${keys.length>12?' ...':''}`,
+      '',
+      '※この時点ではまだ書き込みしていません'
+    ].join('\n'));
+    return {exp, spdb, count};
+  }
+
+  function doImport(){
+    const raw = $('raw').value;
+    const exp = tryParseExport(raw);
+    const { spdb, count } = normalizeSmartPriceDB(exp);
+
+    const deviceId = inferDeviceId(exp);
+    const personalId = inferPersonalId(exp);
+
+    setLocal('smart_price_db', JSON.stringify(spdb));
+    setLocal('smartPriceDeviceId', deviceId);
+    if (personalId) setLocal('sp_personal_id', personalId);
+
+    const src = safeTrim(exp.personalId || exp.sp_personal_id || exp.personal_id) ? 'export' : (getLocal('sp_personal_id') ? 'local' : 'none');
+    setLocal('sp_personal_id_source', src);
+
+    log([
+      'IMPORT OK: localStorage に書き戻しました',
+      `products: ${count} 件`,
+      `smartPriceDeviceId: ${deviceId}`,
+      `sp_personal_id: ${personalId || '(空)'} (source=${src})`,
+      '',
+      'このまま Smart Price に戻ります…'
+    ].join('\n'));
+
+    setTimeout(()=>{ location.href = './?b=2026-02-16_1117_importer-r2'; }, 650);
+  }
+
+  function doWipe(){
+    const ok = confirm('この端末の localStorage から smart_price_db を消します。戻せません。よろしいですか？');
+    if (!ok) return;
+    localStorage.removeItem('smart_price_db');
+    log('削除しました: smart_price_db');
+  }
+
+  function back(){ location.href = './?b=2026-02-16_1117_importer-r2'; }
+
+  $('btnCheck').addEventListener('click', ()=>{
+    try { doCheck(); }
+    catch(e) { log('CHECK NG\n\n' + (e && e.message ? e.message : String(e))); }
+  });
+
+  $('btnImport').addEventListener('click', ()=>{
+    try { doImport(); }
+    catch(e) { log('IMPORT NG\n\n' + (e && e.message ? e.message : String(e))); }
+  });
+
+  $('btnWipe').addEventListener('click', ()=>{
+    try { doWipe(); } catch(e) { log(String(e)); }
+  });
+
+  $('btnBack').addEventListener('click', back);
+
+  $('file').addEventListener('change', async (ev)=>{
+    const f = ev.target.files && ev.target.files[0];
+    if (!f) return;
+    try {
+      const text = await f.text();
+      $('raw').value = text;
+      log('ファイル読み込みOK: ' + f.name + '\n' + previewEdges(text));
+    } catch(e) {
+      log('ファイル読み込み失敗: ' + String(e));
+    }
+  });
+
+  try {
+    const cur = getLocal('smart_price_db');
+    if (cur) {
+      const obj = JSON.parse(cur);
+      const c = obj && obj.products ? Object.keys(obj.products).length : 0;
+      log('準備OK\n現在の端末のローカル購入履歴: ' + c + ' 件');
+    } else {
+      log('準備OK\n現在の端末のローカル購入履歴: 0 件');
+    }
+  } catch(e) {
+    log('準備OK（ただし現データ解析に失敗）\n' + String(e));
+  }
+})();
+</script>
+</body>
+</html>
