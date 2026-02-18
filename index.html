@@ -1,16 +1,16 @@
-
 <!DOCTYPE html>
 <!--
 APP: Smart Price
-VERSION: v22.7.4
-DATE(JST): 2026-02-16 10:28 JST
-TITLE: UIDSYNC PERSONALPATH SSOTFIX2
+VERSION: v22.7.5
+DATE(JST): 2026-02-18 19:02 JST
+TITLE: V2 NAMESPACE + IDMODAL + SSOTFIX3
 CHANGES:
-- SSOTブロックの構文崩れを修正（BUILD_ID 行が壊れて全JSが止まる問題を解消）→ ホームのバージョン表示/各機能の初期化が戻る
-- VERSION/BUILD/表示のSSOT（単一正本）を v22.7.4 / 2026-02-16_1028_ssotfix2 に統一（旧表記を残さない）
-- 設定画面の幅揃え用CSSを追加（文字列・ボタン幅の不揃いを抑制。UI配置は変更なし）
-- 管理メニュー「購入履歴を表示」「統計情報」をタップしやすいボタン風スタイルに（要素追加なし）
-BUILD_PARAM(b): ?b=2026-02-16_1028_ssotfix2
+- v2だけ localStorage を名前空間化（stable と混ざらない）
+- 「ID: -」になる不具合（uid参照ミス）を修正／表示は6桁コード、内部は長いIDを維持
+- 「IDを変更」入力が設定レイヤの裏に隠れる問題を z-index で解消
+- VERSION/BUILD/表示のSSOTを統一（旧表記を残さない）
+
+BUILD_PARAM(b): ?b=2026-02-18_1902_v2-nsfix1
 DEBUG_PARAM: &debug=1
 AUTHOR: ChatGPT_Yui
 POLICY: UI_FREEZE / 単一HTML / VERSION_SSOT
@@ -46,12 +46,25 @@ POLICY: UI_FREEZE / 単一HTML / VERSION_SSOT
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
-  const APP_VERSION = "v22.7.4";
-  const BUILD_ID = "2026-02-16_1028_ssotfix2";
+  const APP_VERSION = "v22.7.5";
+  const BUILD_ID = "2026-02-18_1902_v2-nsfix1";
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID = BUILD_ID;
   window.FULL_VERSION = FULL_VERSION;
+  // === localStorage namespace (v2 only; stableは従来通り) ===
+  const SP_LS_PREFIX = (function(){
+    try{
+      const p = (location.pathname || '');
+      return (p.indexOf('Smart-Price-Book-v2') >= 0) ? 'spv2:' : '';
+    }catch(e){ return ''; }
+  })();
+  window.SP_LS_PREFIX = SP_LS_PREFIX;
+  window.spLSKey = function(k){ return SP_LS_PREFIX + String(k || ''); };
+  window.spLSGet = function(k){ try{ return localStorage.getItem(window.spLSKey(k)); }catch(e){ return null; } };
+  window.spLSSet = function(k,v){ try{ localStorage.setItem(window.spLSKey(k), String(v)); return true; }catch(e){ return false; } };
+  window.spLSRemove = function(k){ try{ localStorage.removeItem(window.spLSKey(k)); return true; }catch(e){ return false; } };
+  window.spLSHasPrefix = function(){ return !!SP_LS_PREFIX; };
   function setHeaderVersionBadge(){
     const badge = document.getElementById('versionBadge') || document.getElementById('version-badge');
     if(!badge) return;
@@ -87,11 +100,11 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 
     // Persist last build (from ?b=) to detect rollout changes
     const b = q.get("b") || "";
-    if (b) localStorage.setItem("sp_last_b", b);
+    if (b) spLSSet('sp_last_b', b);
     // UIFIX21: b無しで古いSW/キャッシュを掴んでいる可能性を軽く通知
     try{
       if(!b){
-        const last = localStorage.getItem("sp_last_b") || "";
+        const last = spLSGet('sp_last_b') || "";
         if(last && last !== BUILD_ID){
           // 「何十回リロードしても古い」対策：URLに ?b= を付ける運用へ誘導
           setTimeout(()=>{ try{ showToast(`更新が反映されない場合はURLに ?b=${BUILD_ID} を付けて開いてください`, 7000); }catch(e){} }, 600);
@@ -135,7 +148,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta charset="UTF-8">
   <script>
   // === VERSION SSOT (auto) ===
-  window.VERSION_INFO = 'v22.7.3';
+  window.VERSION_INFO = 'v22.7.5';
   </script>
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -143,8 +156,8 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#D50000">
-  <title>Smart Price v22.7.3</title>
-  <!-- ✅ SW RESET TOOL (v22.7.3) : ?reset=sw -->
+  <title>Smart Price v22.7.5</title>
+  <!-- ✅ SW RESET TOOL (v22.7.5) : ?reset=sw -->
   <script>
   (function() {
     try {
@@ -325,6 +338,9 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
     }
 
     .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 3000; justify-content: center; align-items: center; }
+/* UIFIX: dialog (ID変更など) が設定モーダルの裏に隠れないように */
+#dialogModal{ z-index: 100600 !important; }
+
     .modal-content { background: #1e1e1e; padding: 25px; border-radius: 20px; width: 95%; max-width: 450px; border: 1px solid #D50000; }
 
     .toast-container{
@@ -483,12 +499,12 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 #settingsModal .sp-settings-menu { position: sticky; top: 0; background: rgba(26,26,26,0.98); padding-top: 6px; z-index: 2; }
 
 
-/* --- PATCH v22.7.3 settings menu layout (bootstrap依存を排除) --- */
+/* --- PATCH v22.7.5 settings menu layout (bootstrap依存を排除) --- */
 #settingsModal .sp-settings-menu{display:flex !important;flex-direction:column !important;gap:10px !important;}
 #settingsModal .sp-settings-menu button{display:block !important;width:100% !important;max-width:100% !important;}
 #settingsModal .sp-settings-menu button + button{margin-top:0 !important;}
 
-/* === PATCH v22.7.3: settings buttons spacing & colors === */
+/* === PATCH v22.7.5: settings buttons spacing & colors === */
 #settingsModal .sp-menu-btn{
   border:0 !important;
   background: rgba(45,108,223,0.95) !important;
@@ -542,7 +558,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   #interactive canvas{ opacity: 0 !important; }
 
 
-    /* === PATCH v22.7.3: scanner UI placement & corner artifact cleanup === */
+    /* === PATCH v22.7.5: scanner UI placement & corner artifact cleanup === */
     #interactive video, #interactive canvas{
       outline: none !important;
       box-shadow: none !important;
@@ -577,7 +593,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
       border: none !important;
     }
 
-    /* === PATCH v22.7.3: manual code entry (numpad) === */
+    /* === PATCH v22.7.5: manual code entry (numpad) === */
     #manual-entry.scan-manual{
       position:absolute;
       left:50%;
@@ -1430,7 +1446,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
       }
       // localStorageにも保存（診断ツールで読み込むため）
       try {
-        localStorage.setItem('smartPrice_errorLogs', JSON.stringify(errorLogs));
+        spLSSet('smartPrice_errorLogs', JSON.stringify(errorLogs));
       } catch(e) {
         console.warn('[ErrorLog] Failed to save to localStorage:', e);
       }
@@ -2031,7 +2047,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
    */
   function getUserProfile() {
     try {
-      const json = localStorage.getItem('smartPrice_userProfile');
+      const json = spLSGet('smartPrice_userProfile');
       if (json) {
         const profile = JSON.parse(json);
         // 必須フィールドの検証
@@ -2051,7 +2067,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
    */
   function setUserProfile(profile) {
     try {
-      localStorage.setItem('smartPrice_userProfile', JSON.stringify(profile));
+      spLSSet('smartPrice_userProfile', JSON.stringify(profile));
       if (isDebug()) console.log('[UserProfile] Saved:', profile);
     } catch(e) {
       if (isDebug()) console.error('[UserProfile] Failed to save:', e);
@@ -2083,7 +2099,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   function getJanCache(jan) {
     try {
       const key = `smartPrice_jan_${jan}`;
-      const json = localStorage.getItem(key);
+      const json = spLSGet(key);
       if (json) {
         const data = JSON.parse(json);
         // キャッシュの有効期限チェック（7日間）
@@ -2092,7 +2108,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
           const age = now - data.cachedAt;
           if (age > 7 * 24 * 60 * 60 * 1000) {
             // 期限切れ
-            localStorage.removeItem(key);
+            spLSRemove(key);
             return null;
           }
         }
@@ -2118,7 +2134,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
         areaId: data.areaId || (userProfile ? userProfile.areaId : null)
       };
       const key = `smartPrice_jan_${jan}`;
-      localStorage.setItem(key, JSON.stringify(cacheData));
+      spLSSet(key, JSON.stringify(cacheData));
       if (isDebug()) console.log('[JanCache] Saved:', jan, cacheData);
     } catch(e) {
       if (isDebug()) console.error('[JanCache] Failed to save:', jan, e);
@@ -2137,7 +2153,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   let deferredPrompt = null; // ✅ PWAインストールプロンプト
 
   // ✅ ここは必ず let（const にすると "Assignment to constant variable" の原因になる）
-  let fbUrl = localStorage.getItem('smartPriceFirebaseUrl') || '';
+  let fbUrl = spLSGet('smartPriceFirebaseUrl') || '';
 
   // ========= Config.json (Yahoo Proxy URL) =========
   window.SP_CONFIG = {};
@@ -2213,11 +2229,11 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 
   // ========= 端末ID（投稿者ID）生成・保持 =========
   function getDeviceId() {
-    let deviceId = localStorage.getItem('smartPriceDeviceId');
+    let deviceId = spLSGet('smartPriceDeviceId');
     if (!deviceId) {
       // 端末IDを生成（ランダム文字列）
       deviceId = 'dev_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 11);
-      localStorage.setItem('smartPriceDeviceId', deviceId);
+      spLSSet('smartPriceDeviceId', deviceId);
     }
 
   // ========= 個人ID（端末をまたいで共有するID）生成・保持 =========
@@ -2226,17 +2242,17 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
     try{
       db.config = db.config || {};
       // 優先順：db.config.personalId → 明示保存(sp_personal_id) → 旧キー(smartPriceDeviceId) → 生成
-      let pid = (db.config.personalId || localStorage.getItem('sp_personal_id') || localStorage.getItem('smartPriceDeviceId') || '').toString().trim();
+      let pid = (db.config.personalId || spLSGet('sp_personal_id') || spLSGet('smartPriceDeviceId') || '').toString().trim();
       if(!pid){
         pid = 'dev_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 11);
       }
       db.config.personalId = pid;
-      localStorage.setItem('sp_personal_id', pid);
+      spLSSet('sp_personal_id', pid);
       // 旧キーも維持（既存実装との互換）
-      if(!localStorage.getItem('smartPriceDeviceId')) localStorage.setItem('smartPriceDeviceId', pid);
+      if(!spLSGet('smartPriceDeviceId')) spLSSet('smartPriceDeviceId', pid);
       return pid;
     }catch(e){
-      return (localStorage.getItem('sp_personal_id')||localStorage.getItem('smartPriceDeviceId')||'').toString();
+      return (spLSGet('sp_personal_id')||spLSGet('smartPriceDeviceId')||'').toString();
     }
   }
 
@@ -2620,7 +2636,7 @@ function isQuotaError(e) {
 
   function saveLocalOnly() {
     try {
-      localStorage.setItem('smart_price_db', JSON.stringify(db));
+      spLSSet('smart_price_db', JSON.stringify(db));
       return true;
     } catch (e) {
       if (!isQuotaError(e)) {
@@ -2629,14 +2645,14 @@ function isQuotaError(e) {
       }
       const slim = makeSlimDb(db);
       try {
-        localStorage.setItem('smart_price_db', JSON.stringify(slim));
+        spLSSet('smart_price_db', JSON.stringify(slim));
         db = slim;
         showToast("端末容量が厳しいので軽量保存に切替えました", 8000);
         return true;
       } catch (e2) {
         try {
-          localStorage.removeItem('smart_price_db');
-          localStorage.setItem('smart_price_db', JSON.stringify(slim));
+          spLSRemove('smart_price_db');
+          spLSSet('smart_price_db', JSON.stringify(slim));
           db = slim;
           showToast("端末容量を整理して復旧しました", 8000);
           return true;
@@ -2652,6 +2668,9 @@ function isQuotaError(e) {
   // ✅ UIFIX21: 過去データ復旧（localStorageの別キーに残っているDBを探索して取り込み）
   function tryImportLegacyDbIfEmpty(){
     try{
+      // v2 は stable の localStorage と混ざらない運用（誤取り込み防止）
+      if(window.SP_LS_PREFIX){ return false; }
+
       const hasHist = (db && db.products) ? Object.keys(db.products).some(k => (db.products[k]?.history||[]).length>0) : false;
       if(hasHist) return false;
 
@@ -2661,7 +2680,7 @@ function isQuotaError(e) {
         if(!key) continue;
         if(key === 'smart_price_db' || key === 'smart_price_img_db') continue;
         
-        const raw = localStorage.getItem(key);
+        const raw = spLSGet(key);
         if(!raw || raw.length < 50) continue;
 
         try{
@@ -2721,7 +2740,7 @@ function isQuotaError(e) {
 
 async function loadLocal() {
     try {
-      const saved = localStorage.getItem('smart_price_db');
+      const saved = spLSGet('smart_price_db');
       if (saved) db = JSON.parse(saved);
       db = normalizeDb(db);
             // UIFIX21: 別キーに残っている履歴を自動復旧
@@ -2766,46 +2785,59 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
   function getOrCreateUserId(){
     try{
       db.config = db.config || {};
-      let uid = (db.config.userId || localStorage.getItem('sp_user_id') || '').toString().trim();
+      let uid = (db.config.userId || spLSGet('sp_user_id') || '').toString().trim();
       if(!uid){
         uid = 'U' + Math.random().toString(36).slice(2,8) + '-' + Math.random().toString(36).slice(2,6);
       }
       db.config.userId = uid;
-      localStorage.setItem('sp_user_id', uid);
+      spLSSet('sp_user_id', uid);
       return uid;
     }catch(e){
-      return (localStorage.getItem('sp_user_id')||'').toString();
+      return (spLSGet('sp_user_id')||'').toString();
     }
   }
 
 
-  // UIFIX UIDSYNC: Settings UI for userId (copy / change)
+  // UIFIX UIDSYNC: Settings UI for personalId (copy / change)
+  function shortCode6(s){
+    try{
+      s = (s || '').toString();
+      let h = 2166136261;
+      for(let i=0;i<s.length;i++){
+        h ^= s.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+      }
+      const code = (h >>> 0) % 1000000;
+      return String(code).padStart(6, '0');
+    }catch(e){ return '------'; }
+  }
+
   function updateUserIdPreview(){
     try{
       const pid = getOrCreatePersonalId();
       const el = document.getElementById('userIdPreview');
-      if(el) el.textContent = `ID: ${uid || '-'}`;
+      if(el) el.textContent = `ID: ${pid ? shortCode6(pid) : '-'}`;
     }catch(e){}
   }
 
   async function copyUserId(){
     try{
       const pid = getOrCreatePersonalId();
-      if(!uid){ try{ showToast('個人IDが取得できませんでした', 2500);}catch(e){}; return; }
+      if(!pid){ try{ showToast('個人IDが取得できませんでした', 2500);}catch(e){}; return; }
       try{
-        await navigator.clipboard.writeText(uid);
-        try{ showToast('個人IDをコピーしました', 2000);}catch(e){}
+        await navigator.clipboard.writeText(pid);
+        try{ showToast(`個人IDをコピーしました（表示: ${shortCode6(pid)}）`, 2400);}catch(e){}
       }catch(e){
         // fallback: prompt
-        await customPrompt('このIDをコピーしてください（長押し→コピー）', uid);
+        await customPrompt('このIDをコピーしてください（長押し→コピー）', pid);
       }
     }catch(e){}
   }
 
   async function changeUserId(){
     try{
-      const cur = getOrCreateUserId();
-      const v = await customPrompt('個人IDを入力（スマホ/PCで同じIDにすると同期します）', cur);
+      const cur = getOrCreatePersonalId();
+      const v = await customPrompt('個人IDを入力（端末間で同じにすると共有できます）', cur);
       if(v === null) return;
       const nv = (v || '').toString().trim();
       if(!nv){ try{ showToast('空のIDは設定できません', 2500);}catch(e){}; return; }
@@ -2815,8 +2847,19 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         return;
       }
       db.config = db.config || {};
+      db.config.personalId = nv;
+      try{ spLSSet('sp_personal_id', nv); }catch(e){}
+      // 旧キーも維持（既存実装との互換）※ v2 は名前空間内に入るので stable へは影響しない
+      try{ spLSSet('smartPriceDeviceId', nv); }catch(e){}
+      try{ saveDb(); }catch(e){}
+      updateUserIdPreview();
+      try{ showToast('個人IDを設定しました', 2200);}catch(e){}
+    }catch(e){}
+  }
+
+      db.config = db.config || {};
       db.config.userId = nv;
-      localStorage.setItem('sp_user_id', nv);
+      spLSSet('sp_user_id', nv);
       try{ saveDb(); }catch(e){}
       updateUserIdPreview();
       try{ showToast('個人IDを設定しました', 2200);}catch(e){}
@@ -4795,7 +4838,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       
       if (!forceUpdate) {
         try {
-          const cached = localStorage.getItem(cacheKey);
+          const cached = spLSGet(cacheKey);
           if (cached) {
             const cacheData = JSON.parse(cached);
             if (cacheData && cacheData.ts && (Date.now() - cacheData.ts < cacheTtl)) {
@@ -4861,7 +4904,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         
         // ✅ キャッシュに保存（整形後）
         try {
-          localStorage.setItem(cacheKey, JSON.stringify({
+          spLSSet(cacheKey, JSON.stringify({
             ts: Date.now(),
             data: result
           }));
@@ -5345,7 +5388,7 @@ function startScanner() {
     
     
 
-  // === PATCH v22.7.3: manual code entry UI ===
+  // === PATCH v22.7.5: manual code entry UI ===
   
   // UIFIX21: バーコード枠の下に出る「グレーの角合わせガイド」を消す（html5-qrcode側の装飾）
   function suppressQrcodeGuides(){
@@ -6477,7 +6520,7 @@ return true;
 
       // ✅ 成功後：GETで読み直し（Edgeの空表示対策、マージ方式で画像が消えない）
       fbUrl = u;
-      localStorage.setItem('smartPriceFirebaseUrl', u);
+      spLSSet('smartPriceFirebaseUrl', u);
       await syncFirebase();
 
       showToast("同期成功！", 3000);
@@ -7338,7 +7381,7 @@ window.showReferralStatus = showReferralStatus;
       }else{
         lines.push("caches: (unsupported)");
       }
-      lines.push("localStorage.sp_last_b: " + (localStorage.getItem("sp_last_b")||""));
+      lines.push("localStorage.sp_last_b: " + (spLSGet('sp_last_b')||""));
       return lines.join("\n");
     }
 
@@ -7384,7 +7427,7 @@ window.showReferralStatus = showReferralStatus;
   }catch(e){}
 })();
 
-/* === PATCH v22.7.3: share/copy helpers for referral & family === */
+/* === PATCH v22.7.5: share/copy helpers for referral & family === */
 async function spCopy(elId){
   try{
     const el = document.getElementById(elId);
@@ -7463,9 +7506,9 @@ async function spShareFamilyId(){
 
     async function collect() {
       const lines = [];
-      lines.push("APP_VERSION: v22.7.3");
+      lines.push("APP_VERSION: v22.7.5");
       lines.push("BUILD_ID: " + (window.BUILD_ID || "n/a"));
-      lines.push("FULL_VERSION: v22.7.3");
+      lines.push("FULL_VERSION: v22.7.5");
       lines.push("URL: " + location.href);
       lines.push("UA: " + navigator.userAgent);
       lines.push(
