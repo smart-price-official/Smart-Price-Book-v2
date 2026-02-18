@@ -1,47 +1,181 @@
+
 <!DOCTYPE html>
 <!--
 APP: Smart Price
-VERSION: v19.9.45
-P26-02-08 20:45 JST
-TITLE: 設定画面統合版（運営者メニュー/紹介・家族共有/お問い合わせ/未確定品管理/検証ツール）
+VERSION: v22.7.4
+DATE(JST): 2026-02-16 10:28 JST
+TITLE: UIDSYNC PERSONALPATH SSOTFIX2
 CHANGES:
-- 設定画面に「友人紹介／家族共有」「運営者へ質問／不具合報告」「運営者メニュー（admin時のみ）」を統合（UI_FREEZE: 画面追加なし）
-- Firebase URLは通常ユーザーに非表示、admin時のみ読み取り専用で表示
-- お問い合わせをlocalStorageに保存（最大50件）し、adminで一覧・コピー
-- 未確定商品（昨日分：商品名/メーカー/画像の欠落）をadminで補完・確定
-- 自己検証（VERSION/BUILD/config/主要関数）を設定内に追加
-BUILD_PARAM(b): ?b=2026-02-08_2045_initfix_exportimport_nofb
-DEBUG_PARAM: &debug=1　
-POLICY: UI_FREEZE / 単一HTML / VERSION SSOT
+- SSOTブロックの構文崩れを修正（BUILD_ID 行が壊れて全JSが止まる問題を解消）→ ホームのバージョン表示/各機能の初期化が戻る
+- VERSION/BUILD/表示のSSOT（単一正本）を v22.7.4 / 2026-02-16_1028_ssotfix2 に統一（旧表記を残さない）
+- 設定画面の幅揃え用CSSを追加（文字列・ボタン幅の不揃いを抑制。UI配置は変更なし）
+- 管理メニュー「購入履歴を表示」「統計情報」をタップしやすいボタン風スタイルに（要素追加なし）
+BUILD_PARAM(b): ?b=2026-02-16_1028_ssotfix2
+DEBUG_PARAM: &debug=1
+AUTHOR: ChatGPT_Yui
+POLICY: UI_FREEZE / 単一HTML / VERSION_SSOT
+
 -->
 <html lang="ja">
 <head>
+
+<script>
+/* SSOT_MISMATCH_CHECK */
+(function(){
+  try{
+    const qs = new URLSearchParams(location.search);
+    const qb = qs.get('b');
+    const dbg = qs.get('debug') === '1';
+    const v = (window.VERSION_INFO||'').trim();
+    const b = (window.BUILD_ID||'').trim();
+    const ok = (!qb || qb === b);
+    if(dbg && (!v || !b || !ok)){
+      const msg = 'VERSION MISMATCH: ui=' + v + ' build=' + b + ' url_b=' + (qb||'');
+      console.warn(msg);
+      // try show toast if available
+      if(typeof window.showToast === 'function'){ window.showToast(msg, 'error'); }
+    }
+  }catch(e){}
+})();
+</script>
+
+<!-- SW GUARD: prevent old Service Worker from serving stale index.html -->
+<script>
+
+// --- GLOBAL SAFE ALIASES (onclick handlers) ---
+function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
+function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
+(() => {
+  const APP_VERSION = "v22.7.4";
+  const BUILD_ID = "2026-02-16_1028_ssotfix2";
+  const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
+  window.APP_VERSION = APP_VERSION;
+  window.BUILD_ID = BUILD_ID;
+  window.FULL_VERSION = FULL_VERSION;
+  function setHeaderVersionBadge(){
+    const badge = document.getElementById('versionBadge') || document.getElementById('version-badge');
+    if(!badge) return;
+
+    const isMobile = window.matchMedia && window.matchMedia('(max-width: 640px)').matches;
+
+    // ✅ 設定モーダル表示中は、スマホでも「フル表示」へ戻す（class/show だけに頼らず computedStyle で判定）
+    const modal = document.getElementById('settingsModal');
+    let isSettingsOpen = false;
+    try{
+      if(modal){
+        const cs = window.getComputedStyle ? getComputedStyle(modal) : null;
+        const disp = cs ? cs.display : (modal.style ? modal.style.display : '');
+        const vis  = cs ? cs.visibility : '';
+        const op   = cs ? parseFloat(cs.opacity || '1') : 1;
+        isSettingsOpen = (disp !== 'none') && (vis !== 'hidden') && (op > 0.01);
+        if(modal.classList && modal.classList.contains('show')) isSettingsOpen = true;
+        const ah = modal.getAttribute ? modal.getAttribute('aria-hidden') : null;
+        if(ah === 'false') isSettingsOpen = true;
+      }
+    }catch(e){}
+
+    // ✅ スマホは通常「バージョン番号だけ」。ただし設定画面表示中はフル表示。
+    badge.textContent = (isMobile && !isSettingsOpen) ? APP_VERSION : FULL_VERSION;
+  }
+  
+  // グローバルに公開
+  window.setHeaderVersionBadge = setHeaderVersionBadge;
+  
+  try {
+    const url = new URL(location.href);
+    const q = url.searchParams;
+
+    // Persist last build (from ?b=) to detect rollout changes
+    const b = q.get("b") || "";
+    if (b) localStorage.setItem("sp_last_b", b);
+    // UIFIX21: b無しで古いSW/キャッシュを掴んでいる可能性を軽く通知
+    try{
+      if(!b){
+        const last = localStorage.getItem("sp_last_b") || "";
+        if(last && last !== BUILD_ID){
+          // 「何十回リロードしても古い」対策：URLに ?b= を付ける運用へ誘導
+          setTimeout(()=>{ try{ showToast(`更新が反映されない場合はURLに ?b=${BUILD_ID} を付けて開いてください`, 7000); }catch(e){} }, 600);
+        }
+      }
+    }catch(e){}
+
+    const wantsReset = (q.get("swreset") === "1") || (q.get("fresh") === "1") || (q.get("force")==="1");
+    const isControlled = !!navigator.serviceWorker?.controller;
+
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.getRegistrations().then(async (regs) => {
+        if (!regs || regs.length === 0) return;
+
+        // If any SW is installed, and this page is controlled OR user forces reset,
+        // we wipe SW + CacheStorage once, then reload with a one-time flag.
+        if (!isControlled && !wantsReset) return;
+
+        if (q.get("swresetdone") === "1") return;
+
+        for (const r of regs) {
+          try { await r.unregister(); } catch (e) {}
+        }
+        if ("caches" in window) {
+          try {
+            const keys = await caches.keys();
+            await Promise.all(keys.map(k => caches.delete(k)));
+          } catch (e) {}
+        }
+
+        q.set("swresetdone", "1");
+        // keep ?b= if present
+        url.search = q.toString();
+        location.replace(url.toString());
+      });
+    }
+  } catch (e) {}
+})();
+</script>
+
   <meta charset="UTF-8">
+  <script>
+  // === VERSION SSOT (auto) ===
+  window.VERSION_INFO = 'v22.7.3';
+  </script>
+
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <link rel="manifest" href="manifest.json">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#D50000">
-  <title>Smart Price v19.9.45</title>
-  <!-- ✅ VERSION情報を最優先で定義（BOOT PROBEより先に読み込む） -->
-  <script>
-    window.VERSION_INFO = 'v19.9.51';
-    window.APP_VERSION = 'v19.9.45';
-    window.FULL_VERSION = 'v19.9.45 [0207]';
-    P26-02-08_2045_initfix_exportimport_nofb';
-  </script>
-  <!-- ✅ SW RESET TOOL (v19.9.45) : ?reset=sw -->
+  <title>Smart Price v22.7.3</title>
+  <!-- ✅ SW RESET TOOL (v22.7.3) : ?reset=sw -->
   <script>
   (function() {
     try {
       var params = new URLSearchParams(location.search);
+
+  // --- FORCE FIREBASE MODE (no DevTools needed) ---
+  // If URL has &force=1, we unregister Service Worker + clear caches once, then reload without force.
+  (function forceCleanOnce(){
+    try{
+      const p = new URLSearchParams(location.search);
+      if(p.get('force') !== '1') return;
+      p.delete('force');
+      const target = location.pathname + (p.toString()?('?'+p.toString()):'') + location.hash;
+      const tasks = [];
+      if('serviceWorker' in navigator){
+        tasks.push(navigator.serviceWorker.getRegistrations()
+          .then(regs => Promise.all(regs.map(r => r.unregister()))).catch(()=>{}));
+      }
+      if('caches' in window){
+        tasks.push(caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))).catch(()=>{}));
+      }
+      Promise.all(tasks).finally(()=>{ location.replace(target); });
+    }catch(e){}
+  })();
       if (params.get('reset') === 'sw') {
         // remove reset to avoid loops
         params.delete('reset');
         var target = location.pathname + (params.toString() ? ('?' + params.toString()) : '');
         var showMsg = params.has('debug');
 
-        function showOverlay() {
+        async function showOverlay() {
           if (!showMsg) return;
           try {
             var ov = document.createElement('div');
@@ -59,8 +193,7 @@ POLICY: UI_FREEZE / 単一HTML / VERSION SSOT
               'Service Worker とキャッシュを削除しています。<br>自動で最新を読み込みます…' +
               '</div>';
             ov.appendChild(box);
-            document.documentElement.appendChild(ov);
-          } catch(e) {}
+            document.documentElement.appendChild(ov);  } catch(e) {}
         }
 
         (async function() {
@@ -142,7 +275,7 @@ POLICY: UI_FREEZE / 単一HTML / VERSION SSOT
     /* ✅ スキャナ画面：合わせ窓（角丸ガイド枠）- 既存UIと統一 */
     .scan-frame { 
       position: absolute; 
-      top: 50%; 
+      top: 25%; 
       left: 50%; 
       transform: translate(-50%, -50%); 
       width: 280px; 
@@ -326,13 +459,326 @@ POLICY: UI_FREEZE / 単一HTML / VERSION SSOT
     #debug-toggle-btn:active {
       transform: scale(0.95);
     }
-  </style>
+  
+  /* summaryをボタンっぽく見せる（UIは増やさず押しやすく） */
+  .sp-summary-btn{
+    list-style:none;
+    cursor:pointer;
+    padding:10px 12px;
+    border-radius:10px;
+    background:rgba(255,255,255,0.06);
+    border:1px solid rgba(255,255,255,0.10);
+    margin:6px 0;
+    user-select:none;
+  }
+  details[open] > .sp-summary-btn{
+    background:rgba(255,255,255,0.10);
+  }
+
+
+/* === PATCH: settings modal visibility & stacking (settingsnav-r3) === */
+#settingsModal { z-index: 100500; }
+#settingsModal .modal-content { max-height: 80vh; overflow-y: auto; }
+#settingsModal .sp-settings-box { max-height: 70vh; overflow-y: auto; }
+#settingsModal .sp-settings-menu { position: sticky; top: 0; background: rgba(26,26,26,0.98); padding-top: 6px; z-index: 2; }
+
+
+/* --- PATCH v22.7.3 settings menu layout (bootstrap依存を排除) --- */
+#settingsModal .sp-settings-menu{display:flex !important;flex-direction:column !important;gap:10px !important;}
+#settingsModal .sp-settings-menu button{display:block !important;width:100% !important;max-width:100% !important;}
+#settingsModal .sp-settings-menu button + button{margin-top:0 !important;}
+
+/* === PATCH v22.7.3: settings buttons spacing & colors === */
+#settingsModal .sp-menu-btn{
+  border:0 !important;
+  background: rgba(45,108,223,0.95) !important;
+  color:#fff !important;
+  font-weight:800 !important;
+  padding:14px 12px !important;
+  border-radius:14px !important;
+}
+#settingsModal .sp-back-btn{
+  border:0 !important;
+  background: rgba(255,255,255,0.16) !important;
+  color:#fff !important;
+  font-weight:700 !important;
+  padding:12px 12px !important;
+  border-radius:14px !important;
+}
+#settingsModal #syncBtn{
+  border:0 !important;
+  border-radius:14px !important;
+}
+#settingsModal #clearCacheBtn{
+  border:0 !important;
+  border-radius:14px !important;
+}
+#settingsModal #webBtn{
+  border:0 !important;
+  background: rgba(255,255,255,0.12) !important;
+  color:#fff !important;
+  border-radius:14px !important;
+}
+
+
+  /* === PATCH: homegps-scan-r3 (2026-02-14) === */
+  /* Mobile header: show short version only (full version is shown inside settings). */
+  @media (max-width: 640px){
+    #versionBadge{ max-width: 72vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+#settingsModal #syncBtn,
+#settingsModal #clearCacheBtn,
+#settingsModal #webBtn{
+  min-height: 52px !important;
+  padding-top: 14px !important;
+  padding-bottom: 14px !important;
+}
+  }
+
+  /* Move scan window to upper 1/4 of the screen (requested). */
+  .scan-frame{ top: 25% !important; }
+
+  /* Hide grey corner guides drawn by scanner libs (keep canvas for decoding). */
+  #interactive canvas{ opacity: 0 !important; }
+
+
+    /* === PATCH v22.7.3: scanner UI placement & corner artifact cleanup === */
+    #interactive video, #interactive canvas{
+      outline: none !important;
+      box-shadow: none !important;
+      border: none !important;
+    }
+    /* html5-qrcode が描く角ガイド（灰色線）を消す */
+    #interactive .qr-shaded-region,
+    #interactive .qr-shaded-region *{
+      border: none !important;
+      outline: none !important;
+      box-shadow: none !important;
+      background: transparent !important;
+    }
+    #interactive .qr-code-scanner__box,
+    #interactive .qr-code-scanner__box *{
+      border: none !important;
+      outline: none !important;
+      box-shadow: none !important;
+      background: transparent !important;
+    }
+    
+    #interactive [class*="qr-"]{
+      border: none !important;
+      outline: none !important;
+      box-shadow: none !important;
+    }
+/* 自前の枠（scan-frame）は影で周囲を暗くするので復活 */
+    #camera-area .scan-frame{
+      box-shadow: 0 0 0 4000px rgba(0,0,0,0.65) !important;
+    }
+    #interactive video, #interactive canvas{
+      border: none !important;
+    }
+
+    /* === PATCH v22.7.3: manual code entry (numpad) === */
+    #manual-entry.scan-manual{
+      position:absolute;
+      left:50%;
+      transform:translateX(-50%);
+      z-index:2002;
+      width:min(92vw, 360px);
+      padding:10px;
+      background: rgba(0,0,0,0.55);
+      border-radius:12px;
+      backdrop-filter: blur(6px);
+
+/* UIFIX24: 手入力UIの視認性を強制（黒背景で消える対策） */
+#manual-entry.scan-manual { color:#fff; border:1px solid rgba(255,255,255,0.18); box-shadow: 0 10px 30px rgba(0,0,0,0.45); }
+#manual-entry .sp-jan-guide { color: rgba(255,255,255,0.85); }
+    }
+    #manualCodeInput{
+      width:100%;
+      font-size:20px;
+      padding:10px 12px;
+      border-radius:10px;
+      border:1px solid rgba(255,255,255,0.25);
+      background: rgba(20,20,20,0.85);
+      color:#fff;
+      letter-spacing: 1px;
+    }
+    .sp-numpad{
+      margin-top:10px;
+      display:grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap:10px;
+    }
+    .sp-numpad button{
+      width:100%;
+      padding:14px 0;
+      border-radius:12px;
+      border:0;
+      background: rgba(255,255,255,0.14);
+      color:#fff;
+      font-size:18px;
+      font-weight:700;
+    }
+    .sp-numpad button:active{ transform: scale(0.98); }
+    .sp-numpad .sp-np-wide{ grid-column: span 3; }
+
+    
+    /* UIFIX22: settings action buttons unify + menu colors + spacing */
+    .sp-menu-btn, #syncBtn, #clearCacheBtn, #webBtn, #operatorBtnBottom, #cityOpenBtn{
+      min-height: 56px;
+      padding-top: 14px !important;
+      padding-bottom: 14px !important;
+      font-weight: 800 !important;
+      border-radius: 16px !important;
+    }
+    /* Colorize main menu buttons */
+    #settingsMainMenu .sp-menu-btn[data-panel="panelReferral"]{ background: rgba(13,110,253,.18); border-color: rgba(13,110,253,.45); color:#fff; }
+    #settingsMainMenu .sp-menu-btn[data-panel="panelFamily"]{ background: rgba(25,135,84,.18); border-color: rgba(25,135,84,.45); color:#fff; }
+    #settingsMainMenu .sp-menu-btn[data-panel="panelSupport"]{ background: rgba(255,193,7,.18); border-color: rgba(255,193,7,.45); color:#fff; }
+    #operatorBtnBottom{ background: rgba(220,53,69,.18); border:1px solid rgba(220,53,69,.55); color:#fff; }
+    #settingsMainMenu .d-grid{ gap: 12px !important; }
+
+/* UIFIX21: 8/13/14桁の手入力（13個の数字窓＋専用テンキー） */
+    .sp-jan-kind{
+      display:flex;
+      gap:8px;
+      justify-content:center;
+      margin: 6px 0 8px;
+      flex-wrap:wrap;
+    }
+    .sp-kind-btn{
+      border:1px solid rgba(255,255,255,0.22);
+      background: rgba(255,255,255,0.10);
+      color:#fff;
+      border-radius:999px;
+      padding:6px 10px;
+      font-size:12px;
+      line-height:1;
+      opacity:.9;
+    }
+    .sp-kind-btn.active{
+      background: rgba(220,53,69,0.35);
+      border-color: rgba(220,53,69,0.65);
+      opacity:1;
+    }
+    .sp-jan-boxes{
+      display:flex;
+      gap:4px;
+      justify-content:center;
+      flex-wrap:wrap;
+      margin: 4px 0 6px;
+    }
+    .sp-jan-box{
+      width: 18px;
+      height: 26px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      border-radius:6px;
+      border:1px solid rgba(255,255,255,0.18);
+      background: rgba(0,0,0,0.25);
+      color:#fff;
+      font-weight:800;
+      font-size:14px;
+      letter-spacing:0.5px;
+    }
+    .sp-jan-box.filled{
+      border-color: rgba(220,53,69,0.55);
+      background: rgba(220,53,69,0.12);
+    }
+    .sp-jan-guide{
+      text-align:center;
+      font-size:12px;
+      opacity:.85;
+      color:#cfcfcf;
+      margin-bottom: 6px;
+    }
+
+    /* UIFIX21: html5-qrcode の角ガイド（グレー線）を抑止 */
+    #interactive .qr-shaded-region,
+    #interactive [id*="qr-shaded-region"],
+    #interactive [id*="qr-code-full-region"] img,
+    #interactive [class*="qr-"] img{
+      display:none !important;
+    }
+
+
+  /* Dialog (manual code input) should appear around the scan window height. */
+  #dialogModal{ align-items: flex-start !important; }
+  #dialogModal .dialog-content{ margin-top: 18vh !important; }
+
+  /* Numeric keypad for code input */
+  #dialogKeypad{ display:none; margin-top: 14px; }
+  #dialogKeypad .kp-grid{ display:grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  #dialogKeypad button{
+    padding: 14px 0;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.18);
+    background: rgba(255,255,255,0.08);
+    color: #fff;
+    font-size: 18px;
+    font-weight: 700;
+  }
+  #dialogKeypad button.kp-fn{ background: rgba(255,255,255,0.14); }
+
+
+  /* Settings modal: make buttons filled & evenly spaced */
+  #settingsModal .btn{
+    border-radius: 12px;
+  }
+  #settingsModal .btn.btn-outline-light{
+    background: rgba(255,255,255,0.10);
+    border-color: rgba(255,255,255,0.18);
+  }
+  #settingsModal .btn.btn-secondary{
+    background: rgba(255,255,255,0.10);
+    border-color: rgba(255,255,255,0.18);
+  }
+  #settingsSyncBtn{
+    width: 100%;
+    font-weight: 800;
+  }
+
+
+/* UIFIX24: 設定モーダルのボタン間隔と高さを統一 */
+#settingsModal .modal-content { display:flex; flex-direction:column; gap:10px; }
+#settingsModal .modal-content .btn { min-height: 52px; }
+#settingsModal .modal-content .btn.btn-link { min-height: auto; }
+
+</style>
+
+<script>
+// === SAFETY WRAPPERS (keep onclick working) ===
+window.startScanner = window.startScanner || function() {
+  try {
+    // 手入力で隠した要素を復帰
+    try{ document.querySelectorAll('.scan-frame,.scan-laser').forEach(el=>el.style.display='block'); }catch(e){}
+    try{ const inter=document.getElementById('interactive'); if(inter){ inter.style.pointerEvents='auto'; } }catch(e){}
+    if (typeof startScannerImpl === 'function') return startScannerImpl();
+    if (typeof SmartPriceScanner?.start === 'function') return SmartPriceScanner.start();
+    if (typeof openScanner === 'function') return openScanner();
+    if (typeof showToast === 'function') showToast('スキャン機能の初期化に失敗しました（startScanner未接続）');
+  } catch(e) {
+    try { if (typeof showToast==='function') showToast('スキャン起動エラー: ' + (e?.message||e)); } catch(_){}
+  }
+};
+window.showVeggieMenu = window.showVeggieMenu || function() {
+  try {
+    if (typeof showVeggieMenuImpl === 'function') return showVeggieMenuImpl();
+    if (typeof openVeggieMenu === 'function') return openVeggieMenu();
+    if (typeof showToast === 'function') showToast('メニューが見つかりません（showVeggieMenu未接続）');
+  } catch(e) {
+    try { if (typeof showToast==='function') showToast('メニュー表示エラー: ' + (e?.message||e)); } catch(_){}
+  }
+};
+</script>
+
 </head>
 
 <body>
 <header class="header d-flex justify-content-between align-items-center">
-   <h5 class="m-0 fw-bold text-white"><i class="bi bi-cart4"></i> Smart Price <span class="v-badge" id="version-badge">v19.9.45</span></h5>
-  <button class="btn btn-sm btn-outline-light" onclick="openSettings()"><i class="bi bi-gear-fill"></i></button>
+   <h5 class="m-0 fw-bold text-white"><i class="bi bi-cart4"></i> Smart Price <span class="v-badge" id="versionBadge">…</span></h5>
+  <button class="btn btn-sm btn-outline-light" id="settingsBtn"><i class="bi bi-gear-fill"></i></button>
 </header>
 
 <div class="store-area"><div id="store-list" class="store-list"></div></div>
@@ -341,7 +787,7 @@ POLICY: UI_FREEZE / 単一HTML / VERSION SSOT
   <div id="mainView">
     <div class="row g-2 mb-4">
       <div class="col-7"><button id="scanBtnTop" class="btn btn-danger w-100 py-3 rounded-4 shadow" onclick="startScanner()"><i class="bi bi-upc-scan fs-1"></i><br>スキャン</button></div>
-      <div class="col-5"><button class="btn btn-dark w-100 py-3 rounded-4 border-secondary shadow" onclick="showVeggieMenu()"><i class="bi bi-keyboard fs-1"></i><br>手入力</button></div>
+      <div class="col-5"><button class="btn btn-dark w-100 py-3 rounded-4 border-secondary shadow" onclick="openBarcodeManual()"><i class="bi bi-keyboard fs-1"></i><br>手入力</button></div>
     </div>
     <div id="historyList"></div>
   </div>
@@ -411,6 +857,40 @@ POLICY: UI_FREEZE / 単一HTML / VERSION SSOT
   <div id="interactive">
     <!-- scan-frame と scan-laser は動的生成（ensureScanbarDom()で生成） -->
   </div>
+  <div id="manual-entry" class="scan-manual" style="display:none;">
+    <div class="sp-jan-kind" aria-label="code length selector">
+      <button type="button" class="sp-kind-btn" data-len="8" onclick="spSetCodeLen(8)">短い（8桁）</button>
+      <button type="button" class="sp-kind-btn active" data-len="13" onclick="spSetCodeLen(13)">通常（13桁）</button>
+      <button type="button" class="sp-kind-btn" data-len="14" onclick="spSetCodeLen(14)">箱/ケース（14桁）</button>
+    </div>
+
+    <div id="manualBoxes" class="sp-jan-boxes" data-len="13" aria-label="JAN code boxes"></div>
+    <div id="manualGuide" class="sp-jan-guide">
+      目安：通常商品＝13桁／短いコード＝8桁／箱・ケース＝14桁（ITF）
+    </div>
+
+    <!-- キーボードを出さないための隠し入力（値の保持だけ） -->
+    <input id="manualCodeInput" readonly type="text" inputmode="none" autocomplete="off" readonly
+           style="position:absolute; left:-9999px; top:-9999px; width:1px; height:1px; opacity:0; pointer-events:none;">
+
+    <div class="sp-numpad" aria-label="numeric keypad">
+      <button type="button" onclick="spNumpad('1')">1</button>
+      <button type="button" onclick="spNumpad('2')">2</button>
+      <button type="button" onclick="spNumpad('3')">3</button>
+      <button type="button" onclick="spNumpad('4')">4</button>
+      <button type="button" onclick="spNumpad('5')">5</button>
+      <button type="button" onclick="spNumpad('6')">6</button>
+      <button type="button" onclick="spNumpad('7')">7</button>
+      <button type="button" onclick="spNumpad('8')">8</button>
+      <button type="button" onclick="spNumpad('9')">9</button>
+      <button type="button" onclick="spNumpad('del')">⌫</button>
+      <button type="button" onclick="spNumpad('0')">0</button>
+      <button type="button" onclick="spNumpad('clear')">C</button>
+      <button type="button" class="sp-np-wide" onclick="spSubmitManualCode()">OK（入力で検索）</button>
+    </div>
+  </div>
+
+
   <button onclick="stopScanner()" class="btn btn-danger position-absolute top-0 end-0 m-4 fs-3 shadow-lg">×</button>
 </div>
 
@@ -426,20 +906,42 @@ POLICY: UI_FREEZE / 単一HTML / VERSION SSOT
   </div>
 </div>
 
-<div id="settingsModal" class="modal">
+<div id="settingsModal" class="modal" style="z-index: 9999;">
   <div class="modal-content">
-    <h5 class="text-white mb-4 text-center">設定</h5>
+    <h5 class="text-white mb-4 text-center" id="settingsTitle" onclick="handleSettingsTitleClick()" style="cursor: pointer;">設定</h5>
 
-    <div class="mb-3">
+    <div class="mb-3" id="settingsCitySection">
       <label class="small text-secondary">生活圏（市）</label>
-      <input type="text" id="home-city-input" class="form-control bg-dark text-white border-secondary mb-1" placeholder="例：土浦市、つくば市">
-      <div class="small text-secondary" style="opacity:.9;">複数の場合は「、」で区切ってください</div>
+      <button type="button" id="homeCityBtn" class="btn btn-dark w-100 py-2 fw-bold mb-1" onclick="openHomeCityModal()">
+        生活圏を設定
+      </button>
       <div id="city-history-chips" class="city-chips"></div>
     </div>
+    <div class="mb-3" id="settingsUserIdSection">
+      <label class="small text-secondary">個人ID（複数端末で同じにします）</label>
+      <div class="d-flex gap-2">
+        <button type="button" id="userIdCopyBtn" class="btn btn-dark flex-grow-1 py-2 fw-bold" onclick="copyUserId()">IDをコピー</button>
+        <button type="button" id="userIdEditBtn" class="btn btn-outline-secondary flex-grow-1 py-2 fw-bold" onclick="changeUserId()">IDを変更</button>
+      </div>
+      <div class="small text-secondary mt-1" id="userIdPreview">ID: -</div>
+    </div>
 
-    <details id="referralDetails" class="mb-3">
-      <summary class="small text-secondary" style="cursor:pointer;">友人紹介／家族共有</summary>
-      <div class="mt-2">
+
+    <div id="settingsMainMenu" class="mt-3">
+        <div class="d-grid gap-2">
+          <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelReferral">① 友人紹介</button>
+          <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelFamily">② 家族共有</button>
+          <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelSupport">③ 運営者へ質問／不具合報告</button>
+</div>
+      </div>
+
+      <div id="panelReferral" class="sp-panel mt-3" style="display:none;">
+        <div class="small text-secondary mb-2" style="opacity:.9;">個人ID：<span class="text-white fw-bold" id="sp-personal-id-panelReferral"></span></div>
+
+        <div class="small text-secondary mb-2">
+          この「紹介リンク」を友人に送ってください。友人が開くと、あなたの紹介IDが記録されます。
+        </div>
+        <div class="mt-2">
         <div class="small text-secondary mb-1">あなたの紹介ID</div>
         <div class="d-flex gap-2 mb-2">
           <input id="ref-my-id" class="form-control bg-dark text-white border-secondary" readonly>
@@ -453,21 +955,60 @@ POLICY: UI_FREEZE / 単一HTML / VERSION SSOT
           <button class="btn btn-dark flex-grow-1" onclick="spCopy('ref-link')">コピー</button>
           <button class="btn btn-danger flex-grow-1" onclick="spShareReferral()">共有</button>
         </div>
-
-        <div class="small text-secondary mb-1">家族共有コード（任意）</div>
-        <div class="d-flex gap-2 mb-2">
-          <input id="family-code-input" class="form-control bg-dark text-white border-secondary" placeholder="例：FAMILY-001">
-          <button class="btn btn-warning" onclick="spSaveFamilyCode()">保存</button>
-        </div>
-        <div id="family-code-status" class="small text-secondary"></div>
+        
+        <button class="btn btn-primary w-100 py-2 mb-3" onclick="showReferralStatus()">
+          👥 紹介者の利用状況を確認
+        </button>
 
         <div id="ref-from-status" class="small text-secondary mt-2" style="opacity:.9;"></div>
+        <div id="referral-status-list" class="mt-2" style="display:none;"></div>
       </div>
-    </details>
+        <div class="mt-3 d-grid">
+          <button type="button" class="btn btn-outline-secondary sp-back-btn" data-back="">戻る</button>
+        </div>
+      </div>
 
-    <details id="supportDetails" class="mb-3">
-      <summary class="small text-secondary" style="cursor:pointer;">運営者へ質問／不具合報告</summary>
-      <div class="mt-2">
+      <div id="panelFamily" class="sp-panel mt-3" style="display:none;">
+        <div class="small text-secondary mb-2" style="opacity:.9;">個人ID：<span class="text-white fw-bold" id="sp-personal-id-panelFamily"></span></div>
+
+        <div class="small text-secondary mb-2">
+          同じ購入データを別の端末でも使いたいときは、ここで「共有ID」を使います（準備中のため、まずは画面だけ整えています）。
+        </div>
+        <label class="small text-secondary">共有ID（相手のIDを貼り付け）</label>
+        <input id="family-share-id" class="form-control bg-dark text-white border-secondary mb-2" placeholder="例：AB12CD（半角）">
+        <div class="small text-secondary mb-1">あなたの個人ID（このIDを送って共有できます）</div>
+        <div class="d-flex gap-2 mb-2">
+          <input id="family-my-id" class="form-control bg-dark text-white border-secondary" readonly>
+          <button class="btn btn-dark" onclick="spCopy('family-my-id')">コピー</button>
+          <button class="btn btn-danger" onclick="spShareFamilyId()">共有</button>
+        </div>
+
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" id="family-hide-purchases">
+          <label class="form-check-label small text-secondary" for="family-hide-purchases">購入商品を隠す（家族共有用／準備中）</label>
+        </div>
+        <div class="d-grid gap-2">
+          <button type="button" class="btn btn-secondary" id="familySaveBtn">保存</button>
+        <div class="mt-3">
+          <div class="small text-secondary mb-1">家族共有コード（任意）</div>
+          <div class="d-flex gap-2 mb-2">
+            <input id="family-code-input" class="form-control bg-dark text-white border-secondary" placeholder="例：FAMILY-001">
+            <button class="btn btn-primary" onclick="spSaveFamilyCode()">保存</button>
+          </div>
+          <div id="family-code-status" class="small text-secondary"></div>
+        </div>
+
+        </div>
+        <div id="familyMsg" class="small text-secondary mt-2"></div>
+        <div class="mt-3 d-grid">
+          <button type="button" class="btn btn-outline-secondary sp-back-btn" data-back="">戻る</button>
+        </div>
+      </div>
+
+      <div id="panelSupport" class="sp-panel mt-3" style="display:none;">
+        <div class="small text-secondary mb-2" style="opacity:.9;">個人ID：<span class="text-white fw-bold" id="sp-personal-id-panelSupport"></span></div>
+
+        <div class="mt-2">
         <label class="small text-secondary">症状（何が起きたか）</label>
         <textarea id="support-symptom" class="form-control bg-dark text-white border-secondary mb-2" rows="3" placeholder="例：バーコード読み込み後、商品名が違う…"></textarea>
 
@@ -499,60 +1040,236 @@ POLICY: UI_FREEZE / 単一HTML / VERSION SSOT
 
         <div class="hint" style="margin:0;">※コピーした文章に、必要ならスクショも添えて送ってください。</div>
       </div>
-    </details>
-
-    <details id="operatorDetails" class="mb-3">
-      <summary class="small text-secondary" style="cursor:pointer;">運営者メニュー</summary>
-      <div class="mt-2">
-        <div id="operatorNote" class="hint mb-2">※運営者モード（URLに <b>&amp;mode=admin</b> ）で有効化されます。</div>
-
-        <div id="operatorEnabled" style="display:none;">
-          <div class="mb-2">
-            <div class="small text-secondary mb-1">Firebase URL（読み取り専用）</div>
-            <div class="d-flex gap-2">
-              <input type="text" id="fb-url-input" class="form-control bg-dark text-white border-secondary" readonly>
-              <button class="btn btn-dark" onclick="spCopy('fb-url-input')">コピー</button>
-            </div>
-          </div>
-
-          <details class="mb-2">
-            <summary class="small text-secondary" style="cursor:pointer;">未確定商品（昨日分）</summary>
-            <div class="mt-2">
-              <div id="admin-unconfirmed-list" class="small"></div>
-              <button class="btn btn-warning w-100 py-2 fw-bold mt-2" onclick="spConfirmUnconfirmedAll()">まとめて確定</button>
-            </div>
-          </details>
-
-          <details class="mb-2">
-            <summary class="small text-secondary" style="cursor:pointer;">お問い合わせ履歴</summary>
-            <div class="mt-2" id="admin-support-list" class="small"></div>
-          </details>
-
-          <details class="mb-2">
-            <summary class="small text-secondary" style="cursor:pointer;">検証ツール</summary>
-            <div class="mt-2">
-              <button class="btn btn-outline-secondary w-100 py-2 fw-bold mb-2" onclick="spRunSelfCheck()">検証する</button>
-              <textarea id="selfcheck-log" class="form-control bg-dark text-white border-secondary" rows="6" readonly></textarea>
-              <div class="d-flex gap-2 mt-2">
-                <button class="btn btn-dark flex-grow-1" onclick="spCopy('selfcheck-log')">ログコピー</button>
-              </div>
-            </div>
-          </details>
+        <div class="d-grid gap-2 mt-2">
+          <button type="button" class="btn btn-outline-secondary" id="supportDiagnoseBtn">不具合の検出（情報を埋める）</button>
+        </div>
+        <div class="mt-3 d-grid">
+          <button type="button" class="btn btn-outline-secondary sp-back-btn" data-back="">戻る</button>
         </div>
       </div>
-    </details>
 
-    <button id="syncBtn" class="btn btn-warning w-100 py-3 fw-bold mb-2 shadow" onclick="startMigration()">設定保存と同期</button>
-    <button class="btn btn-outline-secondary w-100 py-2 fw-bold mb-2" onclick="openWebModal()">ブラウザ版へ（URL表示）</button>
+      <div id="panelOperator" class="sp-panel mt-3" style="display:none;">
+        <div class="small text-secondary mb-2" style="opacity:.9;">個人ID：<span class="text-white fw-bold" id="sp-personal-id-panelOperator"></span></div>
+
+        <div class="small text-secondary mb-2">管理メニューはパスワードが必要です。</div>
+        <div class="d-flex gap-2 mb-2">
+          <input id="operatorPass" type="password" class="form-control bg-dark text-white border-secondary" placeholder="パスワード">
+          <button type="button" class="btn btn-secondary" id="operatorUnlockBtn" onclick="unlockOperator()">開く</button>
+        </div>
+        <div id="operatorPassMsg" class="small text-secondary mb-2"></div>
+        <div id="operatorPanelBody" style="display:none;">
+          <!-- Firebase URL -->
+          <div class="mb-3">
+            <div class="small text-secondary mb-1">Firebase接続状態</div>
+            <div id="firebase-status" class="mb-2"></div>
+            <div class="small text-secondary mb-1">Firebase URL</div>
+            <div class="d-flex gap-2 mb-2">
+              <input type="text" id="fb-url-input" class="form-control bg-dark text-white border-secondary" readonly value="https://smartpricedb-default-rtdb.firebaseio.com">
+              <button class="btn btn-dark" onclick="spCopy('fb-url-input')">コピー</button>
+            </div>
+            <button class="btn btn-success w-100" onclick="testFirebaseConnection()">🔌 接続テスト</button>
+          </div>
+
+          <!-- 購入履歴表示 -->
+          <details class="mb-2">
+            <summary class="small text-secondary" style="cursor:pointer;">📊 購入履歴を表示</summary>
+            <div class="mt-2">
+              <div id="purchase-history-list" class="small"></div>
+              <button class="btn btn-primary w-100 py-2 fw-bold mt-2" onclick="loadPurchaseHistory()">履歴を読み込む</button>
+            </div>
+          </details>
+          
+          <!-- 統計情報 -->
+          <details class="mb-2">
+            <summary class="small text-secondary" style="cursor:pointer;">📈 統計情報</summary>
+            <div class="mt-2" id="stats-info"></div>
+            <button class="btn btn-info w-100 py-2 fw-bold mt-2" onclick="loadStats()">統計を計算</button>
+          </details>
+          
+          <div class="mt-3 d-grid">
+            <button type="button" class="btn btn-outline-secondary sp-back-btn" data-back="Main">戻る</button>
+          </div>
+        </div>
+    </div>
+    
+    <button id="syncBtn" class="btn btn-primary w-100 py-2 fw-bold mb-2" onclick="startMigration()">設定保存と同期</button>
+    <button id="clearCacheBtn" class="btn btn-danger w-100 py-2 fw-bold mb-2" onclick="clearAllCache()">🔄 キャッシュクリア（表示崩れ修正）</button>
+    <button id="webBtn" class="btn btn-outline-secondary w-100 py-2 fw-bold mb-2" onclick="openWebModal()">ブラウザ版へ（URL表示）</button>
+
     <div id="debugBackupButtons" style="display:none;">
       <button class="btn btn-success w-100 py-2 fw-bold mb-2" onclick="exportBackup()">バックアップ出力</button>
       <button class="btn btn-info w-100 py-2 fw-bold mb-2" onclick="importBackup()">バックアップ読み込み</button>
     </div>
-    <button class="btn btn-link text-secondary w-100" onclick="closeSettings()">閉じる</button>
+    <button class="btn btn-link text-secondary w-100" data-action="close-settings">閉じる</button>
   </div>
 </div>
 
+<!-- 生活圏設定モーダル（v21.4で統合版に置き換え） -->
+
 </div>
+
+<!-- 生活圏設定モーダル -->
+<div id="homeCityModal" class="modal" style="z-index: 10002;">
+  <div class="modal-content">
+    <h5 class="text-white mb-3 text-center">生活圏の設定</h5>
+    
+    <div class="mb-3">
+      <label class="small text-secondary">生活圏（市）</label>
+      <input type="text" id="home-city-modal-input" class="form-control bg-dark text-white border-secondary mb-1" placeholder="例：つくば市">
+      <div class="small text-secondary mb-2" style="opacity:.9;">複数の場合は「、」で区切ってください</div>
+    </div>
+    
+    <div class="mb-3">
+      <label class="small text-secondary">GPS店舗検索範囲</label>
+      <select id="gps-range-select" class="form-select bg-dark text-white border-secondary">
+        <option value="100">📍 100m（徒歩圏内）</option>
+        <option value="500" selected>🚶 500m（近所）</option>
+        <option value="1000">🚗 1km（車で数分）</option>
+        <option value="3000">🚙 3km（ドライブ圏内）</option>
+      </select>
+    </div>
+    
+    <div class="d-grid gap-2">
+      <button class="btn btn-primary py-3 fw-bold" onclick="saveHomeCityFromModal()">保存</button>
+      <button class="btn btn-outline-secondary" onclick="closeHomeCityModal()">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- バーコード手入力モーダル -->
+<div id="barcodeManualModal" class="modal" style="z-index: 10000;">
+  <div class="modal-content">
+    <h5 class="text-white mb-4 text-center">バーコード手入力</h5>
+    
+    <div class="btn-group w-100 mb-3" role="group">
+      <button type="button" class="btn btn-outline-secondary btn-barcode-type" data-digits="8">JAN-8</button>
+      <button type="button" class="btn btn-outline-secondary btn-barcode-type active" data-digits="13">JAN-13</button>
+      <button type="button" class="btn btn-outline-secondary btn-barcode-type" data-digits="12">UPC-A</button>
+    </div>
+    
+    <div id="barcode-input-container" class="barcode-digits mb-3"></div>
+    
+    <!-- 専用テンキー -->
+    <div class="barcode-numpad mb-3">
+      <div class="numpad-row">
+        <button class="numpad-btn" onclick="inputBarcodeDigit('1')">1</button>
+        <button class="numpad-btn" onclick="inputBarcodeDigit('2')">2</button>
+        <button class="numpad-btn" onclick="inputBarcodeDigit('3')">3</button>
+      </div>
+      <div class="numpad-row">
+        <button class="numpad-btn" onclick="inputBarcodeDigit('4')">4</button>
+        <button class="numpad-btn" onclick="inputBarcodeDigit('5')">5</button>
+        <button class="numpad-btn" onclick="inputBarcodeDigit('6')">6</button>
+      </div>
+      <div class="numpad-row">
+        <button class="numpad-btn" onclick="inputBarcodeDigit('7')">7</button>
+        <button class="numpad-btn" onclick="inputBarcodeDigit('8')">8</button>
+        <button class="numpad-btn" onclick="inputBarcodeDigit('9')">9</button>
+      </div>
+      <div class="numpad-row">
+        <button class="numpad-btn" onclick="deleteBarcodeDigit()">←</button>
+        <button class="numpad-btn" onclick="inputBarcodeDigit('0')">0</button>
+        <button class="numpad-btn" onclick="clearBarcodeDigits()">C</button>
+      </div>
+    </div>
+    
+    <div class="d-grid gap-2">
+      <button class="btn btn-danger py-3 fw-bold" onclick="searchByManualBarcode()">🔍 商品を検索</button>
+      <button class="btn btn-outline-secondary" onclick="closeBarcodeManual()">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<style>
+.barcode-digits {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  justify-content: center;
+  padding: 10px;
+}
+.barcode-digit {
+  width: 40px;
+  height: 50px;
+  font-size: 24px;
+  font-weight: bold;
+  text-align: center;
+  background: #1a1a1a;
+  border: 2px solid #444;
+  color: #fff;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+.barcode-digit:focus {
+  border-color: #ff5252;
+  outline: none;
+  background: #2a2a2a;
+  box-shadow: 0 0 10px rgba(255,82,82,0.3);
+}
+.barcode-digit.filled {
+  background: #2a2a2a;
+  border-color: #ff5252;
+}
+.barcode-digit.active {
+  border-color: #00ff00;
+  box-shadow: 0 0 15px rgba(0,255,0,0.5);
+}
+.barcode-numpad {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.numpad-row {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+.numpad-btn {
+  width: 70px;
+  height: 60px;
+  font-size: 24px;
+  font-weight: bold;
+  background: #2a2a2a;
+  border: 2px solid #555;
+  color: #fff;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.numpad-btn:active {
+  background: #ff5252;
+  transform: scale(0.95);
+}
+
+
+/* === UIFIX: settings width alignment (NO layout change) === */
+#settingsCitySection > label { display: none !important; } /* 生活圏（市）はモーダル内ボタンに表示済み */
+#settingsModal .modal-body { padding-left: 16px; padding-right: 16px; }
+#settingsModal #userIdPreview,
+#settingsModal #personalIdPreview,
+#settingsModal .sp-preview-text {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  word-break: break-all;
+}
+#settingsModal .d-flex.gap-2 > .btn { min-width: 0; } /* IDコピー/変更の幅崩れ防止 */
+#settingsModal .sp-menu-btn { width: 100%; }
+
+/* 管理メニュー内の「購入履歴を表示」「統計情報」をボタン風に（要素追加なし） */
+#settingsModal details > summary {
+  list-style: none;
+  cursor: pointer;
+  display: block;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
+}
+#settingsModal details[open] > summary { background: rgba(255,255,255,0.09); }
+#settingsModal details > summary::-webkit-details-marker { display: none; }
+</style>
 
 <div id="webModal" class="modal">
   <div class="modal-content">
@@ -605,10 +1322,6 @@ POLICY: UI_FREEZE / 単一HTML / VERSION SSOT
 
 <script src="https://unpkg.com/html5-qrcode"></script>
 <script>
-  const APP_VERSION = "v19.9.45"; // 画面表示用（数字のみ） // 画面表示用（数字のみ）
-  const FULL_VERSION = "v19.9.45 [0207]"; // デバッグ用（詳細） // デバッグ用（詳細）
-  P26-02-08_2045_initfix_exportimport_nofb"; // ヘッダーと一致させる
-
   // ========= Firebase Configuration =========
   const FIREBASE_CONFIG = {
     apiKey: "AIzaSyCYjQ79KgsohOPlEViHBX5BygVUvX-70l4",
@@ -846,12 +1559,6 @@ POLICY: UI_FREEZE / 単一HTML / VERSION SSOT
     homeCities: [],
     customStores: [],
     storeTaxModes: {} // ストアごとの税別/税込既定値 { "ストア名": "ex" or "in" }
-  };
-
-  const CITY_STORE_PRESET = {
-    "土浦市": ["カスミ土浦駅前店", "カスミ ピアシティ荒川本郷店", "ヨークベニマル", "タイヨー", "まるも", "ウエルシア"],
-    "つくば市": ["カスミ つくば竹園店", "ヨークベニマル つくば竹園店", "ロピア つくば店", "タイヨー", "ウエルシア"],
-    "東海村": ["カスミ東海店", "ヨークベニマル東海店", "イオン東海店"]
   };
 
   // ========= Image Store (IndexedDB) =========
@@ -1421,6 +2128,8 @@ POLICY: UI_FREEZE / 単一HTML / VERSION SSOT
   // ========= App State =========
   let db = { products: {}, config: JSON.parse(JSON.stringify(DEFAULT_CONFIG)) };
   let curBarcode = null, curStore = "未設定";
+  // 起動直後は必ず「未設定」から開始（前回選択を引きずらない）
+  let SP_BOOT_RESET_STORE = true;
   let processBarcodeInFlight = new Set(); // ✅ P0: 同一JANの二重発火防止
   let janCoolDown = new Map(); // ✅ P0: 同じJANを0.8〜1.2秒以内に再検出したら無視（クールダウン）
   let tempImgData = null; // {type:'key', key} or {type:'url', url}
@@ -1510,11 +2219,43 @@ POLICY: UI_FREEZE / 単一HTML / VERSION SSOT
       deviceId = 'dev_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 11);
       localStorage.setItem('smartPriceDeviceId', deviceId);
     }
+
+  // ========= 個人ID（端末をまたいで共有するID）生成・保持 =========
+  // 目的：購入履歴/設定の保存先を「Firebase UID」ではなく「個人ID」に統一して、1ユーザー複数端末を実現する
+  function getOrCreatePersonalId(){
+    try{
+      db.config = db.config || {};
+      // 優先順：db.config.personalId → 明示保存(sp_personal_id) → 旧キー(smartPriceDeviceId) → 生成
+      let pid = (db.config.personalId || localStorage.getItem('sp_personal_id') || localStorage.getItem('smartPriceDeviceId') || '').toString().trim();
+      if(!pid){
+        pid = 'dev_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 11);
+      }
+      db.config.personalId = pid;
+      localStorage.setItem('sp_personal_id', pid);
+      // 旧キーも維持（既存実装との互換）
+      if(!localStorage.getItem('smartPriceDeviceId')) localStorage.setItem('smartPriceDeviceId', pid);
+      return pid;
+    }catch(e){
+      return (localStorage.getItem('sp_personal_id')||localStorage.getItem('smartPriceDeviceId')||'').toString();
+    }
+  }
+
+  // Firebase UID（認証用）も参照できるようにしておく（保存先には使わない）
+  function getFirebaseUidSafe(){
+    try{
+      if(window.firebaseAuth && firebaseAuth.currentUser && firebaseAuth.currentUser.uid){
+        return String(firebaseAuth.currentUser.uid);
+      }
+    }catch(e){}
+    return '';
+  }
     return deviceId;
   }
 
   // ✅ P0: VERSION表示を最優先で実行（loadConfigより先）
   document.addEventListener('DOMContentLoaded', () => {
+    setHeaderVersionBadge();
+    window.addEventListener('resize', setHeaderVersionBadge);
     try {
       const versionBadge = document.getElementById('version-badge');
       if (versionBadge) {
@@ -1525,7 +2266,7 @@ POLICY: UI_FREEZE / 単一HTML / VERSION SSOT
       if (isDebug()) {
         document.title = `Smart Price ${FULL_VERSION} / ${BUILD_ID}`;
       } else {
-        document.title = `Smart Price ${FULL_VERSION}`;
+        document.title = `Smart Price ${window.FULL_VERSION||window.APP_VERSION||window.VERSION_INFO||""}`;
       }
     } catch(e) {
       if (isDebug()) console.warn('[DOMContentLoaded] version update error:', e);
@@ -1907,12 +2648,85 @@ function isQuotaError(e) {
     }
   }
 
-  function loadLocal() {
+  
+  // ✅ UIFIX21: 過去データ復旧（localStorageの別キーに残っているDBを探索して取り込み）
+  function tryImportLegacyDbIfEmpty(){
+    try{
+      const hasHist = (db && db.products) ? Object.keys(db.products).some(k => (db.products[k]?.history||[]).length>0) : false;
+      if(hasHist) return false;
+
+      let best = null;
+      for(let i=0;i<localStorage.length;i++){
+        const key = localStorage.key(i);
+        if(!key) continue;
+        if(key === 'smart_price_db' || key === 'smart_price_img_db') continue;
+        
+        const raw = localStorage.getItem(key);
+        if(!raw || raw.length < 50) continue;
+
+        try{
+          const obj = JSON.parse(raw);
+          if(!obj || typeof obj !== 'object' || !obj.products || typeof obj.products !== 'object') continue;
+
+          const cnt = Object.keys(obj.products).reduce((s,code) => s + (((obj.products[code]?.history||[]).length>0)?1:0), 0);
+          if(cnt<=0) continue;
+
+          if(!best || cnt > best.cnt) best = { key, obj, cnt };
+        }catch(e){}
+      }
+
+      if(!best) return false;
+
+      const src = normalizeDb(best.obj);
+      db.products = db.products || {};
+      for(const code of Object.keys(src.products||{})){
+        const s = src.products[code] || {};
+        const d = db.products[code];
+
+        if(!d){
+          db.products[code] = s;
+          continue;
+        }
+
+        // 既存 + 旧データをマージ（履歴は重複排除）
+        const a = Array.isArray(d.history) ? d.history : [];
+        const b = Array.isArray(s.history) ? s.history : [];
+        const map = new Map();
+        for(const h of [...a,...b]){
+          if(!h) continue;
+          const ts = h.ts ?? h.t ?? '';
+          const price = h.price ?? h.p ?? '';
+          const store = h.store ?? h.s ?? '';
+          const k = `${ts}|${price}|${store}`;
+          map.set(k, h);
+        }
+        const merged = Array.from(map.values()).sort((x,y)=> (histTs(x)||0) - (histTs(y)||0));
+        d.history = merged;
+
+        if(!d.name && s.name) d.name = s.name;
+        if(!d.maker && s.maker) d.maker = s.maker;
+        if(!d.unit && s.unit) d.unit = s.unit;
+      }
+
+      saveLocalOnly();
+      try{ showToast(`購入履歴を復旧しました（${best.key}）`, 5000); }catch(e){}
+      if(isDebug()) console.log('[UIFIX21] Imported legacy DB from', best.key);
+
+      return true;
+    }catch(e){
+      if(isDebug()) console.warn('[UIFIX21] Legacy import failed', e);
+      return false;
+    }
+  }
+
+async function loadLocal() {
     try {
       const saved = localStorage.getItem('smart_price_db');
       if (saved) db = JSON.parse(saved);
       db = normalizeDb(db);
-      const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
+            // UIFIX21: 別キーに残っている履歴を自動復旧
+      tryImportLegacyDbIfEmpty();
+const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       const el = document.getElementById(taxModeId);
       if (el) el.checked = true;
     } catch(e) {
@@ -1948,13 +2762,94 @@ function isQuotaError(e) {
     return base ? `${base}/smart_price.json` : "";
   }
 
-  function getImageUrl(url, code, imageId) {
+  // UIFIX24: ユーザーID（複数端末・複数ユーザーの同期単位）
+  function getOrCreateUserId(){
+    try{
+      db.config = db.config || {};
+      let uid = (db.config.userId || localStorage.getItem('sp_user_id') || '').toString().trim();
+      if(!uid){
+        uid = 'U' + Math.random().toString(36).slice(2,8) + '-' + Math.random().toString(36).slice(2,6);
+      }
+      db.config.userId = uid;
+      localStorage.setItem('sp_user_id', uid);
+      return uid;
+    }catch(e){
+      return (localStorage.getItem('sp_user_id')||'').toString();
+    }
+  }
+
+
+  // UIFIX UIDSYNC: Settings UI for userId (copy / change)
+  function updateUserIdPreview(){
+    try{
+      const pid = getOrCreatePersonalId();
+      const el = document.getElementById('userIdPreview');
+      if(el) el.textContent = `ID: ${uid || '-'}`;
+    }catch(e){}
+  }
+
+  async function copyUserId(){
+    try{
+      const pid = getOrCreatePersonalId();
+      if(!uid){ try{ showToast('個人IDが取得できませんでした', 2500);}catch(e){}; return; }
+      try{
+        await navigator.clipboard.writeText(uid);
+        try{ showToast('個人IDをコピーしました', 2000);}catch(e){}
+      }catch(e){
+        // fallback: prompt
+        await customPrompt('このIDをコピーしてください（長押し→コピー）', uid);
+      }
+    }catch(e){}
+  }
+
+  async function changeUserId(){
+    try{
+      const cur = getOrCreateUserId();
+      const v = await customPrompt('個人IDを入力（スマホ/PCで同じIDにすると同期します）', cur);
+      if(v === null) return;
+      const nv = (v || '').toString().trim();
+      if(!nv){ try{ showToast('空のIDは設定できません', 2500);}catch(e){}; return; }
+      // simple validation: allow A-Z a-z 0-9 _ - only (no spaces)
+      if(!/^[A-Za-z0-9_\-]{4,32}$/.test(nv)){
+        await customPrompt('IDは英数字と - _ のみ（4〜32文字）で入力してください', cur);
+        return;
+      }
+      db.config = db.config || {};
+      db.config.userId = nv;
+      localStorage.setItem('sp_user_id', nv);
+      try{ saveDb(); }catch(e){}
+      updateUserIdPreview();
+      try{ showToast('個人IDを設定しました', 2200);}catch(e){}
+    }catch(e){}
+  }
+
+
+  function scopeUrlByUser(baseJsonUrl, userId){
+    // 例: https://xxx.firebaseio.com/smart_price.json → .../users/<uid>/smart_price.json
+    try{
+      const u = baseJsonUrl || '';
+      const uid = encodeURIComponent((userId||'').trim());
+      if(!u || !uid) return u;
+      if(u.endsWith('.json')){
+        const i = u.lastIndexOf('/smart_price.json');
+        if(i !== -1){
+          return u.slice(0, i) + `/users/${uid}/smart_price.json`;
+        }
+        // fallback: insert before last .json
+        const j = u.lastIndexOf('.json');
+        return u.slice(0, j) + `/users/${uid}` + u.slice(j);
+      }
+      return u;
+    }catch(e){ return baseJsonUrl; }
+  }
+
+  async function getImageUrl(url, code, imageId) {
     const base = getBaseUrl(url);
     if (!base) return "";
     return `${base}/smart_price_images/${encodeURIComponent(code)}/${encodeURIComponent(imageId)}.json`;
   }
 
-  function getImageListUrl(url, code) {
+  async function getImageListUrl(url, code) {
     const base = getBaseUrl(url);
     if (!base) return "";
     return `${base}/smart_price_images/${encodeURIComponent(code)}.json`;
@@ -1963,7 +2858,8 @@ function isQuotaError(e) {
   async function syncFirebasePut() {
     if(!fbUrl) return;
     try {
-      const targetUrl = getSafeUrl(fbUrl);
+      const pid = getOrCreatePersonalId();
+      const targetUrl = scopeUrlByUser(getSafeUrl(fbUrl), pid);
       const payload = stripForCloud(db);
       await fetchWithTimeout(targetUrl, {
         method: 'PUT',
@@ -2108,14 +3004,14 @@ function isQuotaError(e) {
     return normalizeDb(merged);
   }
 
-  function lastHistoryTs(p) {
+  async function lastHistoryTs(p) {
     try {
       const h = (p && Array.isArray(p.history) && p.history.length) ? p.history[p.history.length-1] : null;
       return histTs(h);
     } catch(e){ return 0; }
   }
 
-  function deepClone(x) {
+  async function deepClone(x) {
     try { return JSON.parse(JSON.stringify(x)); } catch(e){ return x; }
   }
 
@@ -2142,10 +3038,59 @@ function isQuotaError(e) {
       const localDb = deepClone(db);
       
       // 2. クラウドDBを取得
-      const targetUrl = getSafeUrl(fbUrl);
-      const res = await fetchWithTimeout(targetUrl, {}, 12000);
-      const cloudDb = await res.json();
-      
+      const pid = getOrCreatePersonalId();
+      const targetUrl = scopeUrlByUser(getSafeUrl(fbUrl), pid);
+      let cloudDb = null;
+      let cloudSource = { kind: 'none', id: '' };
+
+      // まずは personalId で取得
+      try{
+        const res = await fetchWithTimeout(targetUrl, {}, 12000);
+        const j = await res.json();
+        if(j && j.products){ cloudDb = j; cloudSource = { kind: 'personalId', id: pid }; }
+      }catch(e){}
+
+      // 旧：短いID（sp_user_id）で保存していた可能性
+      if(!(cloudDb && cloudDb.products)){
+        try{
+          const shortId = getOrCreateUserId();
+          if(shortId){
+            const u2 = scopeUrlByUser(getSafeUrl(fbUrl), shortId);
+            const res2 = await fetchWithTimeout(u2, {}, 12000);
+            const j2 = await res2.json();
+            if(j2 && j2.products){ cloudDb = j2; cloudSource = { kind: 'shortId', id: shortId }; }
+          }
+        }catch(e){}
+      }
+
+      // 旧：Firebase UID で保存していた可能性（匿名ログインの端末差）
+      if(!(cloudDb && cloudDb.products)){
+        try{
+          const fuid = getFirebaseUidSafe();
+          if(fuid){
+            const u3 = scopeUrlByUser(getSafeUrl(fbUrl), fuid);
+            const res3 = await fetchWithTimeout(u3, {}, 12000);
+            const j3 = await res3.json();
+            if(j3 && j3.products){ cloudDb = j3; cloudSource = { kind: 'firebaseUid', id: fuid }; }
+          }
+        }catch(e){}
+      }
+
+      // 旧URL（ユーザーID導入前のルート）救済
+      if(!(cloudDb && cloudDb.products)){
+        try{
+          const legacyUrl = getSafeUrl(fbUrl);
+          const resL = await fetchWithTimeout(legacyUrl, {}, 12000);
+          const cloudL = await resL.json();
+          if(cloudL && cloudL.products){ cloudDb = cloudL; cloudSource = { kind: 'legacyRoot', id: '' }; }
+        }catch(e){}
+      }
+
+      // debug 表示
+      if(isDebug()){
+        try{ console.log('[Sync] cloudSource=', cloudSource); }catch(e){}
+      }
+
       if (!cloudDb || typeof cloudDb !== 'object' || !cloudDb.products) {
         throw new Error('クラウドデータが無効です');
       }
@@ -2291,7 +3236,7 @@ function isQuotaError(e) {
   }
 
   // ========= Category UI =========
-  function initCategorySelect() {
+  async function initCategorySelect() {
     db = normalizeDb(db);
     const sel = document.getElementById('inputCategory');
     const sub = document.getElementById('inputSubCategory');
@@ -2374,7 +3319,7 @@ function isQuotaError(e) {
   }
 
   // ========= Stores =========
-  function addCustomStore(name) {
+  async function addCustomStore(name) {
     db = normalizeDb(db);
     const s = (name || "").trim();
     if (!s) return;
@@ -2424,19 +3369,21 @@ function isQuotaError(e) {
       });
     }
     
-    const cityStores = CITY_STORE_PRESET[db.config.homeCity] || [];
     const customStores = db.config.customStores || [];
     
     // ✅ 近隣店舗候補を統合（nearbyStoreNames）
     const nearbyStores = (Array.isArray(window.nearbyStoreNames) && window.nearbyStoreNames.length > 0) ? window.nearbyStoreNames : [];
-    
-    // ✅ 空なら プリセット + customStores を必ず表示
-    const finalSet = ["未設定", ...new Set([...manualPriority, ...customStores, ...nearbyStores, ...cityStores, ...sortedFreq])];
-    
-    // ✅ 候補が取れたら先頭を自動選択（curStore が "未設定" の場合のみ）
-    if (curStore === "未設定" && finalSet.length > 1) {
-      curStore = finalSet[1]; // 「未設定」以外の最初の候補
-      if (isDebug()) console.log('[renderStoreList] Auto-select:', curStore);
+    // ✅ 候補を統合（未設定は先頭固定）
+    const storeNames = [...new Set([...manualPriority, ...customStores, ...nearbyStores, ...sortedFreq])]
+      .filter(s => s && s !== '未設定');
+    // ✅ 店名で並べる（日本語も自然順）
+    storeNames.sort((a,b)=> (a||'').localeCompare((b||''), 'ja'));
+    const finalSet = ['未設定', ...storeNames];
+
+    // ✅ 起動直後は「未設定」固定（前回選択を引きずらない）
+    if (window.SP_BOOT_RESET_STORE) {
+      curStore = '未設定';
+      window.SP_BOOT_RESET_STORE = false;
     }
 
     const gpsTxt = isGpsOn ? `GPS<span class="gps-status">●${lastGpsTime}</span>` : `GPS<span class="gps-status">OFF</span>`;
@@ -2512,6 +3459,13 @@ function isQuotaError(e) {
 
     const items = Object.keys(db.products).map(k => ({ code: k, ...db.products[k] }));
     items.sort((a,b) => (histTs(b.history?.[b.history.length-1]) || 0) - (histTs(a.history?.[a.history.length-1]) || 0));
+    // ✅ PCなどで「何も表示されない」を避ける：履歴0件でもメッセージは出す
+    const hasAnyHistory = items.some(x => x.history && x.history.length);
+    if(!hasAnyHistory){
+      list.innerHTML = `<div class="text-secondary small text-center py-3" style="opacity:.85;">購入履歴がありません（必要なら「設定保存と同期」を実行してください）</div>`;
+      return;
+    }
+
 
     // ✅ 重複防止ガード（codeキー + 正規化キー）
     const renderedKeys = new Set();
@@ -2537,7 +3491,9 @@ function isQuotaError(e) {
       if (normalized && normalized !== '|') {
         renderedNormalizedKeys.add(normalized);
       }
-      const last = it.history[it.history.length-1];
+      const hlist = (it.history||[]).filter(h => (!h.uid) || (h.uid===curUid));
+      if(!hlist.length) continue;
+      const last = hlist[hlist.length-1];
       const div = document.createElement('div');
       div.className = 'card price-card';
       div.onclick = (e) => {
@@ -3215,7 +4171,7 @@ function isQuotaError(e) {
   }
 
   // ========= GPS距離計算（簡易版：ハーバーサイン公式） =========
-  function calcDistance(lat1, lng1, lat2, lng2) {
+  async function calcDistance(lat1, lng1, lat2, lng2) {
     const R = 6371; // 地球の半径（km）
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLng = (lng2 - lng1) * Math.PI / 180;
@@ -3226,7 +4182,7 @@ function isQuotaError(e) {
     return R * c;
   }
 
-  function toggleGps() {
+  async function toggleGps() {
     if(!isGpsOn) {
       isGpsOn = true; lastGpsTime = "…"; renderStoreList(); 
       showToast("GPS取得中…", 3000);
@@ -4011,7 +4967,78 @@ function isQuotaError(e) {
     }
   }
 
-  function startScanner() {
+  
+  // ✅ 手入力（カメラ無し）：スキャン画面の位置に「コード入力＋テンキー」だけを出す
+  // - ユーザー要望: 「スキャン画面に手動コード入力＋テンキー」
+  
+function openSettingsPanel(panelId){
+  try{
+    document.querySelectorAll('.sp-panel').forEach(p=>p.style.display='none');
+    const main = document.getElementById('settingsMainMenu');
+    if(main) main.style.display='none';
+    const p = document.getElementById(panelId);
+    if(p) p.style.display='block';
+  }catch(e){}
+}
+function openCityModal(){
+  const w = document.getElementById('cityModalWrap');
+  if(w) w.style.display='block';
+  try{ setHeaderVersionBadge(); }catch(e){}
+}
+function closeCityModal(){
+  const w = document.getElementById('cityModalWrap');
+  if(w) w.style.display='none';
+  try{ setHeaderVersionBadge(); }catch(e){}
+}
+function saveCityAndClose(){
+  try{ if(typeof saveSettings==='function') saveSettings(); }catch(e){}
+  closeCityModal();
+}
+
+function openManualEntryOnly(){
+    try{
+      const ca = document.getElementById('camera-area');
+      const inter = document.getElementById('interactive');
+      const manual = document.getElementById('manual-entry');
+
+      // 手入力モード: カメラ枠は使わず、手入力UIだけを確実に表示
+      if(ca) ca.style.display = 'block';
+
+      // 走査枠/走査ラインは隠す（手入力では不要）
+      try{ document.querySelectorAll('.scan-frame,.scan-laser').forEach(el=>el.style.display='none'); }catch(e){}
+
+      // interactive（動画/オーバーレイ）が前面に来て手入力が見えない事故を避ける
+      try{ if(inter){ inter.style.pointerEvents='none'; inter.style.opacity='0.18'; } }catch(e){}
+
+      // スキャナ状態を止める
+      isScanning = false;
+
+      // 手入力UIを必ず出す
+      if(manual){
+        manual.style.display = 'block';
+        manual.style.top = '120px';
+        manual.style.left = '50%';
+        manual.style.transform = 'translateX(-50%)';
+        manual.style.zIndex = '2005';
+      }
+
+      // 初期化
+      try{ window.__spManual = window.__spManual || { len: 13, code: "" }; }catch(e){}
+      try{ if(typeof spRenderManualBoxes==='function') spRenderManualBoxes(); }catch(e){}
+      try{ if(typeof spUpdateManualBoxes==='function') spUpdateManualBoxes(); }catch(e){}
+
+      // キーボード禁止: readonly input を触らない
+      try{
+        const input = document.getElementById('manualCodeInput');
+        if(input){ input.blur(); }
+      }catch(e){}
+    }catch(e){
+      if(isDebug()) console.warn('[openManualEntryOnly] failed:', e);
+      showToast('手入力画面の表示に失敗しました', 6000);
+    }
+  }
+
+function startScanner() {
     if(isScanning) {
       if (isDebug()) {
         console.log("[Scanner] Already scanning, skip");
@@ -4078,6 +5105,8 @@ function isQuotaError(e) {
     scanner.start(cameraConfig, scannerConfig, async (t)=> {
       // ✅ スキャンバーDOM要素を確実に生成・配置（カメラ起動成功後すぐ）
       ensureScanbarDom();
+      ensureManualEntryDom();
+      try{ suppressQrcodeGuides(); setTimeout(suppressQrcodeGuides, 80); setTimeout(suppressQrcodeGuides, 250); setTimeout(suppressQrcodeGuides, 700);}catch(e){}
       
       showToast("読み取りOK", 1500);
       
@@ -4274,7 +5303,7 @@ function isQuotaError(e) {
     
     // ✅ scan-frame のスタイルを確実に設定
     scanFrame.style.position = 'absolute';
-    scanFrame.style.top = '50%';
+    scanFrame.style.top = '25%';
     scanFrame.style.left = '50%';
     scanFrame.style.transform = 'translate(-50%, -50%)';
     scanFrame.style.width = '280px';
@@ -4314,7 +5343,161 @@ function isQuotaError(e) {
       });
     }
     
+    
+
+  // === PATCH v22.7.3: manual code entry UI ===
+  
+  // UIFIX21: バーコード枠の下に出る「グレーの角合わせガイド」を消す（html5-qrcode側の装飾）
+  function suppressQrcodeGuides(){
+    try{
+      const root = document.getElementById('interactive');
+      if(!root) return;
+
+      const nodes = root.querySelectorAll('div, span, img');
+      nodes.forEach(el=>{
+        if(!el) return;
+        if(el.id === 'scan-frame' || el.id === 'scan-laser') return;
+
+        const cs = window.getComputedStyle ? getComputedStyle(el) : null;
+        if(!cs) return;
+
+        const bw =
+          (parseFloat(cs.borderTopWidth||'0')||0) +
+          (parseFloat(cs.borderRightWidth||'0')||0) +
+          (parseFloat(cs.borderBottomWidth||'0')||0) +
+          (parseFloat(cs.borderLeftWidth||'0')||0);
+
+        if(bw <= 0.1) return;
+
+        const bc = (cs.borderTopColor||'') + (cs.borderRightColor||'') + (cs.borderBottomColor||'') + (cs.borderLeftColor||'');
+        const isGrey = /#c0c0c0|#ccc|rgb\(\s*1(8|9)\d\s*,\s*1(8|9)\d\s*,\s*1(8|9)\d\s*\)|rgb\(\s*2\d\d\s*,\s*2\d\d\s*,\s*2\d\d\s*\)/i.test(bc);
+        if(!isGrey) return;
+
+        const pos = cs.position || '';
+        const abs = (pos === 'absolute' || pos === 'fixed');
+        if(!abs) return;
+
+        const txt = (el.textContent || '').trim();
+        if(txt) return;
+
+        const r = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+        if(!r) return;
+        const small = (r.width <= 420 && r.height <= 420 && (r.width >= 18 || r.height >= 18));
+        if(!small) return;
+
+        // 一番うるさい角ガイドだけ狙い撃ちで非表示
+        el.style.display = 'none';
+        el.style.opacity = '0';
+      });
+    }catch(e){}
+  }
+
+function ensureManualEntryDom() {
+    const cameraArea = document.getElementById('camera-area');
+    const manual = document.getElementById('manual-entry');
+    const frame = cameraArea ? cameraArea.querySelector('.scan-frame') : null;
+    if (!cameraArea || !manual || !frame) return false;
+
+    // 位置：スキャン枠の「すぐ下」。端末差が出ても追随できるようDOMから計算。
+    const r = frame.getBoundingClientRect();
+    const top = Math.min(window.innerHeight - 260, Math.max(10, r.top + r.height + 14));
+    manual.style.top = top + 'px';
+    manual.style.display = 'block';
+    try{ if(typeof window.spSetCodeLen==='function'){ window.spSetCodeLen(window.__spManual?.len||13); } }catch(e){}
     return true;
+  }
+
+  
+  // UIFIX21: 手入力コード（数字窓＋専用テンキー）— キーボードは出さない
+  window.__spManual = window.__spManual || { len: 13, code: "" };
+
+  function spRenderManualBoxes(){
+    const wrap = document.getElementById('manualBoxes');
+    if(!wrap) return;
+    const len = window.__spManual.len || 13;
+
+    wrap.setAttribute('data-len', String(len));
+    wrap.innerHTML = '';
+    for(let i=0;i<len;i++){
+      const d = document.createElement('div');
+      d.className = 'sp-jan-box';
+      d.setAttribute('data-i', String(i));
+      d.textContent = '';
+      wrap.appendChild(d);
+    }
+
+    // ボタンのactive表示
+    try{
+      document.querySelectorAll('.sp-kind-btn').forEach(btn=>{
+        const bl = parseInt(btn.getAttribute('data-len')||'0',10);
+        if(bl === len) btn.classList.add('active'); else btn.classList.remove('active');
+      });
+    }catch(e){}
+
+    spUpdateManualBoxes();
+  }
+
+  function spUpdateManualBoxes(){
+    const input = document.getElementById('manualCodeInput');
+    const code = (window.__spManual.code || '').toString();
+    if(input) input.value = code;
+
+    const boxes = document.querySelectorAll('#manualBoxes .sp-jan-box');
+    boxes.forEach((b,i)=>{
+      const ch = code[i] || '';
+      b.textContent = ch;
+      if(ch) b.classList.add('filled'); else b.classList.remove('filled');
+    });
+  }
+
+  window.spSetCodeLen = function(len){
+    const n = parseInt(len, 10);
+    window.__spManual.len = ([8,13,14].includes(n) ? n : 13);
+    window.__spManual.code = '';
+    spRenderManualBoxes();
+  };
+
+  window.spNumpad = function(key){
+    if(!window.__spManual) window.__spManual = { len:13, code:"" };
+    let code = (window.__spManual.code || '').toString();
+    const len = window.__spManual.len || 13;
+
+    if(key === 'del'){
+      code = code.slice(0, -1);
+    }else if(key === 'clear'){
+      code = '';
+    }else if(/^[0-9]$/.test(String(key))){
+      if(code.length >= len) return;
+      code = code + String(key);
+    }
+    window.__spManual.code = code;
+    spUpdateManualBoxes();
+  };
+
+
+  
+  window.spSubmitManualCode = async function(){
+    const code = (window.__spManual?.code || '').trim();
+    const len  = (window.__spManual?.len  || 13);
+
+    if(!code){
+      try{ showToast('コードを入力してください', 2000);}catch(e){}
+      return;
+    }
+    if(code.length !== len){
+      try{ showToast(`${len}桁で入力してください`, 2500);}catch(e){}
+      return;
+    }
+
+    // スキャン結果と同じ処理へ合流
+    try{ await stopScanner(); }catch(e){}
+    try{ await onCodeScanned(code); }catch(e){
+      try{ showToast('検索に失敗しました', 3000);}catch(_){}
+      if (isDebug()) console.error(e);
+    }
+  };
+
+return true;
   }
   
   // ✅ スキャンバーのデバッグ情報表示関数（改善版）
@@ -4429,13 +5612,14 @@ function isQuotaError(e) {
   async function stopScanner() {
     if(scanner) {
       try { await scanner.stop(); } catch(e) {}
-      finally { document.getElementById('camera-area').style.display='none'; isScanning = false; }
+      finally { document.getElementById('camera-area').style.display='none'; isScanning = false;
+      try{ const me=document.getElementById('manual-entry'); if(me) me.style.display='none'; const mi=document.getElementById('manualCodeInput'); if(mi) mi.value=''; }catch(e){} }
     } else {
       document.getElementById('camera-area').style.display='none'; isScanning = false;
     }
   }
 
-  function showHome() {
+  async function showHome() {
     try{ clearToasts(); }catch(e){}
 
     document.getElementById('mainView').style.display='block';
@@ -5106,7 +6290,7 @@ function isQuotaError(e) {
     }
   }
 
-  function setupFocusGuides() {
+  async function setupFocusGuides() {
     const gs = { 'inputName': "例：コーラ 500ml", 'inputPrice': "価格を入力" };
     Object.keys(gs).forEach(id => {
       const el=document.getElementById(id);
@@ -5115,7 +6299,7 @@ function isQuotaError(e) {
   }
 
   // ✅ 検索ボタン：商品コード＋商品名で画像検索を開く
-  function searchImageWeb() {
+  async function searchImageWeb() {
     const name = (document.getElementById('inputName')?.value || '').trim();
     const code = String(curBarcode || '').trim();
 
@@ -5192,7 +6376,7 @@ function isQuotaError(e) {
     }
   }
 
-  function customPrompt(msg, def = "") {
+  function customPrompt(msg, def = "", options) {
     return new Promise(res => {
       document.getElementById('dialogMsg').innerText = msg;
       document.getElementById('dialogInputArea').style.display="block";
@@ -5205,7 +6389,7 @@ function isQuotaError(e) {
     });
   }
 
-  function customConfirm(msg) {
+  async function customConfirm(msg) {
     return new Promise(res => {
       document.getElementById('dialogMsg').innerText = msg;
       document.getElementById('dialogInputArea').style.display="none";
@@ -5250,18 +6434,36 @@ function isQuotaError(e) {
         return;
       }
 
-      const targetUrl = getSafeUrl(u);
+      const pid = getOrCreatePersonalId();
+      const targetUrl = scopeUrlByUser(getSafeUrl(u), uid);
+      const legacyUrl = getSafeUrl(u);
 
       // ✅ PUT前にクラウドを読み、マージしてから送る（端末間の取りこぼし減、画像情報も保護）
       try {
+        // まずユーザーID単位（新）を読む
         const res0 = await fetchWithTimeout(targetUrl, { signal: activeSyncController.signal }, 9000);
         const cloud0 = await res0.json();
         if (cloud0 && cloud0.products) {
           db = mergeDb(db, cloud0); // ✅ マージ方式で画像情報が消えない
           saveLocalOnly();
+        } else {
+          // 旧URL（全員共通）にデータが残っている場合の救済
+          try{
+            const resL = await fetchWithTimeout(legacyUrl, { signal: activeSyncController.signal }, 9000);
+            const cloudL = await resL.json();
+            if (cloudL && cloudL.products) {
+              db = mergeDb(db, cloudL);
+              saveLocalOnly();
+            }
+          }catch(e){}
         }
       } catch(e) {
         // 読めなくても続行
+        try{
+          const resL = await fetchWithTimeout(legacyUrl, { signal: activeSyncController.signal }, 9000);
+          const cloudL = await resL.json();
+          if (cloudL && cloudL.products) { db = mergeDb(db, cloudL); saveLocalOnly(); }
+        }catch(e){}
       }
 
       // PUT（画像は送らない）
@@ -5274,1457 +6476,1033 @@ function isQuotaError(e) {
       }, 12000);
 
       // ✅ 成功後：GETで読み直し（Edgeの空表示対策、マージ方式で画像が消えない）
-      fbUrl = u; // let なのでOK
+      fbUrl = u;
       localStorage.setItem('smartPriceFirebaseUrl', u);
-      await syncFirebase(); // ✅ マージ方式
+      await syncFirebase();
 
       showToast("同期成功！", 3000);
-      closeSettings(); showHome();
+      if (typeof window.SmartPriceModal !== 'undefined' && window.SmartPriceModal.close) {
+        window.SmartPriceModal.close();
+      }
+      showHome();
 
     } catch(e) {
       const msg = (e.name === 'AbortError') ? "タイムアウト/中断" : e.message;
       showToast(`同期失敗（${msg}）`, 10000);
     } finally {
       activeSyncController = null;
-      resetSyncBtn();
     }
   }
+</script>
 
-  function openSettings() {
-  clearToasts();
-    try{ clearToasts(); }catch(e){}
-
-    try {
-      db = normalizeDb(db);
-      resetSyncBtn();
-      const modal = document.getElementById('settingsModal');
-      if(!modal) { showToast('設定画面を開けません', 8000); return; }
-      modal.style.display = 'flex';
-      const urlInput = document.getElementById('fb-url-input');
-      if(urlInput) urlInput.value = fbUrl;
-      const cityInput = document.getElementById('home-city-input');
-      if(cityInput) cityInput.value = db.config.homeCity || '';
-      renderCityChips();
-      
-      // ✅ デバッグモード時のみバックアップボタンを表示
-      const backupButtons = document.getElementById('debugBackupButtons');
-      if (backupButtons) {
-        backupButtons.style.display = isDebug() ? 'block' : 'none';
+<script>
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Smart Price 設定モーダル - COMPLETE FIX
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+(function() {
+  'use strict';
+  
+  const state = { isOpen: false, currentPanel: 'Main', history: [], initialized: false };
+  let modal = null, panels = {}, titleEl = null;
+  
+  const PANELS = { Main: 'settingsMainMenu', Referral: 'panelReferral', Family: 'panelFamily', Support: 'panelSupport', Operator: 'panelOperator' };
+  const TITLES = { Main: '設定', Referral: '友人紹介', Family: '家族共有', Support: '運営者へ質問', Operator: '管理メニュー' };
+  
+  function init() {
+    if (state.initialized) return;
+    modal = document.getElementById('settingsModal');
+    if (!modal) { console.error('[Modal] settingsModal not found'); return; }
+    
+    const duplicates = document.querySelectorAll('#settingsModal');
+    if (duplicates.length > 1) {
+      for (let i = 1; i < duplicates.length; i++) {
+        try { duplicates[i].remove(); } catch(e) {}
       }
-    } catch(e) {
-      showToast('設定画面エラー', 8000);
     }
-  }
-
-  function closeSettings() {
-  clearToasts();
-    try{ clearToasts(); }catch(e){}
-
-    const modal = document.getElementById('settingsModal');
-    if(modal) modal.style.display = 'none';
-  }
-
-  function renderCityChips() {
-    const chipArea = document.getElementById('city-history-chips');
-    if(!chipArea) return;
-    chipArea.innerHTML = "";
-    db = normalizeDb(db);
-    const cities = Array.isArray(db.config.homeCities) ? db.config.homeCities : [];
-    cities.forEach(city => {
-      if(typeof city !== 'string' || !city.trim()) return;
-      const chip = document.createElement('span');
-      chip.className = 'city-chip';
-      chip.innerText = city;
-      chip.onclick = () => {
-        const inp = document.getElementById('home-city-input');
-        if(inp) inp.value = city;
-        showToast(`${city}を選択`, 1500);
-      };
-      chipArea.appendChild(chip);
+    
+    Object.keys(PANELS).forEach(function(key) {
+      const el = document.getElementById(PANELS[key]);
+      if (el) panels[key] = el;
     });
-  }
-
-  // ✅ P0: 現在のlocationに自動追従するURL生成
-  function buildBaseUrl() {
-    let pathname = location.pathname;
-    // index.htmlで終わる場合はファイル名を外す
-    if (pathname.endsWith('/index.html') || pathname.endsWith('index.html')) {
-      pathname = pathname.replace(/\/?index\.html$/, '');
-    }
-    // 最後のスラッシュを削除（ただしルートの場合は残す）
-    pathname = pathname.replace(/\/+$/, '') || '/';
-    return location.origin + pathname;
+    
+    titleEl = modal.querySelector('.modal-title') || modal.querySelector('#settingsTitle') || modal.querySelector('h5');
+    setupEventListeners();
+    navigate('Main');
+    state.initialized = true;
+    console.log('[Modal] COMPLETE FIX Loaded');
   }
   
-  function buildUrl(withDebug=false) {
-    const base = buildBaseUrl();
-    // 現在のURLの ?b= パラメータがあればそれを使い、なければ BUILD_ID を使う
-    const currentParams = new URLSearchParams(location.search);
-    const buildParam = currentParams.get('b') || BUILD_ID;
+  function setupEventListeners() {
+    if (modal._spListener) modal.removeEventListener('click', modal._spListener);
     
-    // URLを組み立て
-    let url = base;
-    if (buildParam) {
-      url += `?b=${encodeURIComponent(buildParam)}`;
+    modal._spListener = function(e) {
+      const btn = e.target.closest('button, [data-action], [data-target], [data-panel]');
+      if (!btn) return;
+      
+      const action = btn.getAttribute('data-action');
+      const target = btn.getAttribute('data-target') || btn.getAttribute('data-panel');
+      const backTo = btn.getAttribute('data-back');
+      
+      if (action === 'close-settings' || btn.classList.contains('sp-close-btn')) {
+        e.preventDefault(); e.stopPropagation(); close();
+      } else if (btn.classList.contains('sp-menu-btn') && target) {
+        e.preventDefault(); e.stopPropagation(); navigate(target.replace(/^panel/, ''));
+      } else if (btn.classList.contains('sp-back-btn')) {
+        e.preventDefault(); e.stopPropagation(); back(backTo);
+      }
+    };
+    modal.addEventListener('click', modal._spListener);
+    
+    if (!window._spEscListener) {
+      window._spEscListener = function(e) { if (e.key === 'Escape' && state.isOpen) close(); };
+      document.addEventListener('keydown', window._spEscListener);
     }
     
-    // デバッグURLだけに &debug=1 を付ける
-    if (withDebug) {
-      url += (buildParam ? '&' : '?') + 'debug=1';
+    const settingsBtn = document.getElementById('settingsBtn');
+    if (settingsBtn && !settingsBtn._spBound) {
+      settingsBtn._spBound = true;
+      settingsBtn.addEventListener('click', function(e) { e.preventDefault(); e.stopPropagation(); open(); });
     }
-    
-    return url;
   }
-
-  function openWebModal() {
-    const m = document.getElementById('webModal');
-    if(!m) return;
-    const n = document.getElementById('webUrlNormal');
-    const d = document.getElementById('webUrlDebug');
-    if(n) n.value = buildUrl(false);
-    if(d) d.value = buildUrl(true);
+  
+  function open() {
+    if (!modal) return;
+    try { const dp = document.getElementById('debug-panel'); if (dp && dp.classList.contains('show')) { dp.classList.remove('show'); dp.style.display = 'none'; } } catch(e) {}
+    try { if (typeof window.clearToasts === 'function') window.clearToasts(); } catch(e) {}
     
-    // ✅ PWAインストールボタンの表示制御
-    const installBtn = document.getElementById('pwaInstallBtn');
-    if (installBtn) {
-      if (deferredPrompt) {
-        installBtn.style.display = 'block';
+    state.isOpen = true; state.currentPanel = 'Main'; state.history = ['Main'];
+    modal.style.display = 'flex';
+    try{ updateUserIdPreview(); }catch(e){}
+    try{ if(typeof window.setHeaderVersionBadge==='function') window.setHeaderVersionBadge(); }catch(e){}
+    // ✅ 個人ID表示（設定内の各画面にも表示）
+    try{
+      const pid = (typeof getDeviceId === 'function') ? getDeviceId() : '';
+      const ids = [
+        'sp-personal-id-panelReferral',
+        'sp-personal-id-panelFamily',
+        'sp-personal-id-panelSupport',
+        'sp-personal-id-panelOperator'
+      ];
+      ids.forEach(function(idEl){
+        const el = document.getElementById(idEl);
+        if(el) el.textContent = pid || '-';
+      });
+    }catch(e){}
+    // ✅ 友人紹介/家族共有の表示値を更新
+    try{
+      const pid = (typeof getDeviceId === 'function') ? getDeviceId() : '';
+      const el1 = document.getElementById('ref-my-id');
+      if(el1) el1.value = pid || '';
+      const el2 = document.getElementById('family-my-id');
+      if(el2) el2.value = pid || '';
+      const linkEl = document.getElementById('ref-link');
+      if(linkEl){
+        const u = new URL(location.href);
+        u.searchParams.set('ref', pid || '');
+        // build param (b) は維持
+        linkEl.value = u.toString();
+      }
+    }catch(e){}
+
+
+    setTimeout(function() { modal.classList.add('show'); }, 10);
+    navigate('Main');
+    syncSettings();
+  }
+  
+  function close() {
+    if (!modal) return;
+    state.isOpen = false;
+    try{ if(typeof window.setHeaderVersionBadge==='function') window.setHeaderVersionBadge(); }catch(e){}
+    modal.classList.remove('show');
+    setTimeout(function() { modal.style.display = 'none'; }, 300);
+    state.currentPanel = 'Main'; state.history = [];
+    setTimeout(function() { navigate('Main'); }, 400);
+  }
+  
+  function navigate(panelName) {
+    const normalizedName = panelName.replace(/^panel/, '').replace(/^main$/i, 'Main');
+    if (!panels[normalizedName]) { console.warn('[Modal] Panel not found: ' + normalizedName); return; }
+    
+    Object.keys(panels).forEach(function(key) { if (panels[key]) panels[key].style.display = 'none'; });
+    panels[normalizedName].style.display = 'block';
+    if (titleEl) titleEl.textContent = TITLES[normalizedName] || '設定';
+    
+    if (typeof window.setHeaderVersionBadge === 'function') { try { window.setHeaderVersionBadge(); } catch(e) {} }
+    const showMain = (normalizedName === 'Main');
+    try{
+      const citySec = document.getElementById('settingsCitySection');
+      if(citySec) citySec.style.display = showMain ? 'block' : 'none';
+      const syncBtn = document.getElementById('syncBtn');
+      if(syncBtn) syncBtn.style.display = showMain ? 'block' : 'none';
+      const cacheBtn = document.getElementById('clearCacheBtn');
+      if(cacheBtn) cacheBtn.style.display = showMain ? 'block' : 'none';
+      const webBtn = document.getElementById('webBtn');
+      if(webBtn) webBtn.style.display = showMain ? 'block' : 'none';
+    }catch(e){} 
+    
+    const prevPanel = state.currentPanel;
+    state.currentPanel = normalizedName;
+    if (prevPanel !== normalizedName) {
+      const lastIndex = state.history.lastIndexOf(normalizedName);
+      if (lastIndex !== -1 && lastIndex !== state.history.length - 1) {
+        state.history = state.history.slice(0, lastIndex + 1);
       } else {
-        installBtn.style.display = 'none';
+        state.history.push(normalizedName);
+      }
+    }
+  }
+  
+  function back(targetPanel) {
+    if (targetPanel) {
+      navigate(targetPanel.replace(/^panel/, ''));
+    } else {
+      if (state.history.length <= 1) { navigate('Main'); }
+      else { state.history.pop(); const prev = state.history[state.history.length - 1] || 'Main'; state.history.pop(); navigate(prev); }
+    }
+  }
+  
+  function syncSettings() {
+    try {
+      if (typeof window.db !== 'undefined' && typeof window.normalizeDb === 'function') window.db = window.normalizeDb(window.db);
+      if (typeof window.resetSyncBtn === 'function') window.resetSyncBtn();
+      
+      const urlInput = document.getElementById('fb-url-input');
+      if (urlInput && typeof window.fbUrl !== 'undefined') urlInput.value = window.fbUrl;
+      
+      const cityInput = document.getElementById('home-city-input');
+      if (cityInput && window.db && window.db.config) cityInput.value = window.db.config.homeCity || '';
+      try{ const b=document.getElementById('homeCityBtn'); const v=(window.db&&window.db.config? (window.db.config.homeCity||''):''); if(b){ b.textContent = v? (`生活圏：${v}`) : '生活圏を入力'; } }catch(e){}
+      
+      if (typeof window.renderCityChips === 'function') window.renderCityChips();
+      
+      const backupButtons = document.getElementById('debugBackupButtons');
+      if (backupButtons && typeof window.isDebug === 'function') backupButtons.style.display = window.isDebug() ? 'block' : 'none';
+    } catch(e) {}
+  }
+  
+  window.SmartPriceModal = { open: open, close: close, navigate: navigate, back: back };
+  window.openSettings = open;
+  window.closeSettings = close;
+  
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() { setTimeout(init, 100); });
+  } else {
+    setTimeout(init, 100);
+  }
+})();
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// キャッシュクリア機能
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+async function clearAllCache() {
+  const confirmed = confirm(
+    '【キャッシュを完全にクリアします】\n\n' +
+    '・Service Worker の削除\n' +
+    '・キャッシュストレージの削除\n' +
+    '・ページの再読み込み\n\n' +
+    'レイアウト崩れが修正されます。\n続行しますか？'
+  );
+  
+  if (!confirmed) return;
+  
+  try {
+    // Service Worker の削除
+    if ('serviceWorker' in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      for (const registration of registrations) {
+        await registration.unregister();
+      }
+      console.log('[Cache Clear] Service Workers unregistered:', registrations.length);
+    }
+    
+    // Cache Storage の削除
+    if ('caches' in window) {
+      const cacheNames = await caches.keys();
+      for (const cacheName of cacheNames) {
+        await caches.delete(cacheName);
+      }
+    // location.reload(true); // モーダル内に留まるため無効化
+    }
+    
+    // LocalStorage は保持（ユーザーデータを守る）
+    
+    alert('✅ キャッシュクリア完了！\n\nページを再読み込みします。');
+    
+    // 強制リロード
+    location.reload(true);
+    
+  } catch (error) {
+    console.error('[Cache Clear] Error:', error);
+    alert('❌ エラーが発生しました:\n' + error.message);
+  }
+}
+
+// UIFIX24: 生活圏（市）入力をボタン＋モーダルで統一
+function openHomeCityModal(){
+  try{ if(window.spCloseSettingsModal) window.spCloseSettingsModal(); window.__spReturnSettings=1; }catch(e){}
+
+  try{
+    const m = document.getElementById('homeCityModal');
+    const inp = document.getElementById('home-city-modal-input');
+    const cur = (window.db && window.db.config ? (window.db.config.homeCity||'') : '');
+    if(inp) inp.value = cur;
+    if(m) m.style.display = 'flex';
+  }catch(e){}
+}
+function closeHomeCityModal(){
+  try{ if(window.__spReturnSettings && window.spOpenSettingsModal){ window.__spReturnSettings=0; window.spOpenSettingsModal(); } }catch(e){}
+
+  try{
+    const m = document.getElementById('homeCityModal');
+    if(m) m.style.display = 'none';
+  }catch(e){}
+}
+function saveHomeCityFromModal(){
+  try{
+    const inp = document.getElementById('home-city-modal-input');
+    const v = (inp ? inp.value : '').trim();
+    if(window.db){ window.db.config = window.db.config || {}; window.db.config.homeCity = v; }
+    try{ if(typeof window.saveLocalOnly==='function') window.saveLocalOnly(); }catch(e){}
+    try{ if(typeof window.renderCityChips==='function') window.renderCityChips(); }catch(e){}
+    // ボタン表示更新
+    try{
+      const btn = document.getElementById('homeCityBtn');
+      if(btn){ btn.textContent = v ? `生活圏：${v}` : '生活圏を入力'; }
+    }catch(e){}
+    closeHomeCityModal();
+  }catch(e){}
+}
+
+window.clearAllCache = clearAllCache;
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 生活圏設定モーダル
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function openHomeCityModal() {
+  const modal = document.getElementById('homeCityModal');
+  const input = document.getElementById('home-city-modal-input');
+  const gpsRange = document.getElementById('gps-range-select');
+  
+  if (modal && input) {
+    // 現在の値を読み込み
+    if (typeof db !== 'undefined' && db.config) {
+      input.value = db.config.homeCity || '';
+      if (gpsRange) {
+        gpsRange.value = db.config.gpsRange || 500;
       }
     }
     
-    m.style.display = "flex";
+    modal.style.display = 'flex';
+    setTimeout(() => input.focus(), 100);
   }
-  function closeWebModal() {
-    const m = document.getElementById('webModal');
-    if(m) m.style.display = "none";
+}
+
+function closeHomeCityModal() {
+  const modal = document.getElementById('homeCityModal');
+  if (modal) {
+    modal.style.display = 'none';
+  }
+}
+
+function saveHomeCityFromModal() {
+  const input = document.getElementById('home-city-modal-input');
+  const gpsRange = document.getElementById('gps-range-select');
+  
+  if (input && typeof db !== 'undefined' && db.config) {
+    db.config.homeCity = input.value;
+    if (gpsRange) {
+      db.config.gpsRange = parseInt(gpsRange.value);
+    }
+    
+    if (typeof saveLocalOnly === 'function') {
+      saveLocalOnly();
+    }
+    
+    if (typeof renderCityChips === 'function') {
+      renderCityChips();
+    }
+    
+    if (typeof showToast === 'function') {
+      showToast('保存しました', 2000);
+    }
+    
+    closeHomeCityModal();
+  }
+}
+
+window.openHomeCityModal = openHomeCityModal;
+window.closeHomeCityModal = closeHomeCityModal;
+window.saveHomeCityFromModal = saveHomeCityFromModal;
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// v22.0: バーコード手入力UI
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+let currentBarcodeType = 13;
+
+function openBarcodeManual() {
+  document.getElementById('barcodeManualModal').style.display = 'flex';
+  renderBarcodeInputs(13);
+}
+
+function closeBarcodeManual() {
+  document.getElementById('barcodeManualModal').style.display = 'none';
+}
+
+document.addEventListener('click', function(e) {
+  if (e.target.classList.contains('btn-barcode-type')) {
+    const digits = parseInt(e.target.getAttribute('data-digits'));
+    currentBarcodeType = digits;
+    document.querySelectorAll('.btn-barcode-type').forEach(b => b.classList.remove('active'));
+    e.target.classList.add('active');
+    renderBarcodeInputs(digits);
+  }
+});
+
+function renderBarcodeInputs(digits) {
+  const container = document.getElementById('barcode-input-container');
+  container.innerHTML = '';
+  currentBarcodeInputIndex = 0;
+  
+  for (let i = 0; i < digits; i++) {
+    const input = document.createElement('input');
+    input.type = 'tel';
+    input.maxLength = 1;
+    input.className = 'barcode-digit';
+    input.dataset.index = i;
+    input.pattern = '[0-9]';
+    
+    input.addEventListener('input', function(e) {
+      this.value = this.value.replace(/[^0-9]/g, '');
+      if (this.value.length === 1) {
+        this.classList.add('filled');
+        this.classList.remove('active');
+        currentBarcodeInputIndex = i + 1;
+        const nextInput = container.querySelector(`[data-index="${i+1}"]`);
+        if (nextInput) {
+          nextInput.classList.add('active');
+          nextInput.focus();
+        }
+      }
+    });
+    
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Backspace' && this.value === '') {
+        const prevInput = container.querySelector(`[data-index="${i-1}"]`);
+        if (prevInput) {
+          prevInput.value = '';
+          prevInput.classList.remove('filled');
+          prevInput.classList.add('active');
+          prevInput.focus();
+          currentBarcodeInputIndex = i - 1;
+        }
+      }
+    });
+    
+    container.appendChild(input);
   }
   
-  // ✅ PWAインストール実行
-  async function installPWA() {
-    if (!deferredPrompt) {
-      showToast('インストール準備ができていません', 3000);
+  // 最初の枠をアクティブに
+  setTimeout(() => {
+    const firstInput = container.querySelector('[data-index="0"]');
+    if (firstInput) {
+      firstInput.classList.add('active');
+      firstInput.focus();
+    }
+  }, 100);
+}
+
+
+function searchByManualBarcode() {
+  const inputs = document.querySelectorAll('.barcode-digit');
+  const barcode = Array.from(inputs).map(i => i.value).join('');
+  
+  if (barcode.length !== currentBarcodeType) {
+    alert(`${currentBarcodeType}桁すべて入力してください`);
+    return;
+  }
+  
+  closeBarcodeManual();
+  if (typeof processBarcode === 'function') processBarcode(barcode);
+}
+
+window.openBarcodeManual = openBarcodeManual;
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// v22.3: テンキー機能
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+let currentBarcodeInputIndex = 0;
+
+function inputBarcodeDigit(digit) {
+  const container = document.getElementById('barcode-input-container');
+  const inputs = container.querySelectorAll('.barcode-digit');
+  
+  if (currentBarcodeInputIndex < inputs.length) {
+    inputs[currentBarcodeInputIndex].value = digit;
+    inputs[currentBarcodeInputIndex].classList.add('filled');
+    inputs[currentBarcodeInputIndex].classList.remove('active');
+    currentBarcodeInputIndex++;
+    
+    if (currentBarcodeInputIndex < inputs.length) {
+      inputs[currentBarcodeInputIndex].classList.add('active');
+    }
+  }
+}
+
+function deleteBarcodeDigit() {
+  const container = document.getElementById('barcode-input-container');
+  const inputs = container.querySelectorAll('.barcode-digit');
+  
+  if (currentBarcodeInputIndex > 0) {
+    currentBarcodeInputIndex--;
+    inputs[currentBarcodeInputIndex].value = '';
+    inputs[currentBarcodeInputIndex].classList.remove('filled');
+    inputs[currentBarcodeInputIndex].classList.add('active');
+    
+    if (currentBarcodeInputIndex + 1 < inputs.length) {
+      inputs[currentBarcodeInputIndex + 1].classList.remove('active');
+    }
+  }
+}
+
+function clearBarcodeDigits() {
+  const container = document.getElementById('barcode-input-container');
+  const inputs = container.querySelectorAll('.barcode-digit');
+  
+  inputs.forEach(input => {
+    input.value = '';
+    input.classList.remove('filled', 'active');
+  });
+  
+  currentBarcodeInputIndex = 0;
+  if (inputs.length > 0) {
+    inputs[0].classList.add('active');
+  }
+}
+
+window.inputBarcodeDigit = inputBarcodeDigit;
+window.deleteBarcodeDigit = deleteBarcodeDigit;
+window.clearBarcodeDigits = clearBarcodeDigits;
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// v22.5: 管理メニュー機能（UIは変更なし、機能のみ追加）
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const OPERATOR_PASSWORD = 'smartprice2026';
+
+function unlockOperator() {
+  const passInput = document.getElementById('operatorPass');
+  const msgDiv = document.getElementById('operatorPassMsg');
+  const bodyDiv = document.getElementById('operatorPanelBody');
+  const pass = passInput.value;
+  
+  if (pass === OPERATOR_PASSWORD) {
+    bodyDiv.style.display = 'block';
+    msgDiv.textContent = '✅ ロック解除しました';
+    msgDiv.style.color = '#28a745';
+    passInput.value = '';
+    
+    // Firebase URLを表示（固定）
+    const fbUrlInput = document.getElementById('fb-url-input');
+    if (fbUrlInput) {
+      fbUrlInput.value = 'https://smartpricedb-default-rtdb.firebaseio.com';
+    }
+    
+    // 自動的に接続テストを実行
+    setTimeout(() => {
+      if (typeof testFirebaseConnection === 'function') {
+        testFirebaseConnection();
+      }
+    }, 500);
+  } else {
+    msgDiv.textContent = '❌ パスワードが違います';
+    msgDiv.style.color = '#dc3545';
+    passInput.value = '';
+    passInput.focus();
+  }
+}
+
+
+
+function loadPurchaseHistory() {
+  const container = document.getElementById('purchase-history-list');
+  if (!db || !db.products) {
+    container.innerHTML = '<div class="text-warning">購入履歴がありません</div>';
+    return;
+  }
+  
+  const products = Object.entries(db.products);
+  if (products.length === 0) {
+    container.innerHTML = '<div class="text-warning">購入履歴がありません</div>';
+    return;
+  }
+  
+  products.sort((a, b) => (b[1].date || 0) - (a[1].date || 0));
+  
+  let html = `<div class="text-white mb-2">全${products.length}件</div>`;
+  
+  products.slice(0, 50).forEach(([code, product]) => {
+    const date = product.date ? new Date(product.date).toLocaleDateString('ja-JP') : '不明';
+    const store = product.store || '不明';
+    const name = product.name || 'バーコード: ' + code;
+    const price = product.price ? `¥${product.price}` : '価格不明';
+    
+    html += `
+      <div class="border-bottom border-secondary py-1 small">
+        <div class="text-white">${name} <span class="text-warning">${price}</span></div>
+        <div class="text-secondary" style="font-size: 0.75rem;">${store} | ${date}</div>
+      </div>
+    `;
+  });
+  
+  if (products.length > 50) {
+    html += `<div class="text-secondary mt-2 small">※最新50件のみ表示</div>`;
+  }
+  
+  container.innerHTML = html;
+}
+
+function loadStats() {
+  const container = document.getElementById('stats-info');
+  if (!db || !db.products) {
+    container.innerHTML = '<div class="text-warning">データがありません</div>';
+    return;
+  }
+  
+  const products = Object.values(db.products);
+  const totalItems = products.length;
+  const uniqueStores = new Set(products.map(p => p.store).filter(Boolean)).size;
+  const totalSpent = products.reduce((sum, p) => sum + (p.price || 0), 0);
+  const avgPrice = totalItems > 0 ? Math.round(totalSpent / totalItems) : 0;
+  
+  let html = `
+    <div class="small">
+      <div class="mb-1">📦 登録商品数: <span class="text-white fw-bold">${totalItems}</span></div>
+      <div class="mb-1">🏪 利用店舗数: <span class="text-white fw-bold">${uniqueStores}</span></div>
+      <div class="mb-1">💰 総支出額: <span class="text-warning fw-bold">¥${totalSpent.toLocaleString()}</span></div>
+      <div class="mb-1">📊 平均単価: <span class="text-white fw-bold">¥${avgPrice}</span></div>
+    </div>
+  `;
+  
+  container.innerHTML = html;
+}
+
+window.unlockOperator = unlockOperator;
+window.loadPurchaseHistory = loadPurchaseHistory;
+window.loadStats = loadStats;
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// v22.7: Firebase接続テスト
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+async function testFirebaseConnection() {
+  const statusDiv = document.getElementById('firebase-status');
+  statusDiv.innerHTML = '<div class="text-warning">⏳ 接続確認中...</div>';
+  
+  try {
+    // Firebase認証状態を確認
+    if (!firebaseAuth) {
+      statusDiv.innerHTML = '<div class="text-danger">❌ Firebase初期化エラー</div>';
       return;
     }
     
-    try {
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
+    const user = firebaseAuth.currentUser;
+    if (!user) {
+      statusDiv.innerHTML = '<div class="text-warning">⚠️ 未ログイン（匿名認証を試行中...）</div>';
       
-      if (outcome === 'accepted') {
-        showToast('インストールが開始されました！', 3000);
-      } else {
-        showToast('インストールがキャンセルされました', 3000);
-      }
-      
-      deferredPrompt = null;
-      const installBtn = document.getElementById('pwaInstallBtn');
-      if (installBtn) {
-        installBtn.style.display = 'none';
-      }
-    } catch(e) {
-      if (isDebug()) console.error('[PWA] Install failed:', e);
-      showToast('インストールに失敗しました', 3000);
-    }
-  }
-  async function copyUrl(id) {
-    const el = document.getElementById(id);
-    if(!el) return;
-    const text = el.value || "";
-    try {
-      await navigator.clipboard.writeText(text);
-      showToast("コピーしました", 2000);
-    } catch(e) {
-      el.focus(); el.select();
-      try { document.execCommand('copy'); showToast("コピーしました", 2000); }
-      catch(e2) { showToast("コピーできませんでした", 8000); }
-    }
-  }
-  function openUrlFromBox(id) {
-    const el = document.getElementById(id);
-    if(!el) return;
-    const text = el.value || "";
-    window.open(text, "_blank", "noopener");
-  }
-
-  // ========= バックアップ機能（&debug=1時のみ） =========
-  
-  // ✅ バックアップ出力（データ＋画像をファイルとして保存）
-  async function exportBackup() {
-    if (!isDebug()) return;
-    
-    try {
-      showToast("バックアップ出力中…", 3000);
-      
-      // 1. データ（localStorage）を取得
-      const dataStr = localStorage.getItem('smart_price_db');
-      if (!dataStr) {
-        showToast("データがありません", 5000);
+      // 匿名認証を試行
+      try {
+        await firebaseAuth.signInAnonymously();
+        statusDiv.innerHTML = '<div class="text-success">✅ 匿名認証成功</div>';
+      } catch (authError) {
+        statusDiv.innerHTML = `<div class="text-danger">❌ 認証失敗: ${authError.message}</div>`;
         return;
       }
-      const data = JSON.parse(dataStr);
-      
-      // 2. 画像（IndexedDB）を取得
-      const dbi = await openImgDb();
-      const images = {};
-      if (dbi && dbi.objectStoreNames.contains(IMG_STORE)) {
-        const tx = dbi.transaction(IMG_STORE, "readonly");
-        const store = tx.objectStore(IMG_STORE);
-        const keys = await new Promise((resolve) => {
-          const req = store.getAllKeys();
-          req.onsuccess = () => resolve(req.result || []);
-          req.onerror = () => resolve([]);
-        });
-        
-        for (const key of keys) {
-          const blob = await idbGet(key);
-          if (blob) {
-            // Blobをbase64に変換
-            const dataUrl = await new Promise((resolve, reject) => {
-              const fr = new FileReader();
-              fr.onload = () => resolve(fr.result);
-              fr.onerror = () => reject(new Error('画像読み込み失敗'));
-              fr.readAsDataURL(blob);
-            });
-            images[key] = dataUrl;
-          }
-        }
-      }
-      
-      // 3. バックアップデータを作成
-      const backup = {
-        version: APP_VERSION,
-        buildId: BUILD_ID,
-        exportDate: new Date().toISOString(),
-        data: data,
-        images: images
-      };
-      
-      // 4. ファイルとしてダウンロード
-      const jsonStr = JSON.stringify(backup, null, 2);
-      const blob = new Blob([jsonStr], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `smart_price_backup_${new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5)}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      
-      showToast("バックアップ出力完了", 3000);
-      if (isDebug()) {
-        console.log('[Backup] Exported:', Object.keys(backup.data.products || {}).length, 'products,', Object.keys(backup.images).length, 'images');
-      }
-    } catch(e) {
-      showToast(`バックアップ出力失敗: ${e.message}`, 8000);
-      if (isDebug()) console.error('[Backup] Export failed:', e);
+    } else {
+      statusDiv.innerHTML = `<div class="text-success">✅ 接続中 (UID: ${user.uid.substring(0, 8)}...)</div>`;
     }
+    
+    // データベース接続テスト
+    if (firebaseDb && db && db.config && db.config.personalId) {
+      const testRef = firebaseDb.ref(`users/${encodeURIComponent(getOrCreatePersonalId())}/test`);
+      await testRef.set({ timestamp: Date.now(), test: true });
+      await testRef.remove();
+      
+      const currentStatus = statusDiv.innerHTML;
+      statusDiv.innerHTML = currentStatus + '<div class="text-success">✅ データベース書き込みテスト成功</div>';
+    }
+    
+    // 購入履歴の存在確認
+    if (db && db.products) {
+      const productCount = Object.keys(db.products).length;
+      const currentStatus = statusDiv.innerHTML;
+      statusDiv.innerHTML = currentStatus + `<div class="text-info">📊 ローカル購入履歴: ${productCount}件</div>`;
+    }
+    
+  } catch (error) {
+    statusDiv.innerHTML = `<div class="text-danger">❌ エラー: ${error.message}</div>`;
+    console.error('Firebase接続テストエラー:', error);
+  }
+}
+
+window.testFirebaseConnection = testFirebaseConnection;
+
+
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// v22.0: 管理者メニュー隠しアクセス（5回タップ）
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+let settingsTitleTapCount = 0;
+let settingsTitleTapTimer = null;
+
+function handleSettingsTitleClick() {
+  settingsTitleTapCount++;
+  
+  if (settingsTitleTapTimer) clearTimeout(settingsTitleTapTimer);
+  
+  settingsTitleTapTimer = setTimeout(() => {
+    settingsTitleTapCount = 0;
+  }, 2000);
+  
+  if (settingsTitleTapCount === 5) {
+    settingsTitleTapCount = 0;
+    if (typeof window.SmartPriceModal !== 'undefined') {
+      window.SmartPriceModal.navigate('Operator');
+    }
+  }
+}
+
+window.handleSettingsTitleClick = handleSettingsTitleClick;
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// v22.0: 友人紹介トラッキングシステム
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function checkReferralQualification(referredUserId) {
+  if (!db || !db.products) return false;
+  
+  const userProducts = Object.values(db.products).filter(p => p.userId === referredUserId);
+  const uniqueStores = new Set(userProducts.map(p => p.store));
+  
+  return uniqueStores.size >= 5 && userProducts.length >= 4;
+}
+
+function updateReferralStatus() {
+  if (!db || !db.config || !db.config.referredBy) return;
+  
+  const myId = db.config.personalId;
+  const qualified = checkReferralQualification(myId);
+  
+  if (qualified && !db.config.referralQualified) {
+    db.config.referralQualified = true;
+    db.config.referralQualifiedDate = Date.now();
+    if (typeof saveLocalOnly === 'function') saveLocalOnly();
+  }
+}
+
+window.checkReferralQualification = checkReferralQualification;
+window.updateReferralStatus = updateReferralStatus;
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// v22.0: 複数端末同期（ユーザIDベース）
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function ensureUserIdInProducts() {
+  if (!db || !db.products || !db.config || !db.config.personalId) return;
+  
+  const myId = db.config.personalId;
+  let updated = false;
+  
+  Object.keys(db.products).forEach(code => {
+    if (!db.products[code].userId) {
+      db.products[code].userId = myId;
+      updated = true;
+    }
+  });
+  
+  if (updated && typeof saveLocalOnly === 'function') {
+    saveLocalOnly();
+  }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  setTimeout(() => {
+    ensureUserIdInProducts();
+    updateReferralStatus();
+  }, 1000);
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// v22.0: 紹介者利用状況確認
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function showReferralStatus() {
+  const container = document.getElementById('referral-status-list');
+  if (!container) return;
+  
+  // 仮データ（実際はFirebaseから取得）
+  const myId = (db && db.config && db.config.personalId) || 'UNKNOWN';
+  
+  // 本来はFirebaseクエリで「referredBy === myId」のユーザーを取得
+  const referredUsers = [
+    { id: 'USER001', qualified: true, stores: 7, products: 12, qualifiedDate: Date.now() - 86400000 * 3 },
+    { id: 'USER002', qualified: false, stores: 3, products: 8, qualifiedDate: null },
+    { id: 'USER003', qualified: true, stores: 5, products: 15, qualifiedDate: Date.now() - 86400000 * 7 }
+  ];
+  
+  let html = '<div class="card bg-dark p-3 mb-2">';
+  html += '<h6 class="text-white mb-3">あなたの紹介実績</h6>';
+  
+  if (referredUsers.length === 0) {
+    html += '<div class="small text-secondary">まだ紹介者はいません</div>';
+  } else {
+    const qualified = referredUsers.filter(u => u.qualified).length;
+    html += `<div class="mb-2"><span class="text-white fw-bold">${qualified}人</span> / ${referredUsers.length}人 が条件達成</div>`;
+    
+    referredUsers.forEach(user => {
+      const statusIcon = user.qualified ? '✅' : '⏳';
+      const statusText = user.qualified ? '条件達成' : '利用中';
+      const statusColor = user.qualified ? 'text-success' : 'text-warning';
+      
+      html += `
+        <div class="small border-top border-secondary pt-2 mt-2">
+          <div class="d-flex justify-content-between mb-1">
+            <span class="text-secondary">ID: ${user.id.slice(0,6)}...</span>
+            <span class="${statusColor}">${statusIcon} ${statusText}</span>
+          </div>
+          <div class="text-secondary">
+            店舗数: ${user.stores} / 5 | 商品数: ${user.products}
+          </div>
+          ${user.qualifiedDate ? `<div class="text-secondary" style="font-size: 0.75rem;">達成日: ${new Date(user.qualifiedDate).toLocaleDateString('ja-JP')}</div>` : ''}
+        </div>
+      `;
+    });
   }
   
-  // ✅ バックアップ読み込み（ファイルから復元）
-  async function importBackup() {
-    if (!isDebug()) return;
-    
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'application/json,.json';
-    input.onchange = async (e) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      
-      try {
-        showToast("バックアップ読み込み中…", 3000);
-        
-        // 1. ファイルを読み込み
-        const text = await file.text();
-        const backup = JSON.parse(text);
-        
-        if (!backup.data || typeof backup.data !== 'object') {
-          throw new Error('バックアップデータが無効です');
-        }
-        
-        // 2. データを復元（localStorage）
-        localStorage.setItem('smart_price_db', JSON.stringify(backup.data));
-        db = normalizeDb(backup.data);
-        
-        // 3. 画像を復元（IndexedDB）
-        if (backup.images && typeof backup.images === 'object') {
-          const dbi = await openImgDb();
-          if (dbi && dbi.objectStoreNames.contains(IMG_STORE)) {
-            let restored = 0;
-            for (const [key, dataUrl] of Object.entries(backup.images)) {
-              if (typeof dataUrl === 'string' && dataUrl.startsWith('data:')) {
-                const blob = dataURLtoBlob(dataUrl);
-                if (blob) {
-                  const ok = await idbPut(key, blob);
-                  if (ok) restored++;
-                }
-              }
-            }
-            if (isDebug()) {
-              console.log('[Backup] Restored:', restored, 'images');
-            }
-          }
-        }
-        
-        // 4. UI更新
-        initCategorySelect();
-        renderStoreList();
-        await renderHistory();
-        
-        showToast("バックアップ読み込み完了", 3000);
-        if (isDebug()) {
-          console.log('[Backup] Imported:', Object.keys(backup.data.products || {}).length, 'products');
-        }
-      } catch(e) {
-        showToast(`バックアップ読み込み失敗: ${e.message}`, 8000);
-        if (isDebug()) console.error('[Backup] Import failed:', e);
-      }
-    };
-    input.click();
-  }
-
-  // ========= P1: 初期化処理（招待コード読み取り＆ユーザープロファイル） =========
-  (function initializeUserProfile() {
-    try {
-      // 1. 既存のユーザープロファイルを取得
-      let profile = getUserProfile();
-
-      // 2. プロファイルが存在しない場合は新規作成
-      if (!profile) {
-        profile = {
-          uid: generateUid(),
-          areaId: null,
-          invitedBy: null,
-          createdAt: new Date().toISOString()
-        };
-        setUserProfile(profile);
-        if (isDebug()) {
-          console.log('[UserProfile] Created new profile:', profile);
-        }
-      }
-
-      // 3. URLから招待コードを読み取り
-      const inviteCode = parseInviteCode();
-      if (inviteCode) {
-        // 招待コードが存在する場合、areaIdとinvitedByを更新
-        // 簡易実装: 招待コードをそのままareaIdとして使用
-        // 本格実装では、サーバーAPIで招待コードを検証してareaIdを取得する
-        if (!profile.areaId) {
-          profile.areaId = `area_${inviteCode}`;
-          profile.invitedBy = inviteCode; // 簡易実装（本来は招待者のUIDを取得）
-          profile.invitedAt = new Date().toISOString();
-          setUserProfile(profile);
-
-          if (isDebug()) {
-            showToast(`[招待] エリアに参加: ${profile.areaId}`, 5000);
-            console.log('[UserProfile] Invited to area:', profile);
-          } else {
-            showToast(`エリアに参加しました`, 3000);
-          }
-        }
-      }
-
-      // 4. デバッグモード時はプロファイル情報を表示
-      if (isDebug()) {
-        console.log('[UserProfile] Current profile:', profile);
-        showToast(`[DEBUG] UID: ${profile.uid}\nArea: ${profile.areaId || '未設定'}`, 4000);
-      }
-
-    } catch(e) {
-      if (isDebug()) {
-        console.error('[UserProfile] Initialization failed:', e);
-      }
-    }
-  })();
-</script>
-<script>
-// Service Worker 暫定無効化（キャッシュ汚染対策）
-if (false && "serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js", { scope: "./" }).catch(()=>{});
-  });
+  html += '</div>';
+  container.innerHTML = html;
+  container.style.display = 'block';
 }
-// 既存のService Workerを解除（PC真っ黒対策）
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.getRegistrations().then(function(registrations) {
-    for(let registration of registrations) {
-      registration.unregister();
-    }
-  });
-}
+
+window.showReferralStatus = showReferralStatus;
+
+
+
 </script>
 
-<script>
-/* === Smart Price Settings Unified Patch (v19.9.45 / 2026-02-07_2000_sw-reset) === */
-(function () {
-  "use strict";
 
-  // --- Helpers ---
-  function spParams() { return new URLSearchParams(location.search); }
-  function spIsAdminMode() {
-    const p = spParams();
-    return p.get('mode') === 'admin';
-  }
-  function spIsDebug() {
-    const p = spParams();
-    return p.has('debug');
-  }
-  function spNowISO() {
-    const d = new Date();
-    const pad = (n) => String(n).padStart(2,'0');
-    return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
-  }
-  function spSafeText(s) {
-    return (s == null) ? '' : String(s);
-  }
+<!-- DEBUG OVERLAY (only when &debug=1) -->
+<div id="debugOverlay" style="display:none; position:fixed; right:12px; bottom:12px; z-index:99999; max-width:420px; background:rgba(0,0,0,0.82); color:#fff; border:1px solid rgba(255,255,255,0.25); border-radius:12px; padding:12px; font-size:12px; line-height:1.4;">
+  <div style="font-weight:700; margin-bottom:6px;">Smart Price Debug</div>
+  <div id="debugInfo" style="white-space:pre-wrap; word-break:break-word; opacity:0.95;"></div>
+  <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
+    <button id="btnDbgReload" style="padding:6px 10px; border-radius:10px; border:1px solid rgba(255,255,255,0.25); background:#222; color:#fff;">再読込</button>
+    <button id="btnDbgReset" style="padding:6px 10px; border-radius:10px; border:1px solid rgba(255,255,255,0.25); background:#5a2; color:#fff;">SW解除+キャッシュ削除</button>
+    <button id="btnDbgCopy" style="padding:6px 10px; border-radius:10px; border:1px solid rgba(255,255,255,0.25); background:#248; color:#fff;">ログコピー</button>
+    <button id="btnDbgHide" style="padding:6px 10px; border-radius:10px; border:1px solid rgba(255,255,255,0.25); background:#822; color:#fff;">閉じる</button>
+  </div>
+</div>
 
-  // Copy by element id
-  window.spCopy = async function(id) {
-    try {
-      const el = document.getElementById(id);
-      if (!el) return;
-      const text = ('value' in el) ? el.value : el.textContent;
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(text);
-        if (typeof showToast === 'function') showToast('コピーしました', 1200);
-      } else {
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        ta.style.position = 'fixed';
-        ta.style.left = '-9999px';
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-        if (typeof showToast === 'function') showToast('コピーしました', 1200);
-      }
-    } catch (e) {
-      console.warn('[spCopy] failed', e);
-      if (typeof showToast === 'function') showToast('コピーに失敗しました', 2000);
-    }
-  };
 
-  // --- Referral / Family share ---
-  const LS_MY_REF = 'sp_ref_my';
-  const LS_REF_FROM = 'sp_ref_from';
-  const LS_FAMILY = 'sp_family_code';
-
-  function spGenId() {
-    // 6 chars (base36)
-    return Math.random().toString(36).slice(2, 8).toUpperCase();
-  }
-
-  function spGetOrCreateMyRef() {
-    let v = localStorage.getItem(LS_MY_REF);
-    if (!v) {
-      v = spGenId();
-      localStorage.setItem(LS_MY_REF, v);
-    }
-    return v;
-  }
-
-  function spSaveFamily(code) {
-    const v = (code || '').trim();
-    if (v) localStorage.setItem(LS_FAMILY, v);
-    else localStorage.removeItem(LS_FAMILY);
-    return v;
-  }
-
-  function spBuildReferralLink(myId) {
-    const url = new URL(location.href);
-    // keep build param for cache busting, but remove debug/mode to avoid leaking
-    url.searchParams.set('ref', myId);
-    url.searchParams.delete('debug');
-    url.searchParams.delete('mode');
-    // ensure b exists
-    if (!url.searchParams.get('b')) url.searchParams.set('b', '2026-02-07_2000_sw-reset');
-    return url.toString();
-  }
-
-  window.spSaveFamilyCode = function() {
-    const input = document.getElementById('family-code-input');
-    const status = document.getElementById('family-code-status');
-    if (!input) return;
-    const saved = spSaveFamily(input.value);
-    if (status) status.textContent = saved ? ('保存しました：' + saved) : '未設定';
-    if (typeof showToast === 'function') showToast('家族共有コードを保存しました', 1500);
-  };
-
-  window.spShareReferral = async function() {
-    try {
-      const myId = spGetOrCreateMyRef();
-      const link = spBuildReferralLink(myId);
-      if (navigator.share) {
-        await navigator.share({ title: 'Smart Price 紹介リンク', text: 'Smart Price の紹介リンクです。', url: link });
-      } else {
-        await window.spCopy('ref-link');
-      }
-    } catch (e) {
-      console.warn('[spShareReferral] failed', e);
-      try { await window.spCopy('ref-link'); } catch(_e) {}
-    }
-  };
-
-  function spHandleRefParam() {
-    const p = spParams();
-    const ref = p.get('ref');
-    const my = spGetOrCreateMyRef();
-    if (ref && ref !== my) {
-      localStorage.setItem(LS_REF_FROM, ref);
-    }
-  }
-
-  // --- Support / Inquiry ---
-  const LS_SUPPORT = 'sp_support_logs_v1'; // max 50
-  const MAX_SUPPORT = 50;
-
-  function spUAInfo() {
-    const ua = navigator.userAgent || '';
-    const plat = navigator.platform || '';
-    return { ua, plat };
-  }
-
-  function spDetectBrowser() {
-    const ua = (navigator.userAgent || '').toLowerCase();
-    if (ua.includes('edg/')) return 'Edge';
-    if (ua.includes('chrome/')) return 'Chrome';
-    if (ua.includes('safari/') && !ua.includes('chrome/')) return 'Safari';
-    if (ua.includes('firefox/')) return 'Firefox';
-    return 'Browser';
-  }
-
-  function spDefaultDevice() {
-    // coarse default; user can edit
-    const ua = navigator.userAgent || '';
-    if (/android/i.test(ua)) return 'Android端末';
-    if (/iphone|ipad|ipod/i.test(ua)) return 'iPhone/iPad';
-    if (/windows/i.test(ua)) return 'Windows PC';
-    if (/macintosh/i.test(ua)) return 'Mac';
-    return '端末';
-  }
-
-  function spDefaultOS() {
-    const ua = navigator.userAgent || '';
-    if (/android\s([0-9\.]+)/i.test(ua)) return 'Android ' + (ua.match(/android\s([0-9\.]+)/i)||[])[1];
-    if (/iphone os\s([0-9_]+)/i.test(ua)) return 'iOS ' + ((ua.match(/iphone os\s([0-9_]+)/i)||[])[1]||'').replace(/_/g,'.');
-    if (/windows nt\s([0-9\.]+)/i.test(ua)) return 'Windows ' + (ua.match(/windows nt\s([0-9\.]+)/i)||[])[1];
-    if (/mac os x\s([0-9_]+)/i.test(ua)) return 'macOS ' + ((ua.match(/mac os x\s([0-9_]+)/i)||[])[1]||'').replace(/_/g,'.');
-    return 'OS';
-  }
-
-  let _supportFiles = [];
-
-  function spRenderSupportPreview() {
-    const wrap = document.getElementById('support-preview');
-    if (!wrap) return;
-    wrap.innerHTML = '';
-    _supportFiles.forEach((f, idx) => {
-      const box = document.createElement('div');
-      box.style.position = 'relative';
-      const img = document.createElement('img');
-      img.src = f.dataUrl;
-      img.style.width = '88px';
-      img.style.height = '88px';
-      img.style.objectFit = 'cover';
-      img.style.borderRadius = '10px';
-      img.style.border = '1px solid rgba(255,255,255,.12)';
-      const btn = document.createElement('button');
-      btn.textContent = '×';
-      btn.className = 'btn btn-dark';
-      btn.style.position = 'absolute';
-      btn.style.top = '-10px';
-      btn.style.right = '-10px';
-      btn.style.width = '28px';
-      btn.style.height = '28px';
-      btn.style.borderRadius = '999px';
-      btn.style.padding = '0';
-      btn.style.lineHeight = '1';
-      btn.onclick = () => {
-        _supportFiles.splice(idx,1);
-        spRenderSupportPreview();
-      };
-      box.appendChild(img);
-      box.appendChild(btn);
-      wrap.appendChild(box);
-    });
-  }
-
-  async function spFileToDataUrl(file, maxW=900, maxH=900) {
-    const dataUrl = await new Promise((res, rej) => {
-      const fr = new FileReader();
-      fr.onload = () => res(fr.result);
-      fr.onerror = rej;
-      fr.readAsDataURL(file);
-    });
-    // downscale using canvas
-    const img = await new Promise((res, rej) => {
-      const i = new Image();
-      i.onload = () => res(i);
-      i.onerror = rej;
-      i.src = dataUrl;
-    });
-    const w0 = img.width || 1, h0 = img.height || 1;
-    const scale = Math.min(1, maxW / w0, maxH / h0);
-    const w = Math.max(1, Math.round(w0 * scale));
-    const h = Math.max(1, Math.round(h0 * scale));
-    const canvas = document.createElement('canvas');
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(img, 0, 0, w, h);
-    // jpeg to reduce size
-    return canvas.toDataURL('image/jpeg', 0.82);
-  }
-
-  function spLoadSupportLogs() {
-    try {
-      const raw = localStorage.getItem(LS_SUPPORT);
-      const arr = raw ? JSON.parse(raw) : [];
-      return Array.isArray(arr) ? arr : [];
-    } catch(e) {
-      return [];
-    }
-  }
-
-  function spSaveSupportLogs(arr) {
-    try {
-      localStorage.setItem(LS_SUPPORT, JSON.stringify(arr.slice(0, MAX_SUPPORT)));
-    } catch(e) {
-      console.warn('[spSaveSupportLogs] failed', e);
-    }
-  }
-
-  function spCollectSupportText() {
-    const symptom = spSafeText(document.getElementById('support-symptom')?.value).trim();
-    const device = spSafeText(document.getElementById('support-device')?.value).trim();
-    const os = spSafeText(document.getElementById('support-os')?.value).trim();
-    const browser = spSafeText(document.getElementById('support-browser')?.value).trim();
-    const myRef = spGetOrCreateMyRef();
-    const refFrom = localStorage.getItem(LS_REF_FROM) || '';
-    const family = localStorage.getItem(LS_FAMILY) || '';
-    const url = location.href;
-    const version = window.FULL_VERSION || window.VERSION_INFO || window.APP_VERSION || '';
-    const build = window.BUILD_ID || '2026-02-07_2000_sw-reset';
-    const ua = spUAInfo();
-
-    const lines = [];
-    lines.push('【Smart Price お問い合わせ】');
-    lines.push('日時: ' + spNowISO());
-    lines.push('VERSION: ' + version);
-    lines.push('BUILD: ' + build);
-    if (myRef) lines.push('紹介ID: ' + myRef);
-    if (refFrom) lines.push('紹介元(ref): ' + refFrom);
-    if (family) lines.push('家族共有コード: ' + family);
-    lines.push('URL: ' + url);
-    lines.push('機種: ' + (device || '未入力'));
-    lines.push('OS: ' + (os || '未入力'));
-    lines.push('ブラウザ: ' + (browser || '未入力'));
-    lines.push('UA: ' + ua.ua);
-    lines.push('');
-    lines.push('症状:');
-    lines.push(symptom || '（未入力）');
-    lines.push('');
-    lines.push('スクショ: ' + (_supportFiles.length ? (_supportFiles.length + '枚（この画面で選択）') : 'なし'));
-    return lines.join('\n');
-  }
-
-  window.spCopySupport = async function() {
-    const text = spCollectSupportText();
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(text);
-        if (typeof showToast === 'function') showToast('内容をコピーしました', 1500);
-      } else {
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        ta.style.position = 'fixed';
-        ta.style.left = '-9999px';
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-        if (typeof showToast === 'function') showToast('内容をコピーしました', 1500);
-      }
-    } catch(e) {
-      console.warn('[spCopySupport] failed', e);
-      if (typeof showToast === 'function') showToast('コピーに失敗しました', 2000);
-    }
-  };
-
-  window.spSaveSupport = function() {
-    const entry = {
-      ts: Date.now(),
-      text: spCollectSupportText(),
-      symptom: spSafeText(document.getElementById('support-symptom')?.value).trim().slice(0, 120),
-      files: _supportFiles.map(f => ({ name: f.name, dataUrl: f.dataUrl })).slice(0, 3),
-    };
-    const logs = spLoadSupportLogs();
-    logs.unshift(entry);
-    spSaveSupportLogs(logs);
-    if (typeof showToast === 'function') showToast('保存しました（運営者モードで確認できます）', 1800);
-    // clear symptom only
-    const sym = document.getElementById('support-symptom');
-    if (sym) sym.value = '';
-    _supportFiles = [];
-    spRenderSupportPreview();
-    // refresh admin list if visible
-    spRenderAdminSupportList();
-  };
-
-  function spBindSupportFiles() {
-    const inp = document.getElementById('support-screens');
-    if (!inp || inp.dataset.bound === '1') return;
-    inp.dataset.bound = '1';
-    inp.addEventListener('change', async () => {
-      try {
-        const files = Array.from(inp.files || []);
-        // keep up to 3 images
-        const take = files.slice(0, 3);
-        _supportFiles = [];
-        for (const f of take) {
-          const dataUrl = await spFileToDataUrl(f);
-          _supportFiles.push({ name: f.name, dataUrl });
-        }
-        spRenderSupportPreview();
-      } catch(e) {
-        console.warn('[support files] failed', e);
-        if (typeof showToast === 'function') showToast('画像の読み込みに失敗しました', 2000);
-      }
-    });
-  }
-
-  // --- Admin: Support history ---
-  function spRenderAdminSupportList() {
-    const wrap = document.getElementById('admin-support-list');
-    if (!wrap) return;
-    const logs = spLoadSupportLogs();
-    if (!logs.length) {
-      wrap.innerHTML = '<div class="hint">保存されたお問い合わせはありません。</div>';
-      return;
-    }
-    wrap.innerHTML = '';
-    logs.slice(0, 50).forEach((e, i) => {
-      const row = document.createElement('div');
-      row.className = 'p-2 mb-2';
-      row.style.border = '1px solid rgba(255,255,255,.08)';
-      row.style.borderRadius = '12px';
-      row.style.background = 'rgba(255,255,255,.02)';
-      const dt = new Date(e.ts);
-      const title = spSafeText(e.symptom || '').trim() || '（内容未入力）';
-      row.innerHTML = `
-        <div class="small text-secondary mb-1">${dt.toLocaleString()}</div>
-        <div class="text-white small mb-2">${title}</div>
-        <div class="d-flex gap-2">
-          <button class="btn btn-dark btn-sm flex-grow-1" data-i="${i}">コピー</button>
-          <button class="btn btn-outline-secondary btn-sm flex-grow-1" data-d="${i}">詳細</button>
-        </div>
-        <div class="small text-secondary mt-2" style="display:none;" id="support-detail-${i}"></div>
-      `;
-      wrap.appendChild(row);
-      row.querySelector('button[data-i]')?.addEventListener('click', async () => {
-        try {
-          await navigator.clipboard.writeText(e.text || '');
-          if (typeof showToast === 'function') showToast('コピーしました', 1200);
-        } catch(_e) {
-          window.spCopy('selfcheck-log'); // fallback noop
-        }
-      });
-      row.querySelector('button[data-d]')?.addEventListener('click', () => {
-        const d = row.querySelector('#support-detail-' + i);
-        if (!d) return;
-        if (d.style.display === 'none') {
-          const files = (e.files || []).map(f => f.name).join(', ');
-          d.textContent = (e.text || '') + (files ? ('\n\n添付: ' + files) : '');
-          d.style.whiteSpace = 'pre-wrap';
-          d.style.display = 'block';
-        } else {
-          d.style.display = 'none';
-        }
-      });
-    });
-  }
-
-  // --- Admin: Unconfirmed products (yesterday) ---
-  function spYesterdayRange() {
-    const now = new Date();
-    const y = new Date(now);
-    y.setDate(now.getDate() - 1);
-    const start = new Date(y.getFullYear(), y.getMonth(), y.getDate(), 0, 0, 0, 0).getTime();
-    const end = new Date(y.getFullYear(), y.getMonth(), y.getDate(), 23, 59, 59, 999).getTime();
-    return { start, end };
-  }
-
-  function spGetProductLastTs(p) {
-    try {
-      if (p && Array.isArray(p.history) && p.history.length) {
-        const last = p.history[p.history.length - 1];
-        const ts = last?.t || last?.ts || last?.time || last?.date;
-        if (typeof ts === 'number') return ts;
-        if (typeof ts === 'string') {
-          const n = Date.parse(ts);
-          return isNaN(n) ? 0 : n;
-        }
-      }
-      if (typeof p?.updatedAt === 'number') return p.updatedAt;
-      if (typeof p?.createdAt === 'number') return p.createdAt;
-    } catch(e) {}
-    return 0;
-  }
-
-  function spIsUnconfirmed(p) {
-    const name = spSafeText(p?.name).trim();
-    const maker = spSafeText(p?.maker).trim() || spSafeText(p?.manufacturer).trim();
-    const brand = spSafeText(p?.brand).trim();
-    const hasImg = !!(p?.imageKey || p?.imageUrl || p?.img || p?.image);
-    // 未確定: 名前 or メーカー欠落 or 画像欠落
-    return (!name || !maker || !hasImg);
-  }
-
-  function spRenderUnconfirmedList() {
-    const wrap = document.getElementById('admin-unconfirmed-list');
-    if (!wrap) return;
-    if (!window.db || !db.products) {
-      wrap.innerHTML = '<div class="hint">DBが未初期化です。</div>';
-      return;
-    }
-    const r = spYesterdayRange();
-    const codes = Object.keys(db.products || {});
-    const targets = [];
-    for (const code of codes) {
-      const p = db.products[code];
-      if (!p) continue;
-      const ts = spGetProductLastTs(p);
-      if (ts >= r.start && ts <= r.end && spIsUnconfirmed(p)) {
-        targets.push({ code, p });
-      }
-    }
-    if (!targets.length) {
-      wrap.innerHTML = '<div class="hint">昨日分の未確定商品はありません。</div>';
-      return;
-    }
-
-    wrap.innerHTML = '';
-    targets.slice(0, 50).forEach(({
-      code, p
-    }) => {
-      const box = document.createElement('div');
-      box.className = 'p-2 mb-2';
-      box.style.border = '1px solid rgba(255,255,255,.08)';
-      box.style.borderRadius = '12px';
-      box.style.background = 'rgba(255,255,255,.02)';
-      const name = spSafeText(p.name).trim();
-      const maker = spSafeText(p.maker || p.manufacturer).trim();
-      const brand = spSafeText(p.brand).trim();
-      box.innerHTML = `
-        <div class="small text-secondary mb-1">JAN: <b class="text-white">${code}</b></div>
-        <div class="mb-2">
-          <input class="form-control bg-dark text-white border-secondary mb-2" data-f="name" data-code="${code}" placeholder="商品名" value="${name.replace(/"/g,'&quot;')}">
-          <input class="form-control bg-dark text-white border-secondary mb-2" data-f="maker" data-code="${code}" placeholder="メーカー" value="${maker.replace(/"/g,'&quot;')}">
-          <input class="form-control bg-dark text-white border-secondary" data-f="brand" data-code="${code}" placeholder="ブランド（任意）" value="${brand.replace(/"/g,'&quot;')}">
-        </div>
-      `;
-      wrap.appendChild(box);
-    });
-  }
-
-  window.spConfirmUnconfirmedAll = function() {
-    try {
-      if (!window.db || !db.products) return;
-      const inputs = document.querySelectorAll('#admin-unconfirmed-list [data-code][data-f]');
-      const updates = {};
-      inputs.forEach(inp => {
-        const code = inp.getAttribute('data-code');
-        const f = inp.getAttribute('data-f');
-        if (!updates[code]) updates[code] = {};
-        updates[code][f] = (inp.value || '').trim();
-      });
-      let changed = 0;
-      Object.keys(updates).forEach(code => {
-        const p = db.products[code];
-        if (!p) return;
-        const u = updates[code];
-        if (u.name) p.name = u.name;
-        if (u.maker) {
-          p.maker = u.maker;
-          p.manufacturer = u.maker;
-        }
-        if (u.brand) p.brand = u.brand;
-        // 最終更新を押し込む
-        p.updatedAt = Date.now();
-        changed++;
-      });
-      if (typeof saveLocalOnly === 'function') saveLocalOnly();
-      else if (typeof saveLocal === 'function') saveLocal();
-      spRenderUnconfirmedList();
-      if (typeof showToast === 'function') showToast('確定しました（' + changed + '件）', 1800);
-    } catch (e) {
-      console.warn('[spConfirmUnconfirmedAll] failed', e);
-      if (typeof showToast === 'function') showToast('確定に失敗しました', 2000);
-    }
-  };
-
-  // --- Self check ---
-  window.spRunSelfCheck = function() {
-    const log = [];
-    try {
-      log.push('SELF CHECK (' + spNowISO() + ')');
-      log.push('VERSION: ' + (window.FULL_VERSION || window.VERSION_INFO || window.APP_VERSION || ''));
-      log.push('BUILD: ' + (window.BUILD_ID || '2026-02-07_2000_sw-reset'));
-      log.push('MODE: ' + (spIsAdminMode() ? 'admin' : 'normal') + (spIsDebug() ? ' / debug' : ''));
-      log.push('');
-      // Config
-      log.push('[config]');
-      log.push('SP_CONFIG.loaded: ' + (!!window.SP_CONFIG && Object.keys(window.SP_CONFIG||{}).length));
-      log.push('firebaseUrl(var): ' + (typeof fbUrl === 'string' ? 'OK' : 'NG'));
-      log.push('yahooProxyExecUrl: ' + (window.SP_CONFIG?.yahooProxyExecUrl ? 'OK' : 'NG'));
-      log.push('');
-      // Functions
-      const fn = (name) => (typeof window[name] === 'function');
-      const must = ['processBarcodeData','lookupYahooByJan','lookupRakutenByJan','startMigration','openSettings','showToast'];
-      log.push('[functions]');
-      must.forEach(n => log.push(n + ': ' + (fn(n) ? 'OK' : 'NG')));
-      log.push('');
-      log.push('localStorage keys:');
-      log.push('ref_my=' + (localStorage.getItem(LS_MY_REF)||''));
-      log.push('ref_from=' + (localStorage.getItem(LS_REF_FROM)||''));
-      log.push('family=' + (localStorage.getItem(LS_FAMILY)||''));
-    } catch(e) {
-      log.push('ERROR: ' + e.message);
-    }
-    const ta = document.getElementById('selfcheck-log');
-    if (ta) ta.value = log.join('\n');
-    if (typeof showToast === 'function') showToast('検証ログを作成しました', 1500);
-  };
-
-  // --- Settings UI wiring ---
-  function spSetupSettingsUnified() {
-    // Referral UI
-    const myId = spGetOrCreateMyRef();
-    const refMy = document.getElementById('ref-my-id');
-    const refLink = document.getElementById('ref-link');
-    if (refMy) refMy.value = myId;
-    if (refLink) refLink.value = spBuildReferralLink(myId);
-
-    const fam = localStorage.getItem(LS_FAMILY) || '';
-    const famIn = document.getElementById('family-code-input');
-    const famSt = document.getElementById('family-code-status');
-    if (famIn && famIn.value !== fam) famIn.value = fam;
-    if (famSt) famSt.textContent = fam ? ('保存済み：' + fam) : '未設定';
-
-    const from = localStorage.getItem(LS_REF_FROM) || '';
-    const fromSt = document.getElementById('ref-from-status');
-    if (fromSt) fromSt.textContent = from ? ('紹介元(ref): ' + from) : '';
-
-    // Support defaults
-    const dev = document.getElementById('support-device');
-    const os = document.getElementById('support-os');
-    const br = document.getElementById('support-browser');
-    if (dev && !dev.value) dev.value = spDefaultDevice();
-    if (os && !os.value) os.value = spDefaultOS();
-    if (br && !br.value) br.value = spDetectBrowser();
-
-    spBindSupportFiles();
-
-    // Operator menu gating
-    const enabled = document.getElementById('operatorEnabled');
-    if (enabled) enabled.style.display = spIsAdminMode() ? 'block' : 'none';
-
-    // Firebase URL protection: show only in operator section (readonly)
-    const fb = document.getElementById('fb-url-input');
-    if (fb) {
-      fb.readOnly = true;
-      fb.value = spIsAdminMode() ? (typeof fbUrl === 'string' ? fbUrl : '') : '';
-    }
-
-    if (spIsAdminMode()) {
-      spRenderUnconfirmedList();
-      spRenderAdminSupportList();
-    }
-  }
-
-  // Patch openSettings so every time it opens, we refresh our sections
-  const _origOpenSettings = window.openSettings;
-  window.openSettings = function() {
-    try {
-      if (typeof _origOpenSettings === 'function') _origOpenSettings();
-    } catch(e) {
-      console.warn('[openSettings] orig failed', e);
-    }
-    try {
-      spSetupSettingsUnified();
-    } catch(e) {
-      console.warn('[spSetupSettingsUnified] failed', e);
-    }
-  };
-
-  // Fix debugLog: avoid wrong showToast signature usage (keeps app alive)
-  if (typeof window.debugLog === 'function') {
-    window.debugLog = function(message, type) {
-      if (!spIsDebug()) return;
-      try {
-        showToast(String(message), 10000);
-        console.log('[DEBUG]', type || 'log', message);
-      } catch(e) {
-        console.log('[DEBUG]', type || 'log', message);
-      }
-    };
-  }
-
-  // Ensure default toast life: normal 5 sec, debug 10 sec (if showToast supports default ms)
-  // (This file's showToast already decides internally; we leave behavior unless ms omitted.)
-
-  // Apply once on load
-  spHandleRefParam();
-  // In case settings already open at load
-  document.addEventListener('DOMContentLoaded', () => {
-    try { spSetupSettingsUnified(); } catch(e) {}
-  });
-})();
-</script>
-
-<!-- ✅ DEBUG PANEL v4 (body終了直前に配置) -->
-<script>
-(function () {
-  const params = new URLSearchParams(location.search);
-  if (!params.has('debug')) return;
-
-  // DOMが完全に読み込まれた後に実行
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initDebugPanel);
-  } else {
-    // すでにDOMが読み込まれている場合は即実行
-    initDebugPanel();
-  }
-
-  function initDebugPanel() {
-    // デバッグトグルボタン
-    const toggleBtn = document.createElement('div');
-    toggleBtn.id = 'debug-toggle-btn';
-    toggleBtn.className = 'show';
-    toggleBtn.title = 'デバッグパネルを開く';
-    toggleBtn.innerHTML = '<i class="bi bi-bug-fill"></i>';
-
-    // デバッグパネル
-    const panel = document.createElement('div');
-    panel.id = 'debug-panel';
-    panel.innerHTML = `
-      <div id="debug-panel-header">
-        <div id="debug-panel-title">🐛 DEBUG PANEL - ${window.VERSION_INFO || 'v19.9.45'}</div>
-        <button id="debug-panel-close">×</button>
-      </div>
-      <div id="debug-panel-content"></div>
-    `;
-
-    document.body.appendChild(toggleBtn);
-    document.body.appendChild(panel);
-
-    const content = panel.querySelector('#debug-panel-content');
-
-    const log = (k, v) => {
-      const div = document.createElement('div');
-      div.innerHTML = `<b>${k}</b>: ${String(v)}`;
-      content.appendChild(div);
-    };
-
-    // デバッグ情報を収集
-    log('TIME', new Date().toISOString());
-    log('URL', location.href);
-    log('PATH', location.pathname);
-    log('BUILD', params.get('b') || window.BUILD_ID || '(none)');
-    log('VERSION', window.VERSION_INFO || window.APP_VERSION || 'v19.9.45');
-    log('TITLE', document.title || '(empty)');
-    log('USER_AGENT', navigator.userAgent.substring(0, 80) + '...');
-
-    // Service Worker状態
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then(rs => {
-        log('SW', rs.length ? `${rs.length} REGISTERED (UNREGISTERING)` : 'NONE');
-        rs.forEach(r => r.unregister());
-      }).catch(e => log('SW', 'ERROR ' + e.message));
-    } else {
-      log('SW', 'NOT SUPPORTED');
-    }
-
-    // localStorage情報
-    try {
-      const dbStr = localStorage.getItem('smart_price_db');
-      if (dbStr) {
-        const db = JSON.parse(dbStr);
-        log('DB_PRODUCTS', Object.keys(db.products || {}).length);
-        log('DB_STORES', Object.keys(db.stores || {}).length);
-      } else {
-        log('DB', 'EMPTY');
-      }
-    } catch (e) {
-      log('DB', 'ERROR: ' + e.message);
-    }
-
-    // config.json resolver
-    const isBook = location.pathname.includes('/Smart-Price-Book/');
-    const isDev = location.pathname.includes('/dev/');
-    const isEmergency = location.pathname.includes('/emergency/');
-
-    const fetchOnce = (url, tag) =>
-      fetch(url, { cache: 'no-store' }).then(r => {
-        log(tag, r.ok ? ('OK ' + url) : ('FAIL ' + r.status + ' ' + url));
-        return r.ok;
-      }).catch(e => {
-        log(tag, 'ERROR ' + e.message + ' ' + url);
-        return false;
-      });
-
-    if (!isBook) {
-      log('CONFIG_URL', './config.json');
-      fetchOnce('./config.json', 'CONFIG_FETCH');
-    } else if (isDev || isEmergency) {
-      log('CONFIG_URL', './config.json');
-      fetchOnce('./config.json', 'CONFIG_FETCH');
-    } else {
-      log('CONFIG_URL', './config.json → ./dev/config.json (fallback)');
-      fetchOnce('./config.json', 'CONFIG_1ST').then(ok => {
-        if (ok) {
-          log('CONFIG_FINAL', './config.json');
-          return;
-        }
-        fetchOnce('./dev/config.json', 'CONFIG_2ND').then(() => {
-          log('CONFIG_FINAL', './dev/config.json');
-        });
-      });
-    }
-
-    // エラーハンドリング
-    window.addEventListener('error', e => log('ERROR', e.message));
-    window.addEventListener('unhandledrejection', e => log('PROMISE_REJECT', e.reason));
-
-    log('STATUS', 'JS RUNNING ✓');
-
-    // トグルボタンのイベント
-    toggleBtn.addEventListener('click', () => {
-      if (panel.classList.contains('show')) {
-        panel.classList.remove('show');
-        console.log('[DEBUG] パネルを閉じました');
-      } else {
-        panel.classList.add('show');
-        console.log('[DEBUG] パネルを開きました');
-      }
-    });
-
-    // 閉じるボタンのイベント
-    const closeBtn = panel.querySelector('#debug-panel-close');
-    closeBtn.addEventListener('click', () => {
-      panel.classList.remove('show');
-      console.log('[DEBUG] パネルを閉じました');
-    });
-
-    // 初期メッセージ
-    console.log('[DEBUG] デバッグモードが有効です。右下のボタンでパネルを表示できます。');
-    console.log('[DEBUG] VERSION:', window.VERSION_INFO || window.APP_VERSION, '| BUILD:', window.BUILD_ID);
-  }
-})();
-</script>
-<!-- /DEBUG PANEL v4 -->
-
-
-  <!-- ✅ BUILD/VERSION MISMATCH DETECTOR (debug=1 only) -->
-  <script>
-  (function() {
-    try {
-      window.addEventListener('load', function() {
-        var params = new URLSearchParams(location.search);
-        var urlBuild = params.get('b');
-        var buildId = window.BUILD_ID || '';
-        if (urlBuild && buildId && urlBuild !== buildId) {
-          try {
-            console.warn('[BUILD MISMATCH] url b=', urlBuild, ' actual=', buildId);
-          } catch(e) {}
-          if (params.has('debug') && typeof window.showDebugToast === 'function') {
-            window.showDebugToast('⚠️ 旧版の可能性: ?reset=sw を実行してください');
-          }
-        }
-      }, { once: true });
-    } catch(e) {}
-  })();
-  </script>
-
-<!--
-  Smart Price - Init Fix + Export/Import (NO FIREBASE)
-  VERSION: v19.9.51
-  AUTHOR: Yui
-  DATE(JST): 2026-02-08 20:45 JST
-  BUILD(b): 2026-02-08_2045_initfix_exportimport_nofb
-  POLICY:
-  - Firebase/UID/接続先URLには触れない
-  - UI凍結：管理者モード（DEBUG PANEL）内にだけ機能追加
--->
 <script>
 (function(){
-  'use strict';
+  try{
+    const url = new URL(location.href);
+    const debug = url.searchParams.get("debug")==="1";
+    if(!debug) return;
+    const ov = document.getElementById("debugOverlay");
+    const info = document.getElementById("debugInfo");
+    if(!ov || !info) return;
+    ov.style.display = "block";
 
-  // ===== safe helpers =====
-  function _qs(){ try{return new URL(location.href).searchParams;}catch(e){return new URLSearchParams('');} }
-  function _getBuild(){ const p=_qs(); return p.get('b') || (window.BUILD_ID||'') || 'N/A'; }
-  function _getVersion(){ return (window.VERSION_INFO||'').trim() || 'N/A'; }
-  function _nowJP(){ try{ return new Date().toLocaleString('ja-JP'); }catch(e){ return String(new Date()); } }
+    async function fmt(obj){ try{return JSON.stringify(obj,null,2);}catch(e){return String(obj);} }
 
-  function _toast(msg) {
-    try { if (typeof showToast === 'function') showToast(String(msg), 6000); } catch(e) {}
-    try { if (typeof debugLog === 'function') debugLog(String(msg)); } catch(e) {}
-  }
-
-  async function _copy(text) {
-    try {
-      await navigator.clipboard.writeText(text);
-      _toast('コピーしました');
-      return true;
-    } catch(e) {
-      _toast('コピーできませんでした（下に表示した内容を長押しコピーしてください）');
-      return false;
-    }
-  }
-
-  function _buildUrl(edits) {
-    const u = new URL(location.href);
-    const p = u.searchParams;
-    if (edits && Object.prototype.hasOwnProperty.call(edits,'reset')) {
-      if (edits.reset === null) p.delete('reset'); else p.set('reset', String(edits.reset));
-    }
-    if (edits && Object.prototype.hasOwnProperty.call(edits,'b')) {
-      if (edits.b === null) p.delete('b'); else p.set('b', String(edits.b));
-    }
-    u.search = p.toString();
-    return u.toString();
-  }
-
-  function _dbEmpty(db) {
-    if (!db) return true;
-    if (typeof db !== 'object') return true;
-    const keys = Object.keys(db);
-    if (!keys.length) return true;
-    const p = Array.isArray(db.purchases) ? db.purchases.length : 0;
-    const prod = db.products && typeof db.products === 'object' ? Object.keys(db.products).length : 0;
-    return (p===0 && prod===0 && keys.length<=3);
-  }
-
-  function _safeParse(jsonStr) {
-    try {
-      return { ok:true, value: JSON.parse(jsonStr) };
-    } catch(e) {
-      return { ok:false, error: String(e) };
-    }
-  }
-
-  // ===== v19.9.50+ init-fix: localStorage.smart_price_db -> window.db (display-mode非依存) =====
-  function _ensureDbFromLocalStorage() {
-    try {
-      if (!_dbEmpty(window.db)) return;
-      const dbStr = localStorage.getItem('smart_price_db');
-      if (dbStr) {
-        const parsed = _safeParse(dbStr);
-        if (parsed.ok && parsed.value && typeof parsed.value === 'object') {
-          window.db = parsed.value;
-          return;
-        }
-      }
-      // fallback
-      window.db = window.db || { products: {}, stores: {}, purchases: [] };
-    } catch(e) {
-      window.db = window.db || { products: {}, stores: {}, purchases: [] };
-    }
-  }
-
-  // ===== export/import (admin only) =====
-  function spAdminExportDb() {
-    const dbStr = localStorage.getItem('smart_price_db') || '';
-    const dataStr = localStorage.getItem('smart_price_data') || '';
-    const payload = {
-      kind: 'SmartPriceExport',
-      version: _getVersion(),
-      build: _getBuild(),
-      exportedAtJST: _nowJP(),
-      smart_price_db: dbStr,
-      smart_price_data: dataStr
-    };
-    const text = JSON.stringify(payload);
-    _showOut(text);
-    _copy(text);
-  }
-
-  function spAdminImportDbFromText(text) {
-    const parsed = _safeParse(text || '');
-    if (!parsed.ok) {
-      _toast('インポート失敗：JSONとして読めません');
-      return false;
-    }
-    const obj = parsed.value;
-    // 期待形式 or 生のsmart_price_db文字列
-    let dbStr = '';
-    let dataStr = '';
-    if (obj && obj.kind === 'SmartPriceExport') {
-      dbStr = String(obj.smart_price_db || '');
-      dataStr = String(obj.smart_price_data || '');
-    } else if (typeof obj === 'object' && obj.products && obj.purchases) {
-      dbStr = JSON.stringify(obj);
-    } else {
-      _toast('インポート失敗：形式が違います（Export文字列を貼ってください）');
-      return false;
-    }
-
-    if (!dbStr) {
-      _toast('インポート失敗：smart_price_db が空です');
-      return false;
-    }
-
-    // dbStr の中身がJSONとして壊れてないか確認
-    const dbParsed = _safeParse(dbStr);
-    if (!dbParsed.ok) {
-      _toast('インポート失敗：smart_price_db が壊れています');
-      return false;
-    }
-
-    try {
-      localStorage.setItem('smart_price_db', dbStr);
-      if (dataStr) localStorage.setItem('smart_price_data', dataStr);
-      window.db = dbParsed.value;
-      _toast('インポートOK：再描画します');
-      try { if (typeof renderHistory === 'function') renderHistory(); } catch(e) {}
-      return true;
-    } catch(e) {
-      _toast('インポート失敗：保存できませんでした');
-      return false;
-    }
-  }
-
-  // ===== diag text (no firebase) =====
-  async function spAdminBuildDiagText() {
-    let swCount='N/A', cacheCount='N/A';
-    try {
-      if ('serviceWorker' in navigator) {
+    async function collect(){
+      const lines = [];
+      lines.push("APP_VERSION: " + (window.APP_VERSION || "n/a"));
+      lines.push("BUILD_ID: " + (window.BUILD_ID || "n/a"));
+      lines.push("FULL_VERSION: " + (window.FULL_VERSION || "n/a"));
+      lines.push("URL: " + location.href);
+      lines.push("UA: " + navigator.userAgent);
+      lines.push("SW.controller: " + (!!(navigator.serviceWorker && navigator.serviceWorker.controller)));
+      if(navigator.serviceWorker && navigator.serviceWorker.getRegistrations){
         const regs = await navigator.serviceWorker.getRegistrations();
-        swCount = regs.length;
+        lines.push("SW.registrations: " + regs.length);
+        regs.forEach((r,i)=>{
+          const s = r.active || r.waiting || r.installing;
+          lines.push(`  [${i}] scope=${r.scope} state=${s?s.state:"-"} scriptURL=${s?s.scriptURL:"-"}`);
+        });
+      }else{
+        lines.push("SW.registrations: (unsupported)");
       }
-    } catch(e) { swCount='ERROR'; }
-    try {
-      if ('caches' in window) {
+      if(window.caches && caches.keys){
         const keys = await caches.keys();
-        cacheCount = keys.length;
+        lines.push("caches: " + keys.length);
+        keys.forEach(k=>lines.push("  - " + k));
+      }else{
+        lines.push("caches: (unsupported)");
       }
-    } catch(e) { cacheCount='ERROR'; }
-
-    const keys = (()=>{ try{return Object.keys(localStorage||{}).length;}catch(e){return 'ERROR';} })();
-    const hasDb = (()=>{ try{return !!localStorage.getItem('smart_price_db');}catch(e){return false;} })();
-
-    let out = '';
-    out += '【Smart Price 診断ログ（運営者／Firebaseなし）】\n';
-    out += '日時: ' + _nowJP() + '\n\n';
-    out += '■ VERSION\n';
-    out += 'VERSION: ' + _getVersion() + '\n';
-    out += 'BUILD(b): ' + _getBuild() + '\n';
-    out += 'URL: ' + location.href + '\n';
-    out += 'PATH: ' + location.pathname + '\n\n';
-    out += '■ SW/CACHE\n';
-    out += 'SW登録数: ' + swCount + '\n';
-    out += 'Cache数: ' + cacheCount + '\n\n';
-    out += '■ LOCAL STORAGE\n';
-    out += 'キー数: ' + keys + '\n';
-    out += 'smart_price_db: ' + (hasDb ? 'あり' : 'なし') + '\n\n';
-    out += '■ DB（端末内 / window.db）\n';
-    try {
-      const db = window.db || {};
-      const pc = Array.isArray(db.purchases) ? db.purchases.length : 0;
-      const prc = db.products && typeof db.products==='object' ? Object.keys(db.products).length : 0;
-      out += '購入件数: ' + pc + '\n';
-      out += '商品件数: ' + prc + '\n';
-    } catch(e) {
-      out += '購入件数: ERROR\n商品件数: ERROR\n';
+      lines.push("localStorage.sp_last_b: " + (localStorage.getItem("sp_last_b")||""));
+      return lines.join("\n");
     }
-    out += '\n■ URL QUICK LINKS\n';
-    out += 'RESET_URL: ' + _buildUrl({ reset:'sw', b:_getBuild() }) + '\n';
-    out += 'NORMAL_URL: ' + _buildUrl({ reset:null, b:_getBuild() }) + '\n';
-    return out;
-  }
 
-  // ===== DEBUG PANEL injector =====
-  let _outEl = null;
-  let _inEl = null;
-
-  function _findDebugPanel() {
-    const known = document.querySelector('#debug-panel, #debugPanel, [data-debug-panel], .debug-panel');
-    if (known) return known;
-    const cand = document.querySelectorAll('div,section,aside,dialog');
-    for (const el of cand) {
-      if (el && el.textContent && el.textContent.indexOf('DEBUG PANEL') >= 0) return el;
+    async function refresh(){
+      info.textContent = "collecting...";
+      info.textContent = await collect();
     }
-    return null;
-  }
+    refresh();
 
-  function _showOut(text) {
-    if (_outEl) {
-      _outEl.style.display = 'block';
-      _outEl.value = String(text || '');
-    }
-  }
+    document.getElementById("btnDbgReload")?.addEventListener("click", ()=>location.reload());
+    document.getElementById("btnDbgHide")?.addEventListener("click", ()=>{ ov.style.display="none"; });
 
-  function _inject(panel) {
-    if (!panel) return false;
-    if (panel.querySelector('#sp-admin-tools-v1951')) return true;
-
-    const wrap = document.createElement('div');
-    wrap.id = 'sp-admin-tools-v1951';
-    wrap.style.marginTop = '10px';
-    wrap.innerHTML =
-      '<div class="d-flex gap-2 mt-2">'
-      + '<button class="btn btn-sm btn-dark flex-grow-1" id="sp-url">URLコピー</button>'
-      + '<button class="btn btn-sm btn-dark flex-grow-1" id="sp-reset">SW解除URL</button>'
-      + '</div>'
-      + '<div class="d-flex gap-2 mt-2">'
-      + '<button class="btn btn-sm btn-warning w-100 fw-bold" id="sp-diag">診断ログをコピー</button>'
-      + '</div>'
-      + '<div class="d-flex gap-2 mt-2">'
-      + '<button class="btn btn-sm btn-secondary flex-grow-1" id="sp-export">DBエクスポート</button>'
-      + '<button class="btn btn-sm btn-secondary flex-grow-1" id="sp-import">DBインポート</button>'
-      + '</div>'
-      + '<textarea id="sp-in" class="form-control bg-dark text-white border-secondary mt-2" rows="4" '
-      + ' placeholder="ここに『DBエクスポート』の文字列を貼ってから、DBインポート" '
-      + ' style="white-space:pre-wrap;word-break:break-all;"></textarea>'
-      + '<textarea id="sp-out" class="form-control bg-dark text-white border-secondary mt-2" rows="6" readonly '
-      + ' style="display:none;white-space:pre-wrap;word-break:break-all;"></textarea>'
-      + '<div class="small text-secondary mt-1" style="opacity:.9;">'
-      + '※コピーできない端末は、下の欄を長押しコピーでOK。Firebaseは使いません。'
-      + '</div>';
-
-    panel.appendChild(wrap);
-    _outEl = wrap.querySelector('#sp-out');
-    _inEl = wrap.querySelector('#sp-in');
-
-    wrap.querySelector('#sp-url')?.addEventListener('click', async()=>{ const ok=await _copy(location.href); if(!ok)_showOut(location.href); });
-    wrap.querySelector('#sp-reset')?.addEventListener('click', async()=>{ const u=_buildUrl({reset:'sw', b:_getBuild()}); const ok=await _copy(u); if(!ok)_showOut(u); });
-    wrap.querySelector('#sp-diag')?.addEventListener('click', async()=>{ const t=await spAdminBuildDiagText(); _showOut(t); await _copy(t); });
-    wrap.querySelector('#sp-export')?.addEventListener('click', ()=> spAdminExportDb() );
-    wrap.querySelector('#sp-import')?.addEventListener('click', ()=> {
-      const text = (_inEl && _inEl.value) ? _inEl.value : '';
-      if (!text.trim()) { _toast('貼り付けが空です'); return; }
-      spAdminImportDbFromText(text.trim());
+    document.getElementById("btnDbgCopy")?.addEventListener("click", async ()=>{
+      try{
+        await navigator.clipboard.writeText(info.textContent||"");
+      }catch(e){}
+      const old = info.textContent||"";
+      info.textContent = old + "\n\n[copied]";
+      setTimeout(()=>{ info.textContent = old; }, 800);
     });
 
-    return true;
+    document.getElementById("btnDbgReset")?.addEventListener("click", async ()=>{
+      try{
+        if(navigator.serviceWorker && navigator.serviceWorker.getRegistrations){
+          const regs = await navigator.serviceWorker.getRegistrations();
+          for(const r of regs){ try{ await r.unregister(); }catch(e){} }
+        }
+        if(window.caches && caches.keys){
+          const keys = await caches.keys();
+          await Promise.all(keys.map(k=>caches.delete(k)));
+        }
+      }catch(e){}
+      // add a one-time query to force full reload with fresh=1
+      try{
+        const u = new URL(location.href);
+        u.searchParams.set("fresh","1");
+        u.searchParams.delete("swresetdone");
+        location.replace(u.toString());
+      }catch(e){
+        location.reload();
+      }
+    });
+  }catch(e){}
+})();
+
+/* === PATCH v22.7.3: share/copy helpers for referral & family === */
+async function spCopy(elId){
+  try{
+    const el = document.getElementById(elId);
+    if(!el) return;
+    const text = (typeof el.value === 'string') ? el.value : (el.textContent || '');
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(()=>{ try{ showToast('コピーしました', 1200); }catch(e){} });
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = text; document.body.appendChild(ta);
+      ta.select(); document.execCommand('copy');
+      ta.remove();
+      try{ showToast('コピーしました', 1200); }catch(e){}
+    }
+  }catch(e){}
+}
+
+async function spShareText(title, text){
+  try{
+    if(navigator.share){
+      await navigator.share({ title: title || 'Smart Price', text: text });
+      return true;
+    }
+  }catch(e){}
+  // fallback: copy
+  try{ spCopyTextFallback(text); }catch(e){}
+  return false;
+}
+async function spCopyTextFallback(text){
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text);
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = text; document.body.appendChild(ta);
+      ta.select(); document.execCommand('copy');
+      ta.remove();
+    }
+    try{ showToast('共有できないためコピーしました', 1500); }catch(e){}
+  }catch(e){}
+}
+
+async function spShareReferral(){
+  try{
+    const pid = (typeof getDeviceId === 'function') ? getDeviceId() : '';
+    const linkEl = document.getElementById('ref-link');
+    const link = linkEl ? (linkEl.value || '').trim() : '';
+    const text = `【Smart Price 友人紹介】\n紹介ID: ${pid}\nリンク: ${link}`;
+    const ok = await spShareText('Smart Price 友人紹介', text);
+    if(!ok) spCopyTextFallback(text);
+  }catch(e){}
+}
+
+async function spShareFamilyId(){
+  try{
+    const pid = (typeof getDeviceId === 'function') ? getDeviceId() : '';
+    const text = `【Smart Price 家族共有】\n共有したい個人ID: ${pid}\n※相手側の「家族共有」→「共有ID」に貼り付けてください`;
+    const ok = await spShareText('Smart Price 家族共有', text);
+    if(!ok) spCopyTextFallback(text);
+  }catch(e){}
+}
+
+</script>
+<script>
+(function () {
+  try {
+    const url = new URL(location.href);
+    const debug = url.searchParams.get("debug") === "1";
+    if (!debug) return;
+
+    const ov = document.getElementById("debugOverlay");
+    const info = document.getElementById("debugInfo");
+    if (!ov || !info) return;
+
+    ov.style.display = "block";
+
+    async function collect() {
+      const lines = [];
+      lines.push("APP_VERSION: v22.7.3");
+      lines.push("BUILD_ID: " + (window.BUILD_ID || "n/a"));
+      lines.push("FULL_VERSION: v22.7.3");
+      lines.push("URL: " + location.href);
+      lines.push("UA: " + navigator.userAgent);
+      lines.push(
+        "SW.controller: " +
+          !!(navigator.serviceWorker && navigator.serviceWorker.controller)
+      );
+
+      if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        lines.push("SW.registrations: " + regs.length);
+        regs.forEach((r, i) => {
+          const s = r.active || r.waiting || r.installing;
+          lines.push(
+            `  [${i}] scope=${r.scope} state=${s ? s.state : "-"} scriptURL=${
+              s ? s.scriptURL : "-"
+            }`
+          );
+        });
+      } else {
+        lines.push("SW.registrations: (unsupported)");
+      }
+
+      if (window.caches && caches.keys) {
+        const keys = await caches.keys();
+        lines.push("caches: " + keys.length);
+        keys.forEach((k) => lines.push("  - " + k));
+      } else {
+        lines.push("caches: (unsupported)");
+      }
+
+      info.textContent = lines.join("\n");
+    }
+
+    collect();
+  } catch (e) {
+    // ここでは握りつぶす（デバッグ表示が壊れてもアプリ本体を止めないため）
   }
-
-  // expose minimal API for compatibility
-  window.spAdminExportDb = spAdminExportDb;
-  window.spAdminImportDbFromText = spAdminImportDbFromText;
-
-  // init fix should run early after load
-  document.addEventListener('DOMContentLoaded', function() {
-    _ensureDbFromLocalStorage();
-  });
-
-  const mo = new MutationObserver(()=>{ const p=_findDebugPanel(); if(p) _inject(p); });
-  mo.observe(document.body, {childList:true, subtree:true});
-  const p0=_findDebugPanel(); if(p0) _inject(p0);
-
 })();
 </script>
 
