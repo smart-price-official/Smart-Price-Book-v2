@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <!--
 APP: Smart Price
-VERSION: v22.7.5
-DATE(JST): 2026-02-18 19:02 JST
-TITLE: V2 NAMESPACE + IDMODAL + SSOTFIX3
+VERSION: v22.7.6
+P26-02-18 21:15 JST
+TITLE: V2 UI/FLOW FIX (ID panel + Support mail + Startup guards)
 CHANGES:
 - v2だけ localStorage を名前空間化（stable と混ざらない）
 - 「ID: -」になる不具合（uid参照ミス）を修正／表示は6桁コード、内部は長いIDを維持
@@ -46,8 +46,8 @@ POLICY: UI_FREEZE / 単一HTML / VERSION_SSOT
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
-  const APP_VERSION = "v22.7.5";
-  const BUILD_ID = "2026-02-18_1902_v2-nsfix1";
+  const APP_VERSION = "v22.7.6";
+  const BUILD_ID = "2026-02-18_2115_v2-uifix2";
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID = BUILD_ID;
@@ -933,38 +933,64 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
       </button>
       <div id="city-history-chips" class="city-chips"></div>
     </div>
-    <div class="mb-3" id="settingsUserIdSection">
-      <label class="small text-secondary">個人ID（複数端末で同じにします）</label>
-      <div class="d-flex gap-2">
-        <button type="button" id="userIdCopyBtn" class="btn btn-dark flex-grow-1 py-2 fw-bold" onclick="copyUserId()">IDをコピー</button>
-        <button type="button" id="userIdEditBtn" class="btn btn-outline-secondary flex-grow-1 py-2 fw-bold" onclick="changeUserId()">IDを変更</button>
-      </div>
-      <div class="small text-secondary mt-1" id="userIdPreview">ID: -</div>
+<div class="small text-secondary mt-1" id="userIdPreview">ID: -</div>
     </div>
 
 
     <div id="settingsMainMenu" class="mt-3">
         <div class="d-grid gap-2">
-          <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelReferral">① 友人紹介</button>
-          <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelFamily">② 家族共有</button>
-          <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelSupport">③ 運営者へ質問／不具合報告</button>
+          <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelId">① ID管理（複数端末登録）</button>
+          <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelReferral">② 友人紹介</button>
+          <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelFamily">③ 家族共有と複数端末登録</button>
+          <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelSupport">④ 運営者へ質問／不具合報告</button>
 </div>
       </div>
 
-      <div id="panelReferral" class="sp-panel mt-3" style="display:none;">
+      
+      <div id="panelId" class="sp-panel mt-3" style="display:none;">
+        <div class="small text-secondary mb-2">
+          このアプリは端末ごとに「個人ID」を持っています。<br>
+          自分のスマホ・タブレット・PCで同じ購入データを使いたいときは、<b class="text-white">個人IDを同じに揃える</b>だけでOKです。
+        </div>
+
+        <div class="card p-3 shadow-sm mb-2" style="background:#1e1e1e; border:1px solid #333;">
+          <div class="small text-secondary mb-1">表示コード（6桁）</div>
+          <div class="h4 text-white fw-bold mb-2" id="sp-personal-short">------</div>
+
+          <details class="mb-2">
+            <summary class="small text-secondary" style="cursor:pointer;">詳細ID（長いID）を表示</summary>
+            <div class="mt-2 d-flex gap-2">
+              <input id="sp-personal-full" class="form-control bg-dark text-white border-secondary" readonly>
+              <button class="btn btn-dark" onclick="copyUserId()">コピー</button>
+            </div>
+            <div class="hint mt-2" style="margin:0;">※リンク共有や端末間の貼り付けに使うのは、この長いIDです。</div>
+          </details>
+
+          <div class="d-flex gap-2">
+            <button class="btn btn-dark flex-grow-1" onclick="copyUserId()">IDをコピー</button>
+            <button class="btn btn-danger flex-grow-1" onclick="changeUserId()">IDを変更</button>
+          </div>
+        </div>
+
+        <div class="mt-3 d-grid">
+          <button type="button" class="btn btn-outline-secondary sp-back-btn" data-back="">戻る</button>
+        </div>
+      </div>
+
+<div id="panelReferral" class="sp-panel mt-3" style="display:none;">
         <div class="small text-secondary mb-2" style="opacity:.9;">個人ID：<span class="text-white fw-bold" id="sp-personal-id-panelReferral"></span></div>
+        <div class="small text-secondary mb-1">紹介するときの一言（例）</div>
+        <div id="refIntroBox" class="p-2 rounded border border-secondary mb-2" style="background:#151515; white-space:pre-line;">使うほどに、あなたの買い物が少しずつ整っていく。
+Smart Price は、毎日の買い物をそっと支える相棒です。
+まだ小さなアプリだけど、みんなの声で育っていきます。
+よかったら一緒に、もっと便利にしていきませんか？</div>
+
 
         <div class="small text-secondary mb-2">
           この「紹介リンク」を友人に送ってください。友人が開くと、あなたの紹介IDが記録されます。
         </div>
         <div class="mt-2">
-        <div class="small text-secondary mb-1">あなたの紹介ID</div>
-        <div class="d-flex gap-2 mb-2">
-          <input id="ref-my-id" class="form-control bg-dark text-white border-secondary" readonly>
-          <button class="btn btn-dark" onclick="spCopy('ref-my-id')">コピー</button>
-        </div>
-
-        <div class="small text-secondary mb-1">紹介リンク</div>
+<div class="small text-secondary mb-1">紹介リンク</div>
         <textarea id="ref-link" class="form-control bg-dark text-white border-secondary url-box mb-2" rows="2" readonly></textarea>
 
         <div class="d-flex gap-2 mb-3">
@@ -988,18 +1014,15 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
         <div class="small text-secondary mb-2" style="opacity:.9;">個人ID：<span class="text-white fw-bold" id="sp-personal-id-panelFamily"></span></div>
 
         <div class="small text-secondary mb-2">
-          同じ購入データを別の端末でも使いたいときは、ここで「共有ID」を使います（準備中のため、まずは画面だけ整えています）。
+          家族や別の端末で同じ購入データを使いたいときは、個人IDを揃えるのがいちばん安全です。まず「ID管理」で個人IDを確認して、必要なら同じIDを設定してください。
         </div>
-        <label class="small text-secondary">共有ID（相手のIDを貼り付け）</label>
-        <input id="family-share-id" class="form-control bg-dark text-white border-secondary mb-2" placeholder="例：AB12CD（半角）">
-        <div class="small text-secondary mb-1">あなたの個人ID（このIDを送って共有できます）</div>
-        <div class="d-flex gap-2 mb-2">
-          <input id="family-my-id" class="form-control bg-dark text-white border-secondary" readonly>
-          <button class="btn btn-dark" onclick="spCopy('family-my-id')">コピー</button>
-          <button class="btn btn-danger" onclick="spShareFamilyId()">共有</button>
+        <div class="d-grid gap-2 mb-3">
+          <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelId">ID管理を開く</button>
         </div>
 
-        <div class="form-check mb-2">
+        <label class="small text-secondary">共有ID（相手のIDを貼り付け）</label>
+        <input id="family-share-id" class="form-control bg-dark text-white border-secondary mb-2" placeholder="例：AB12CD（半角）">
+<div class="form-check mb-2">
           <input class="form-check-input" type="checkbox" id="family-hide-purchases">
           <label class="form-check-label small text-secondary" for="family-hide-purchases">購入商品を隠す（家族共有用／準備中）</label>
         </div>
@@ -1048,13 +1071,13 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 
         <div class="d-flex gap-2 mb-2">
           <button class="btn btn-dark flex-grow-1" onclick="spCopySupport()">内容コピー</button>
-          <button class="btn btn-danger flex-grow-1" onclick="spShareSupport()">共有</button>
+          <button class="btn btn-danger flex-grow-1" onclick="spMailSupport()">メール</button>
         </div>
         <div class="d-flex gap-2 mb-2">
           <button class="btn btn-warning w-100" onclick="spSaveSupport()">保存</button>
         </div>
 
-        <div class="hint" style="margin:0;">※コピーした文章に、必要ならスクショも添えて送ってください。</div>
+        <div class="hint" style="margin:0;">※メール本文は自動で作れます。スクショはメールに添付してください。</div>
       </div>
         <div class="d-grid gap-2 mt-2">
           <button type="button" class="btn btn-outline-secondary" id="supportDiagnoseBtn">不具合の検出（情報を埋める）</button>
@@ -1066,14 +1089,8 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 
       <div id="panelOperator" class="sp-panel mt-3" style="display:none;">
         <div class="small text-secondary mb-2" style="opacity:.9;">個人ID：<span class="text-white fw-bold" id="sp-personal-id-panelOperator"></span></div>
+        <div id="operatorPanelBody">
 
-        <div class="small text-secondary mb-2">管理メニューはパスワードが必要です。</div>
-        <div class="d-flex gap-2 mb-2">
-          <input id="operatorPass" type="password" class="form-control bg-dark text-white border-secondary" placeholder="パスワード">
-          <button type="button" class="btn btn-secondary" id="operatorUnlockBtn" onclick="unlockOperator()">開く</button>
-        </div>
-        <div id="operatorPassMsg" class="small text-secondary mb-2"></div>
-        <div id="operatorPanelBody" style="display:none;">
           <!-- Firebase URL -->
           <div class="mb-3">
             <div class="small text-secondary mb-1">Firebase接続状態</div>
@@ -1083,7 +1100,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
               <input type="text" id="fb-url-input" class="form-control bg-dark text-white border-secondary" readonly value="https://smartpricedb-default-rtdb.firebaseio.com">
               <button class="btn btn-dark" onclick="spCopy('fb-url-input')">コピー</button>
             </div>
-            <button class="btn btn-success w-100" onclick="testFirebaseConnection()">🔌 接続テスト</button>
+            <button class="btn btn-success w-100" onclick="testFirebaseConnection()">🔌 データベース接続テスト</button>
           </div>
 
           <!-- 購入履歴表示 -->
@@ -1102,7 +1119,18 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
             <button class="btn btn-info w-100 py-2 fw-bold mt-2" onclick="loadStats()">統計を計算</button>
           </details>
           
-          <div class="mt-3 d-grid">
+          
+          <!-- 検証ツール -->
+          <details class="mb-2">
+            <summary class="small text-secondary" style="cursor:pointer;">🧪 検証ツール（情報を集める）</summary>
+            <div class="mt-2">
+              <button class="btn btn-dark w-100 mb-2" onclick="spCollectDiagnostics()">検証情報を作成</button>
+              <textarea id="sp-diagnostics-text" class="form-control bg-dark text-white border-secondary" rows="8" readonly placeholder="ここに結果が出ます"></textarea>
+              <button class="btn btn-outline-secondary w-100 mt-2" onclick="spCopy('sp-diagnostics-text')">コピー</button>
+            </div>
+          </details>
+
+<div class="mt-3 d-grid">
             <button type="button" class="btn btn-outline-secondary sp-back-btn" data-back="Main">戻る</button>
           </div>
         </div>
@@ -2321,22 +2349,22 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
       db = normalizeDb(db);
 
       // 旧data:imageが残っている端末は、IndexedDBへ移行して画像復活
-      await migrateLegacyImagesToIdb();
+      try { await migrateLegacyImagesToIdb(); } catch(e) { if (isDebug()) console.warn('[migrateLegacyImagesToIdb] failed:', e); }
 
       // ✅ M_商品とJANの自動統合（起動時・Yahoo成功に依存しない）
-      migrateMergeManualToJan();
+      try { migrateMergeManualToJan(); } catch(e) { if (isDebug()) console.warn('[migrateMergeManualToJan] failed:', e); }
 
-      initCategorySelect();
-      renderStoreList();
-      renderHistory();
+      try { initCategorySelect(); } catch(e) { if (isDebug()) console.warn('[initCategorySelect] failed:', e); }
+      try { renderStoreList(); } catch(e) { if (isDebug()) console.warn('[renderStoreList] failed:', e); }
+      try { renderHistory(); } catch(e) { if (isDebug()) console.warn('[renderHistory] failed:', e); }
 
       if (fbUrl) {
-        await syncFirebase(); // ✅ マージ方式で画像が消えない
-        renderHistory();
-        renderStoreList();
+        try { await syncFirebase(); } catch(e) { if (isDebug()) console.warn('[syncFirebase] failed:', e); }
+        try { renderHistory(); } catch(e) {}
+        try { renderStoreList(); } catch(e) {}
       }
 
-      setupFocusGuides();
+      try { setupFocusGuides(); } catch(e) { if (isDebug()) console.warn('[setupFocusGuides] failed:', e); }
 
       // ✅ 起動時に近隣店舗を取得（GPS OFF でも生活圏があれば取得）
       try {
@@ -5081,7 +5109,29 @@ function openManualEntryOnly(){
     }
   }
 
-function startScanner() {
+
+async function spLoadHtml5QrcodeLib(){
+  try{
+    if(typeof Html5Qrcode !== 'undefined') return true;
+    // 既に読み込み中なら待つ
+    if(window.__sp_html5qrcode_loading) return await window.__sp_html5qrcode_loading;
+    window.__sp_html5qrcode_loading = new Promise((resolve)=>{
+      try{
+        const s = document.createElement('script');
+        s.src = 'https://unpkg.com/html5-qrcode@2.3.8/minified/html5-qrcode.min.js';
+        s.async = true;
+        s.onload = ()=>resolve(true);
+        s.onerror = ()=>resolve(false);
+        document.head.appendChild(s);
+      }catch(e){ resolve(false); }
+    });
+    return await window.__sp_html5qrcode_loading;
+  }catch(e){
+    return false;
+  }
+}
+
+async function startScanner() {
     if(isScanning) {
       if (isDebug()) {
         console.log("[Scanner] Already scanning, skip");
@@ -5089,15 +5139,19 @@ function startScanner() {
       return;
     }
     
-    // ✅ P0: Html5Qrcodeライブラリの読み込み確認
+    // ✅ P0: Html5Qrcodeライブラリの読み込み確認（無ければ読み込みを試す）
     if (typeof Html5Qrcode === 'undefined') {
-      const errorMsg = "バーコードスキャンライブラリが読み込まれていません。ページを再読み込みしてください。";
-      showToast(errorMsg, 10000);
-      if (isDebug()) {
-        console.error("[Scanner] Html5Qrcode library not loaded");
-        setLastError(`[Scanner] ${errorMsg}`);
+      const ok = await spLoadHtml5QrcodeLib();
+      if (!ok || typeof Html5Qrcode === 'undefined') {
+        const errorMsg = "バーコードスキャンの準備に失敗しました（通信が不安定かもしれません）";
+        try{ showToast(errorMsg, 8000); }catch(e){}
+        if (isDebug()) {
+          console.error("[Scanner] Html5Qrcode library not loaded");
+          try{ setLastError(`[Scanner] ${errorMsg}`); }catch(e){}
+        }
+        isScanning = false;
+        return;
       }
-      return;
     }
     
     isScanning = true;
@@ -6548,8 +6602,8 @@ return true;
   const state = { isOpen: false, currentPanel: 'Main', history: [], initialized: false };
   let modal = null, panels = {}, titleEl = null;
   
-  const PANELS = { Main: 'settingsMainMenu', Referral: 'panelReferral', Family: 'panelFamily', Support: 'panelSupport', Operator: 'panelOperator' };
-  const TITLES = { Main: '設定', Referral: '友人紹介', Family: '家族共有', Support: '運営者へ質問', Operator: '管理メニュー' };
+  const PANELS = { Main: 'settingsMainMenu', Id: 'panelId', Referral: 'panelReferral', Family: 'panelFamily', Support: 'panelSupport', Operator: 'panelOperator' };
+  const TITLES = { Main: '設定', Id: 'ID管理', Referral: '友人紹介', Family: '家族共有と複数端末登録', Support: '運営者へ質問／不具合報告', Operator: '管理メニュー' };
   
   function init() {
     if (state.initialized) return;
@@ -6628,10 +6682,19 @@ return true;
       ];
       ids.forEach(function(idEl){
         const el = document.getElementById(idEl);
-        if(el) el.textContent = pid || '-';
+        if(el) el.textContent = pid ? shortCode6(pid) : '-';
       });
     }catch(e){}
-    // ✅ 友人紹介/家族共有の表示値を更新
+    
+    // ✅ ID管理パネルの表示値を更新
+    try{
+      const pid = (typeof getDeviceId === 'function') ? getDeviceId() : '';
+      const shortEl = document.getElementById('sp-personal-short');
+      if(shortEl) shortEl.textContent = (pid ? shortCode6(pid) : '------');
+      const fullEl = document.getElementById('sp-personal-full');
+      if(fullEl) fullEl.value = pid || '';
+    }catch(e){}
+// ✅ 友人紹介/家族共有の表示値を更新
     try{
       const pid = (typeof getDeviceId === 'function') ? getDeviceId() : '';
       const el1 = document.getElementById('ref-my-id');
@@ -6640,9 +6703,11 @@ return true;
       if(el2) el2.value = pid || '';
       const linkEl = document.getElementById('ref-link');
       if(linkEl){
-        const u = new URL(location.href);
+        const now = new URL(location.href);
+        const u = new URL(location.origin + location.pathname);
+        const b = now.searchParams.get('b');
+        if(b) u.searchParams.set('b', b);
         u.searchParams.set('ref', pid || '');
-        // build param (b) は維持
         linkEl.value = u.toString();
       }
     }catch(e){}
@@ -6664,6 +6729,19 @@ return true;
   }
   
   function navigate(panelName) {
+    try{
+      if(panelName === 'Id'){
+        const pid = (typeof getDeviceId === 'function') ? getDeviceId() : '';
+        const shortEl = document.getElementById('sp-personal-short');
+        if(shortEl) shortEl.textContent = (pid ? shortCode6(pid) : '------');
+        const fullEl = document.getElementById('sp-personal-full');
+        if(fullEl) fullEl.value = pid || '';
+      }
+      if(panelName === 'Support'){
+        if(typeof spFillSupportDeviceInfo === 'function') spFillSupportDeviceInfo(false);
+      }
+    }catch(e){}
+
     const normalizedName = panelName.replace(/^panel/, '').replace(/^main$/i, 'Main');
     if (!panels[normalizedName]) { console.warn('[Modal] Panel not found: ' + normalizedName); return; }
     
@@ -7469,6 +7547,166 @@ async function spCopyTextFallback(text){
     try{ showToast('共有できないためコピーしました', 1500); }catch(e){}
   }catch(e){}
 }
+
+// ===== Support (メール送信) =====
+function spGetSupportEmail(){
+  try{
+    // config.json に supportEmail があれば最優先
+    if(window.APP_CONFIG && window.APP_CONFIG.supportEmail) return String(window.APP_CONFIG.supportEmail||'').trim();
+  }catch(e){}
+  return '';
+}
+function spParseDeviceInfo(){
+  const ua = navigator.userAgent || '';
+  let device = '';
+  let os = '';
+  let browser = '';
+  try{
+    // Android: ...; Android 14; Pixel 8 Pro Build/...
+    const m = ua.match(/Android\s+([0-9.]+);\s*([^;\)]+)\s+Build\//);
+    if(m){
+      os = 'Android ' + m[1];
+      device = m[2].trim();
+    }else if(/iPhone|iPad|iPod/i.test(ua)){
+      device = /iPad/i.test(ua) ? 'iPad' : 'iPhone';
+      const im = ua.match(/OS\s([0-9_]+)/);
+      if(im) os = 'iOS ' + im[1].replace(/_/g,'.');
+    }else if(/Windows NT/i.test(ua)){
+      device = 'PC';
+      const wm = ua.match(/Windows NT\s([0-9.]+)/);
+      if(wm) os = 'Windows ' + wm[1];
+    }else if(/Mac OS X/i.test(ua)){
+      device = 'Mac';
+      const mm = ua.match(/Mac OS X\s([0-9_]+)/);
+      if(mm) os = 'macOS ' + mm[1].replace(/_/g,'.');
+    }
+    if(/Edg\//.test(ua)) browser = 'Edge';
+    else if(/Chrome\//.test(ua) && !/Edg\//.test(ua)) browser = 'Chrome';
+    else if(/Safari\//.test(ua) && !/Chrome\//.test(ua)) browser = 'Safari';
+    else browser = 'Browser';
+  }catch(e){}
+  return { device, os, browser, ua };
+}
+function spFillSupportDeviceInfo(force){
+  try{
+    const info = spParseDeviceInfo();
+    const d = document.getElementById('support-device');
+    const o = document.getElementById('support-os');
+    const b = document.getElementById('support-browser');
+    if(d && (force || !d.value)) d.value = info.device || '';
+    if(o && (force || !o.value)) o.value = info.os || '';
+    if(b && (force || !b.value)) b.value = info.browser || '';
+  }catch(e){}
+}
+async function spBuildSupportText(){
+  const lines = [];
+  try{
+    const pid = (typeof getDeviceId === 'function') ? getDeviceId() : '';
+    lines.push('APP_VERSION: ' + (window.APP_VERSION || 'n/a'));
+    lines.push('BUILD_ID: ' + (window.BUILD_ID || 'n/a'));
+    lines.push('URL: ' + location.href);
+    lines.push('PERSONAL_ID: ' + (pid || ''));
+    const symptom = (document.getElementById('support-symptom')||{}).value || '';
+    const device = (document.getElementById('support-device')||{}).value || '';
+    const os = (document.getElementById('support-os')||{}).value || '';
+    const browser = (document.getElementById('support-browser')||{}).value || '';
+    lines.push('');
+    lines.push('【症状】');
+    lines.push(symptom);
+    lines.push('');
+    lines.push('【端末情報】');
+    lines.push('機種: ' + device);
+    lines.push('OS: ' + os);
+    lines.push('ブラウザ: ' + browser);
+    // 検証情報も付ける（取れれば）
+    try{
+      if(typeof collect === 'function'){
+        lines.push('');
+        lines.push('【検証情報】');
+        lines.push(await collect());
+      }
+    }catch(e){}
+  }catch(e){}
+  return lines.join('\n');
+}
+async function spCopySupport(){
+  try{
+    spFillSupportDeviceInfo(false);
+    const text = await spBuildSupportText();
+    await spCopyTextFallback(text);
+    try{ showToast('内容をコピーしました', 1800); }catch(e){}
+  }catch(e){}
+}
+async function spMailSupport(){
+  try{
+    spFillSupportDeviceInfo(false);
+    const to = spGetSupportEmail();
+    const subject = `Smart Price 不具合/質問 (${window.APP_VERSION||''} ${window.BUILD_ID||''})`;
+    const body = await spBuildSupportText();
+    const mailto = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    // mailto は長すぎると失敗する端末があるので、失敗時はコピーにフォールバック
+    const opened = window.open(mailto, '_self');
+    if(!opened){
+      await spCopyTextFallback(body);
+      try{ showToast('メールが開けないためコピーしました（メール本文に貼ってください）', 4000); }catch(e){}
+    }
+  }catch(e){
+    try{ const body = await spBuildSupportText(); await spCopyTextFallback(body); }catch(_){}
+  }
+}
+function spSaveSupport(){
+  try{
+    spFillSupportDeviceInfo(false);
+    setTimeout(async ()=>{
+      try{
+        const text = await spBuildSupportText();
+        localStorage.setItem('sp_support_draft', text);
+        try{ showToast('下書きを保存しました', 1500); }catch(e){}
+      }catch(e){}
+    }, 10);
+  }catch(e){}
+}
+
+// support diagnose button
+try{
+  document.addEventListener('click', function(ev){
+    const t = ev.target;
+    if(t && t.id === 'supportDiagnoseBtn'){
+      spFillSupportDeviceInfo(true);
+    }
+  });
+}catch(e){}
+
+// ===== Family Code (optional) =====
+function spSaveFamilyCode(){
+  try{
+    const v = (document.getElementById('family-code-input')||{}).value || '';
+    localStorage.setItem('sp_family_code', v);
+    const st = document.getElementById('family-code-status');
+    if(st) st.textContent = v ? ('保存しました: ' + v) : '空のため保存しませんでした';
+  }catch(e){}
+}
+
+// ===== Diagnostics Collector (Operator) =====
+async function spCollectDiagnostics(){
+  try{
+    const ta = document.getElementById('sp-diagnostics-text');
+    if(!ta) return;
+    if(typeof collect === 'function'){
+      ta.value = await collect();
+      return;
+    }
+    // fallback minimal
+    const lines = [];
+    lines.push('APP_VERSION: ' + (window.APP_VERSION||'n/a'));
+    lines.push('BUILD_ID: ' + (window.BUILD_ID||'n/a'));
+    lines.push('URL: ' + location.href);
+    lines.push('UA: ' + navigator.userAgent);
+    ta.value = lines.join('\n');
+  }catch(e){}
+}
+
+
 
 async function spShareReferral(){
   try{
