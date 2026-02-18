@@ -1,21 +1,20 @@
 <!DOCTYPE html>
 <!--
 APP: Smart Price
-VERSION: v22.7.6
-P26-02-18 21:15 JST
-TITLE: V2 UI/FLOW FIX (ID panel + Support mail + Startup guards)
+VERSION: v22.7.7
+DATE(JST): 2026-02-19 00:30 JST
+TITLE: Smart Price v2 — UI Fix + JS Parse Fix
 CHANGES:
-- v2だけ localStorage を名前空間化（stable と混ざらない）
-- 「ID: -」になる不具合（uid参照ミス）を修正／表示は6桁コード、内部は長いIDを維持
-- 「IDを変更」入力が設定レイヤの裏に隠れる問題を z-index で解消
-- VERSION/BUILD/表示のSSOTを統一（旧表記を残さない）
+- 設定モーダルのHTML閉じタグ崩れを修正（メニューが画面に飛び出すレイアウト崩れを解消）
+- JSの構文エラーを除去（起動が止まりGPS/ストア表示が出ない問題を解消）
+- BUILD_ID と URL の ?b を更新（VERSION_SSOTの整合を維持）
 
-BUILD_PARAM(b): ?b=2026-02-18_1902_v2-nsfix1
+BUILD_PARAM(b): ?b=2026-02-19_0030_v2-fix3
 DEBUG_PARAM: &debug=1
 AUTHOR: ChatGPT_Yui
 POLICY: UI_FREEZE / 単一HTML / VERSION_SSOT
-
 -->
+
 <html lang="ja">
 <head>
 
@@ -46,8 +45,8 @@ POLICY: UI_FREEZE / 単一HTML / VERSION_SSOT
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
-  const APP_VERSION = "v22.7.6";
-  const BUILD_ID = "2026-02-18_2115_v2-uifix2";
+  const APP_VERSION = "v22.7.7";
+  const BUILD_ID = "2026-02-19_0030_v2-fix3";
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID = BUILD_ID;
@@ -933,11 +932,18 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
       </button>
       <div id="city-history-chips" class="city-chips"></div>
     </div>
-<div class="small text-secondary mt-1" id="userIdPreview">ID: -</div>
+
+    <!-- 個人ID / ユーザーIDはメイン画面には出さない（専用画面へ移動） -->
+    <div class="mb-3" id="settingsUserIdSection" style="display:none;">
+      <label class="form-label">個人ID（複数端末で同じにします）</label>
+      <div class="d-flex gap-2">
+        <button class="btn btn-sm btn-outline-light" id="copyUserIdBtn">IDをコピー</button>
+        <button class="btn btn-sm btn-outline-light" id="changeUserIdBtn">IDを変更</button>
+      </div>
+      <div class="small text-secondary mt-1" id="userIdPreview">ID: -</div>
     </div>
 
-
-    <div id="settingsMainMenu" class="mt-3">
+<div id="settingsMainMenu" class="mt-3">
         <div class="d-grid gap-2">
           <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelId">① ID管理（複数端末登録）</button>
           <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelReferral">② 友人紹介</button>
@@ -2817,15 +2823,6 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       if(!uid){
         uid = 'U' + Math.random().toString(36).slice(2,8) + '-' + Math.random().toString(36).slice(2,6);
       }
-      db.config.userId = uid;
-      spLSSet('sp_user_id', uid);
-      return uid;
-    }catch(e){
-      return (spLSGet('sp_user_id')||'').toString();
-    }
-  }
-
-
   // UIFIX UIDSYNC: Settings UI for personalId (copy / change)
   function shortCode6(s){
     try{
