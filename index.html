@@ -1,18 +1,21 @@
 <!DOCTYPE html>
 <!--
-APP: Smart Price
-VERSION: v22.7.8
-DATE(JST): 2026-02-19 00:30 JST
-TITLE: Smart Price v2 — UI Fix + JS Parse Fix
-CHANGES:
-- 設定モーダルのHTML閉じタグ崩れを修正（メニューが画面に飛び出すレイアウト崩れを解消）
-- JSの構文エラーを除去（起動が止まりGPS/ストア表示が出ない問題を解消）
-- BUILD_ID と URL の ?b を更新（VERSION_SSOTの整合を維持）
-
-BUILD_PARAM(b): ?b=2026-02-19_1050_familyshare-r1
-DEBUG_PARAM: &debug=1
-AUTHOR: ChatGPT_Yui
-POLICY: UI_FREEZE / 単一HTML / VERSION_SSOT
+  APP: Smart Price
+  VERSION: v22.8.0
+  DATE(JST): 2026-02-19 08:24 JST
+  TITLE: v2: settings clarify + referral copy bundle + AI one-line + back-swipe guard
+  AUTHOR: Yui
+  CHANGES:
+    - ①/③ 複数端末・家族共有の文言を整理（迷いを減らす）
+    - 生活圏登録ボタンの色を統一（押しやすく）
+    - 「設定保存と同期」に説明モーダルを追加（何を保存/同期するか明確化）
+    - 友人紹介：紹介文＋リンクを「まとめてコピー」、共有ボタン名も分かりやすく
+    - 友人紹介：紹介者数/条件達成者数を分けて表示（条件も明記）
+    - ホーム：AIのひとこと（1行）を追加（女性向けの“相棒感”）
+    - iOS：左端スワイプ/戻る誤動作のガードを追加（最小・安全）
+  BUILD_PARAM(b): ?b=2026-02-19_0824_sns-uifix-r1
+  DEBUG_PARAM: &debug=1
+  POLICY: UIは変更しない（内部実装のみ）
 -->
 
 <html lang="ja">
@@ -45,8 +48,8 @@ POLICY: UI_FREEZE / 単一HTML / VERSION_SSOT
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
-  const APP_VERSION = "v22.7.8";
-  const BUILD_ID = "2026-02-19_1050_familyshare-r1";
+  const APP_VERSION = "v22.8.0";
+  const BUILD_ID = "2026-02-19_0824_sns-uifix-r1";
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID = BUILD_ID;
@@ -147,7 +150,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta charset="UTF-8">
   <script>
   // === VERSION SSOT (auto) ===
-  window.VERSION_INFO = 'v22.7.5';
+  window.VERSION_INFO = 'v22.7.9 [2026-02-19_1139_settings-r2]';
   </script>
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -155,8 +158,8 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#D50000">
-  <title>Smart Price v22.7.5</title>
-  <!-- ✅ SW RESET TOOL (v22.7.5) : ?reset=sw -->
+  <title>Smart Price v22.7.9 (2026-02-19 11:39 JST)</title>
+  <!-- ✅ SW RESET TOOL (v22.7.9) : ?reset=sw -->
   <script>
   (function() {
     try {
@@ -498,12 +501,12 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 #settingsModal .sp-settings-menu { position: sticky; top: 0; background: rgba(26,26,26,0.98); padding-top: 6px; z-index: 2; }
 
 
-/* --- PATCH v22.7.5 settings menu layout (bootstrap依存を排除) --- */
+/* --- PATCH v22.7.9 settings menu layout (bootstrap依存を排除) --- */
 #settingsModal .sp-settings-menu{display:flex !important;flex-direction:column !important;gap:10px !important;}
 #settingsModal .sp-settings-menu button{display:block !important;width:100% !important;max-width:100% !important;}
 #settingsModal .sp-settings-menu button + button{margin-top:0 !important;}
 
-/* === PATCH v22.7.5: settings buttons spacing & colors === */
+/* === PATCH v22.7.9: settings buttons spacing & colors === */
 #settingsModal .sp-menu-btn{
   border:0 !important;
   background: rgba(45,108,223,0.95) !important;
@@ -557,7 +560,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   #interactive canvas{ opacity: 0 !important; }
 
 
-    /* === PATCH v22.7.5: scanner UI placement & corner artifact cleanup === */
+    /* === PATCH v22.7.9: scanner UI placement & corner artifact cleanup === */
     #interactive video, #interactive canvas{
       outline: none !important;
       box-shadow: none !important;
@@ -592,7 +595,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
       border: none !important;
     }
 
-    /* === PATCH v22.7.5: manual code entry (numpad) === */
+    /* === PATCH v22.7.9: manual code entry (numpad) === */
     #manual-entry.scan-manual{
       position:absolute;
       left:50%;
@@ -804,6 +807,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
       <div class="col-7"><button id="scanBtnTop" class="btn btn-danger w-100 py-3 rounded-4 shadow" onclick="startScanner()"><i class="bi bi-upc-scan fs-1"></i><br>スキャン</button></div>
       <div class="col-5"><button class="btn btn-dark w-100 py-3 rounded-4 border-secondary shadow" onclick="openBarcodeManual()"><i class="bi bi-keyboard fs-1"></i><br>手入力</button></div>
     </div>
+    <div id="aiOneLiner" class="hint mb-3" style="display:none;"></div>
     <div id="historyList"></div>
   </div>
 
@@ -921,6 +925,22 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   </div>
 </div>
 
+<div id="syncModal" class="modal">
+  <div class="modal-content">
+    <h5 class="text-white mb-3 text-center">設定保存と同期</h5>
+    <div class="hint mb-3">
+      <b>保存</b>：この端末の設定（生活圏・税設定など）と購入記録を、クラウドへまとめます。<br>
+      <b>同期</b>：同じ個人IDの別端末でも、同じ内容が見えるようにします。<br>
+      <span class="small text-secondary" style="opacity:.9;">※この操作でデータ削除はしません。反映の順番で見え方が変わることはあります。</span>
+    </div>
+    <div class="d-flex gap-2 mb-2">
+      <button class="btn btn-danger flex-grow-1" onclick="runSyncConfirmed()">実行する</button>
+      <button class="btn btn-dark flex-grow-1" onclick="closeSyncModal()">キャンセル</button>
+    </div>
+    <div class="hint" style="margin:0;">うまく行かない時は「運営者への連絡」で状況を送ってください。</div>
+  </div>
+</div>
+
 <div id="settingsModal" class="modal" style="z-index: 9999;">
   <div class="modal-content">
     <h5 class="text-white mb-4 text-center" id="settingsTitle" onclick="handleSettingsTitleClick()" style="cursor: pointer;">設定</h5>
@@ -945,9 +965,9 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 
 <div id="settingsMainMenu" class="mt-3">
         <div class="d-grid gap-2">
-          <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelId">① ID管理（複数端末登録）</button>
+          <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelId">① ID管理（自分の複数端末）</button>
           <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelReferral">② 友人紹介</button>
-          <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelFamily">③ 家族共有と複数端末登録</button>
+          <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelFamily">③ 家族共有（同じ個人ID）</button>
           <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelSupport">④ 運営者へ質問／不具合報告</button>
 </div>
       </div>
@@ -967,7 +987,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
             <summary class="small text-secondary" style="cursor:pointer;">詳細ID（長いID）を表示</summary>
             <div class="mt-2 d-flex gap-2">
               <input id="sp-personal-full" class="form-control bg-dark text-white border-secondary" readonly>
-              <button class="btn btn-dark" onclick="copyUserId()">コピー</button>
+              <button class="btn btn-dark" onclick="copyUserId()">まとめてコピー</button>
             </div>
             <div class="hint mt-2" style="margin:0;">※リンク共有や端末間の貼り付けに使うのは、この長いIDです。</div>
           </details>
@@ -1000,9 +1020,10 @@ Smart Price は、毎日の買い物をそっと支える相棒です。
         <textarea id="ref-link" class="form-control bg-dark text-white border-secondary url-box mb-2" rows="2" readonly></textarea>
 
         <div class="d-flex gap-2 mb-3">
-          <button class="btn btn-dark flex-grow-1" onclick="spCopy('ref-link')">コピー</button>
-          <button class="btn btn-danger flex-grow-1" onclick="spShareReferral()">共有</button>
+          <button class="btn btn-dark flex-grow-1" onclick="spCopyReferralBundle()">コピー</button>
+          <button class="btn btn-danger flex-grow-1" onclick="spShareReferral()">紹介方法を選ぶ</button>
         </div>
+      <div class="small text-secondary mb-3" style="opacity:.9;">「まとめてコピー」＝紹介文＋リンクを一緒にコピー。「紹介方法を選ぶ」＝共有画面が使える端末ならそのまま送れます。</div>
         
         <button class="btn btn-primary w-100 py-2 mb-3" onclick="showReferralStatus()">
           👥 紹介者の利用状況を確認
@@ -3503,6 +3524,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
   let renderHistorySeq = 0;
 
   async function renderHistory() {
+    try{ renderAiOneLiner(); }catch(e){}
     // ✅ 二重起動防止: 既に実行中なら最新の呼び出しだけを反映
     const mySeq = ++renderHistorySeq;
     
@@ -5440,7 +5462,7 @@ async function startScanner() {
     
     
 
-  // === PATCH v22.7.5: manual code entry UI ===
+  // === PATCH v22.7.9: manual code entry UI ===
   
   // UIFIX21: バーコード枠の下に出る「グレーの角合わせガイド」を消す（html5-qrcode側の装飾）
   function suppressQrcodeGuides(){
@@ -6805,9 +6827,11 @@ return true;
   window.closeSettings = close;
   
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function() { setTimeout(init, 100); });
+    document.addEventListener('DOMContentLoaded', function() { setTimeout(init, 100);
+    try{ setupBackNavGuard(); }catch(e){} });
   } else {
     setTimeout(init, 100);
+    try{ setupBackNavGuard(); }catch(e){}
   }
 })();
 
@@ -7503,7 +7527,7 @@ window.showReferralStatus = showReferralStatus;
   }catch(e){}
 })();
 
-/* === PATCH v22.7.5: share/copy helpers for referral & family === */
+/* === PATCH v22.7.9: share/copy helpers for referral & family === */
 async function spCopy(elId){
   try{
     const el = document.getElementById(elId);
@@ -7561,7 +7585,7 @@ function spParseDeviceInfo(){
   let browser = '';
   try{
     // Android: ...; Android 14; Pixel 8 Pro Build/...
-    const m = ua.match(/Android\s+([0-9.]+);\s*([^;\)]+)\s+Build\//);
+    const m = ua.match(/Android\s+([0-9.]+);\s*([^;\)]+)(?:\s+Build\/|\))/);
     if(m){
       os = 'Android ' + m[1];
       device = m[2].trim();
@@ -7742,9 +7766,9 @@ async function spShareFamilyId(){
 
     async function collect() {
       const lines = [];
-      lines.push("APP_VERSION: v22.7.5");
+      lines.push("APP_VERSION: " + (window.APP_VERSION || "n/a"));
       lines.push("BUILD_ID: " + (window.BUILD_ID || "n/a"));
-      lines.push("FULL_VERSION: v22.7.5");
+      lines.push("FULL_VERSION: " + (window.FULL_VERSION || "n/a"));
       lines.push("URL: " + location.href);
       lines.push("UA: " + navigator.userAgent);
       lines.push(
@@ -7783,6 +7807,195 @@ async function spShareFamilyId(){
     // ここでは握りつぶす（デバッグ表示が壊れてもアプリ本体を止めないため）
   }
 })();
+
+
+/* === PATCH v22.8.0: UX clarifications + AI one-line + safe guards === */
+
+// --- Sync modal ---
+function openSyncModal(){
+  try{ const m = document.getElementById('syncModal'); if(m) m.style.display='block'; }catch(e){}
+}
+function closeSyncModal(){
+  try{ const m = document.getElementById('syncModal'); if(m) m.style.display='none'; }catch(e){}
+}
+function runSyncConfirmed(){
+  try{ closeSyncModal(); }catch(e){}
+  try{ if(typeof startMigration === 'function') startMigration(); }catch(e){}
+}
+
+// --- Referral: copy intro + link together ---
+async function spCopyReferralBundle(){
+  try{
+    const intro = (document.getElementById('refIntroBox')||{}).innerText || '';
+    const link = (document.getElementById('ref-link')||{}).value || '';
+    const text = (intro||'').trim() + ((intro||'').trim() && (link||'').trim() ? '\n\n' : '') + (link||'').trim();
+    if(!text.trim()){ try{ showToast('コピーする内容がありません', 2200); }catch(e){}; return; }
+    if(typeof spCopyTextFallback === 'function') await spCopyTextFallback(text);
+    try{ showToast('紹介文＋リンクをコピーしました', 2200); }catch(e){}
+  }catch(e){
+    try{ showToast('コピーに失敗しました', 2500); }catch(_){}
+  }
+}
+
+// --- Referral status: show counts separately & explain condition ---
+try{
+  if(typeof window.REF_QUALIFY_STORES === 'undefined') window.REF_QUALIFY_STORES = 5;
+  if(typeof window.REF_QUALIFY_PRODUCTS === 'undefined') window.REF_QUALIFY_PRODUCTS = 10;
+}catch(e){}
+
+// --- AI one-line (home) ---
+function spHash32(str){
+  let h = 2166136261;
+  for(let i=0;i<str.length;i++){
+    h ^= str.charCodeAt(i);
+    h = (h * 16777619) >>> 0;
+  }
+  return h >>> 0;
+}
+function spGetTodayKey(){
+  try{
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,'0');
+    const da = String(d.getDate()).padStart(2,'0');
+    return `${y}-${m}-${da}`;
+  }catch(e){ return 'today'; }
+}
+function spComputeAiOneLiner(){
+  try{
+    const products = (db && db.products) ? Object.values(db.products) : [];
+    const totalItems = products.length;
+    let totalHistory = 0;
+    const storeSet = new Set();
+    products.forEach(p=>{
+      const h = (p && p.history) ? p.history : [];
+      totalHistory += h.length;
+      h.forEach(x=>{ if(x && x.store && x.store !== '未設定') storeSet.add(x.store); });
+    });
+    const stores = storeSet.size;
+
+    const pid = (typeof getDeviceId === 'function') ? (getDeviceId()||'') : '';
+    const seed = spHash32(spGetTodayKey() + '|' + (pid||''));
+    const pick = (arr)=> arr[seed % arr.length];
+
+    if(totalItems === 0 || totalHistory === 0){
+      return pick([
+        'まずは一品だけ。あなたの買い物を、少しずつ私に教えて。',
+        '最初は何もなくていいの。ひとつ記録した瞬間から、相棒になれる。',
+        '今日は“いつもの品”をひとつ。そこから、あなた向けに育っていくよ。'
+      ]);
+    }
+    if(totalItems < 5){
+      return pick([
+        'いい感じ。少しずつ、あなたの“定番”が見えてきた。',
+        '記録が増えるほど、次の買い物が迷いにくくなるよ。',
+        'その調子。あなたの好み、ちゃんと覚えていくから。'
+      ]);
+    }
+    if(stores >= 3){
+      return pick([
+        'お店が増えてきたね。比べられると、買い物がちょっと楽しくなる。',
+        '今日は“同じ商品”を別の店で。差が見えると気持ちいいよ。',
+        '迷ったら価格と店名だけで十分。あとは私が整えておくね。'
+      ]);
+    }
+    return pick([
+      '記録が育ってきた。あなたの買い物のクセ、ちゃんと掴めてきたよ。',
+      'よく買う品ほど、少しの差が効く。気になるものから見てみて。',
+      '今日の一手は、次の節約につながる。静かに積み上げよう。'
+    ]);
+  }catch(e){
+    return '';
+  }
+}
+function renderAiOneLiner(){
+  try{
+    const el = document.getElementById('aiOneLiner');
+    if(!el) return;
+    const txt = spComputeAiOneLiner();
+    if(!txt){ el.style.display='none'; return; }
+    el.textContent = 'AIのひとこと：' + txt;
+    el.style.display = 'block';
+  }catch(e){}
+}
+
+// --- iOS back-swipe guard (minimal / safe) ---
+function spIsIOS(){
+  try{
+    const ua = navigator.userAgent || '';
+    const isAppleMobile = /iP(hone|ad|od)/.test(ua);
+    const isIPadOS = (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    return isAppleMobile || isIPadOS;
+  }catch(e){ return false; }
+}
+function spSetupBackSwipeGuard(){
+  try{
+    if(!spIsIOS()) return;
+
+    // 1) Edge swipe: block only when gesture starts from left edge
+    let tracking = false;
+    let sx = 0, sy = 0;
+    document.addEventListener('touchstart', (e)=>{
+      if(!e.touches || e.touches.length !== 1) return;
+      const t = e.touches[0];
+      sx = t.clientX; sy = t.clientY;
+      tracking = (sx <= 20); // left edge only
+    }, {passive:true});
+    document.addEventListener('touchmove', (e)=>{
+      if(!tracking) return;
+      if(!e.touches || e.touches.length !== 1) return;
+      const t = e.touches[0];
+      const dx = t.clientX - sx;
+      const dy = t.clientY - sy;
+      if(dx > 12 && Math.abs(dx) > Math.abs(dy)){
+        e.preventDefault();
+      }
+    }, {passive:false});
+    document.addEventListener('touchend', ()=>{ tracking = false; }, {passive:true});
+
+    // 2) Browser back: double-press to exit
+    try{
+      if(!window._spBackGuardInited){
+        window._spBackGuardInited = true;
+        history.pushState({sp:1}, '', location.href);
+        let last = 0;
+        window.addEventListener('popstate', (ev)=>{
+          const now = Date.now();
+          if(now - last < 1200){
+            // allow exit
+            last = 0;
+            return;
+          }
+          last = now;
+          try{ history.pushState({sp:1}, '', location.href); }catch(e){}
+          try{ showToast('戻るときは、画面の「戻る」を使ってね（もう一度戻るで終了）', 2500); }catch(e){}
+        });
+      }
+    }catch(e){}
+  }catch(e){}
+}
+
+// --- GPS tag visibility: show GPS at left on render ---
+(function(){
+  try{
+    const _orig = window.renderStoreList;
+    if(typeof _orig === 'function' && !window._spGpsVisiblePatch){
+      window._spGpsVisiblePatch = true;
+      window.renderStoreList = function(){
+        const r = _orig.apply(this, arguments);
+        try{
+          const list = document.getElementById('store-list');
+          if(list) list.scrollLeft = 0; // GPSが見えない事故を避ける（起動直後だけ）
+        }catch(e){}
+        return r;
+      };
+    }
+  }catch(e){}
+})();
+
+// init guards
+try{ spSetupBackSwipeGuard(); }catch(e){}
+
 </script>
 
 </body>
