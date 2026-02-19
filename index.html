@@ -1,11 +1,14 @@
 <!DOCTYPE html>
 <!--
   APP: Smart Price
-  VERSION: v22.8.0
-  DATE(JST): 2026-02-19 08:24 JST
-  TITLE: v2: settings clarify + referral copy bundle + AI one-line + back-swipe guard
-  AUTHOR: Yui
+  VERSION: v22.8.1
+  P26-02-20 00:07 JST
+  TITLE: barcode scan safe: BD auto + formats explicit + applyConstraints after start
+  AUTHOR: ChatGPT (patch) / base: Yui
   CHANGES:
+    - バーコード：BarcodeDetectorは“使える端末だけ”自動利用（必須にしない）
+    - バーコード：formatsToSupport明示（EAN/UPC/CODE128/ITF）
+    - バーコード：applyConstraintsはstart直後に実行（Xperiaのボケ対策）
     - ①/③ 複数端末・家族共有の文言を整理（迷いを減らす）
     - 生活圏登録ボタンの色を統一（押しやすく）
     - 「設定保存と同期」に説明モーダルを追加（何を保存/同期するか明確化）
@@ -13,7 +16,7 @@
     - 友人紹介：紹介者数/条件達成者数を分けて表示（条件も明記）
     - ホーム：AIのひとこと（1行）を追加（女性向けの“相棒感”）
     - iOS：左端スワイプ/戻る誤動作のガードを追加（最小・安全）
-  BUILD_PARAM(b): ?b=2026-02-19_0824_sns-uifix-r1
+  P26-02-20_0007_barcode-safe-r1
   DEBUG_PARAM: &debug=1
   POLICY: UIは変更しない（内部実装のみ）
 -->
@@ -48,8 +51,8 @@
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
-  const APP_VERSION = "v22.8.0";
-  const BUILD_ID = "2026-02-19_0824_sns-uifix-r1";
+  const APP_VERSION = "v22.8.1";
+  const BUILD_ID = "2026-02-20_0007_barcode-safe-r1";
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID = BUILD_ID;
@@ -150,7 +153,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta charset="UTF-8">
   <script>
   // === VERSION SSOT (auto) ===
-  window.VERSION_INFO = 'v22.7.9 [2026-02-19_1139_settings-r2]';
+  window.VERSION_INFO = 'v22.8.1 [2026-02-20_0007_barcode-safe-r1]';
   </script>
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -5210,11 +5213,25 @@ async function startScanner() {
     
     // ✅ P0: その他の設定（解像度・アスペクト比等）は別の設定引数へ分離
     // ✅ P0修正: Html5Qrcodeライブラリの要求に準拠（cameraIdOrConfigは1キーのみ）
-    const scannerConfig = {
-      fps: 15,
+    
+    // ✅ v22.8.1: 形式を明示（端末差で“QR専用扱い”になる事故を避ける）
+    const __sp_formatsToSupport = (typeof Html5QrcodeSupportedFormats !== 'undefined') ? [
+      Html5QrcodeSupportedFormats.EAN_13,
+      Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.UPC_A,
+      Html5QrcodeSupportedFormats.UPC_E,
+      Html5QrcodeSupportedFormats.CODE_128,
+      Html5QrcodeSupportedFormats.ITF,
+    ] : undefined;
+
+const scannerConfig = {
+      fps: 10,
       qrbox: {width: 280, height: 180}, // ROI内だけの検出を確実にする
       aspectRatio: 1.0, // 正方形に近い形状で精度向上
-      disableFlip: false // フリップを有効にして検出精度向上
+      disableFlip: true // フリップは無効（速度優先）
+      ,formatsToSupport: __sp_formatsToSupport
+      ,useBarCodeDetectorIfSupported: true
+      ,experimentalFeatures: { useBarCodeDetectorIfSupported: true }
       // ✅ 注意: 解像度設定は、カメラ起動後にtrack.applyConstraints()で適用（後続の処理で実装済み）
     };
     
@@ -5226,102 +5243,91 @@ async function startScanner() {
       try{ suppressQrcodeGuides(); setTimeout(suppressQrcodeGuides, 80); setTimeout(suppressQrcodeGuides, 250); setTimeout(suppressQrcodeGuides, 700);}catch(e){}
       
       showToast("読み取りOK", 1500);
-      
-      // ✅ P0: 取得できたら track.applyConstraints() を段階的にtry
-      try {
-        const videoElement = document.querySelector('#interactive video');
-        if (videoElement && videoElement.srcObject) {
-          const stream = videoElement.srcObject;
-          const track = stream.getVideoTracks()[0];
-          if (track) {
-            // ✅ track.getCapabilities() で端末の対応状況を確認
-            const capabilities = track.getCapabilities ? track.getCapabilities() : {};
-            const settings = track.getSettings ? track.getSettings() : {};
-            
-            // ✅ torch（ライト）対応チェック（暗所だけ自動点灯）
-            if (capabilities.torch && capabilities.torch.length > 0) {
-              try {
-                // 簡易的な明るさ判定（環境光センサーがない場合の代替）
-                // 実際の実装では、より高度な判定が必要な場合がある
-                const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-                // より確実な方法：明るさが低いと判断した場合のみ点灯
-                // ここでは、ユーザーが明示的に要求しない限り、自動点灯は控えめに
-                // 将来的には、実際の環境光センサーやカメラの明るさ情報を使用可能
-                if (isDebug()) {
-                  console.log("[Camera] torch capability available:", capabilities.torch);
-                }
-              } catch(e) {
-                if (isDebug()) {
-                  console.log("[Camera] torch check error:", e);
-                }
-              }
-            }
-            
-            // ✅ P0: ピント改善（連続AF/露出/ホワイトバランス等の強化）
-            // getCapabilities() を見て、対応端末は focusMode=continuous を優先
-            const constraints = [];
-            
-            // ✅ focusMode: continuous（連続オートフォーカス優先）
-            if (capabilities.focusMode && capabilities.focusMode.includes && capabilities.focusMode.includes("continuous")) {
-              constraints.push({ focusMode: "continuous" });
-            } else if (capabilities.focusMode && Array.isArray(capabilities.focusMode) && capabilities.focusMode.includes("continuous")) {
-              constraints.push({ focusMode: "continuous" });
-            } else {
-              // 対応していない場合は manual を試す（フォールバック）
-              if (capabilities.focusMode && (capabilities.focusMode.includes && capabilities.focusMode.includes("manual") || 
-                  (Array.isArray(capabilities.focusMode) && capabilities.focusMode.includes("manual")))) {
-                constraints.push({ focusMode: "manual" });
-              }
-            }
-            
-            // ✅ exposureMode: continuous（連続露出調整）
-            if (capabilities.exposureMode && capabilities.exposureMode.includes && capabilities.exposureMode.includes("continuous")) {
-              constraints.push({ exposureMode: "continuous" });
-            } else if (capabilities.exposureMode && Array.isArray(capabilities.exposureMode) && capabilities.exposureMode.includes("continuous")) {
-              constraints.push({ exposureMode: "continuous" });
-            }
-            
-            // ✅ whiteBalanceMode: continuous（ホワイトバランス調整）
-            if (capabilities.whiteBalanceMode && capabilities.whiteBalanceMode.includes && capabilities.whiteBalanceMode.includes("continuous")) {
-              constraints.push({ whiteBalanceMode: "continuous" });
-            } else if (capabilities.whiteBalanceMode && Array.isArray(capabilities.whiteBalanceMode) && capabilities.whiteBalanceMode.includes("continuous")) {
-              constraints.push({ whiteBalanceMode: "continuous" });
-            }
-            
-            // ✅ zoom: 1.2 は条件付き（capabilityがあり、かつ読み取りがブレる端末のみ）
-            if (capabilities.zoom && capabilities.zoom.max && capabilities.zoom.max >= 1.2) {
-              constraints.push({ zoom: 1.2 }); // 控えめなズーム（対応端末のみ）
-            }
-            
-            for (let i = 0; i < constraints.length; i++) {
-              try {
-                await track.applyConstraints({ advanced: [constraints[i]] });
-                if (isDebug()) {
-                  const constraintName = Object.keys(constraints[i])[0];
-                  showToast(`[Camera] Constraint ${i+1} OK: ${constraintName}`, 2000);
-                  console.log("[Camera] Applied constraint:", constraints[i]);
-                }
-              } catch(e) {
-                if (isDebug()) {
-                  const constraintName = Object.keys(constraints[i])[0];
-                  console.log(`[Camera] Constraint ${i+1} failed: ${constraintName}`, e.message);
-                }
-                // 失敗しても継続
-              }
-            }
-          }
-        }
-      } catch(e) {
-        if (isDebug()) {
-          console.log("[Camera] applyConstraints error:", e);
-        }
-        // エラーは握りつぶして継続
-      }
-      
+
       await stopScanner();
       
       // ✅ 共通処理へ（手入力と同じ）
       await processBarcodeData(t);
+    }).then(async () => {
+      // ✅ v22.8.1: start直後に“画面要素”と“カメラ最適化”を入れる（読み取り前に効かせる）
+      try{
+        ensureScanbarDom();
+        ensureManualEntryDom();
+        try{ suppressQrcodeGuides(); setTimeout(suppressQrcodeGuides, 80); setTimeout(suppressQrcodeGuides, 250);}catch(e){}
+      }catch(e){}
+
+      // ✅ v22.8.1: applyConstraintsは start() 成功直後（Xperiaのボケ対策）
+      try{
+        // video/track が遅れて来る端末があるので、短いリトライで待つ
+        let track = null;
+        for(let i=0;i<10;i++){
+          const videoElement = document.querySelector('#interactive video');
+          if (videoElement && videoElement.srcObject) {
+            const stream = videoElement.srcObject;
+            const t = (stream.getVideoTracks && stream.getVideoTracks()[0]) ? stream.getVideoTracks()[0] : null;
+            if (t) { track = t; break; }
+          }
+          await new Promise(r => setTimeout(r, 120));
+        }
+        if(!track){
+          if(isDebug()){ console.log("[Camera] track not ready (skip)"); }
+          return;
+        }
+
+        const capabilities = track.getCapabilities ? track.getCapabilities() : {};
+        const constraints = [];
+
+        // focusMode: continuous（連続AFを最優先）
+        try{
+          const fm = capabilities.focusMode;
+          if (fm && ((Array.isArray(fm) && fm.includes("continuous")) || (fm.includes && fm.includes("continuous")))) {
+            constraints.push({ focusMode: "continuous" });
+          } else if (fm && ((Array.isArray(fm) && fm.includes("auto")) || (fm.includes && fm.includes("auto")))) {
+            constraints.push({ focusMode: "auto" });
+          }
+        }catch(e){}
+
+        // exposureMode / whiteBalanceMode: continuous（対応していれば）
+        try{
+          const em = capabilities.exposureMode;
+          if (em && ((Array.isArray(em) && em.includes("continuous")) || (em.includes && em.includes("continuous")))) {
+            constraints.push({ exposureMode: "continuous" });
+          }
+        }catch(e){}
+        try{
+          const wm = capabilities.whiteBalanceMode;
+          if (wm && ((Array.isArray(wm) && wm.includes("continuous")) || (wm.includes && wm.includes("continuous")))) {
+            constraints.push({ whiteBalanceMode: "continuous" });
+          }
+        }catch(e){}
+
+        // zoom: わずかに（対応端末のみ）
+        try{
+          if (capabilities.zoom && typeof capabilities.zoom === 'object') {
+            const min = Number(capabilities.zoom.min ?? 1);
+            const max = Number(capabilities.zoom.max ?? 1);
+            const target = Math.min(max, Math.max(min, 1.3));
+            if (Number.isFinite(target) && target > 1) {
+              constraints.push({ zoom: target });
+            }
+          }
+        }catch(e){}
+
+        // 1つずつ適用（失敗しても継続）
+        for (let i = 0; i < constraints.length; i++) {
+          try{
+            await track.applyConstraints({ advanced: [constraints[i]] });
+            if(isDebug()){ console.log("[Camera] constraint ok:", constraints[i]); }
+          }catch(e){
+            if(isDebug()){
+              const constraintName = Object.keys(constraints[i]||{})[0] || "?";
+              console.log(`[Camera] constraint fail: ${constraintName}`, e && e.message ? e.message : e);
+            }
+          }
+        }
+      }catch(e){
+        if(isDebug()){ console.log("[Camera] applyConstraintsAfterStart error:", e); }
+      }
     }).catch((err) => {
       // ✅ P0: スキャナー起動失敗時の詳細なエラーハンドリング
       let errorMsg = "起動失敗";
@@ -7809,7 +7815,7 @@ async function spShareFamilyId(){
 })();
 
 
-/* === PATCH v22.8.0: UX clarifications + AI one-line + safe guards === */
+/* === PATCH v22.8.1: barcode scan safe (BD auto + formats + constraints order) === */
 
 // --- Sync modal ---
 function openSyncModal(){
