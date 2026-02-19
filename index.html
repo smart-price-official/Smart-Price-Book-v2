@@ -1,14 +1,14 @@
 <!DOCTYPE html>
 <!--
   APP: Smart Price
-  VERSION: v22.8.1
+  VERSION: v22.8.2
   P26-02-20 00:07 JST
-  TITLE: barcode scan safe: BD auto + formats explicit + applyConstraints after start
+  TITLE: barcode scan safe: stopScanner fail-safe + better decode + focus-first
   AUTHOR: ChatGPT (patch) / base: Yui
   CHANGES:
-    - バーコード：BarcodeDetectorは“使える端末だけ”自動利用（必須にしない）
-    - バーコード：formatsToSupport明示（EAN/UPC/CODE128/ITF）
-    - バーコード：applyConstraintsはstart直後に実行（Xperiaのボケ対策）
+    - バーコード：stopScanner失敗でも処理継続（読めたのに登録されない事故を防ぐ）
+    - バーコード：formatsToSupport見直し（EAN/UPC/CODE128）
+    - バーコード：applyConstraintsはstart直後（focusMode中心／ズームは外す）
     - ①/③ 複数端末・家族共有の文言を整理（迷いを減らす）
     - 生活圏登録ボタンの色を統一（押しやすく）
     - 「設定保存と同期」に説明モーダルを追加（何を保存/同期するか明確化）
@@ -51,8 +51,8 @@
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
-  const APP_VERSION = "v22.8.1";
-  const BUILD_ID = "2026-02-20_0007_barcode-safe-r1";
+  const APP_VERSION = "v22.8.2";
+  const BUILD_ID = "2026-02-20_0015_barcode-safe-r2";
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID = BUILD_ID;
@@ -153,7 +153,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta charset="UTF-8">
   <script>
   // === VERSION SSOT (auto) ===
-  window.VERSION_INFO = 'v22.8.1 [2026-02-20_0007_barcode-safe-r1]';
+  window.VERSION_INFO = 'v22.8.2 [2026-02-20_0015_barcode-safe-r2]';
   </script>
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -4906,8 +4906,9 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       const proxyUrl = (window.SP_CONFIG && window.SP_CONFIG.yahooProxyExecUrl) ? window.SP_CONFIG.yahooProxyExecUrl.trim() : '';
       
       if (!proxyUrl) {
+        showToast("Yahoo検索プロキシURLが設定されていません", 5000);
         if (isDebug()) {
-          showToast("Yahoo検索プロキシURLが設定されていません", 5000);
+          console.log("[YahooSearch] proxyUrl missing");
         }
         return null;
       }
@@ -5220,17 +5221,14 @@ async function startScanner() {
       Html5QrcodeSupportedFormats.EAN_8,
       Html5QrcodeSupportedFormats.UPC_A,
       Html5QrcodeSupportedFormats.UPC_E,
-      Html5QrcodeSupportedFormats.CODE_128,
-      Html5QrcodeSupportedFormats.ITF,
-    ] : undefined;
+      Html5QrcodeSupportedFormats.CODE_128,    ] : undefined;
 
 const scannerConfig = {
       fps: 10,
       qrbox: {width: 280, height: 180}, // ROI内だけの検出を確実にする
       aspectRatio: 1.0, // 正方形に近い形状で精度向上
-      disableFlip: true // フリップは無効（速度優先）
+      disableFlip: false // フリップは無効（速度優先）
       ,formatsToSupport: __sp_formatsToSupport
-      ,useBarCodeDetectorIfSupported: true
       ,experimentalFeatures: { useBarCodeDetectorIfSupported: true }
       // ✅ 注意: 解像度設定は、カメラ起動後にtrack.applyConstraints()で適用（後続の処理で実装済み）
     };
@@ -5244,11 +5242,32 @@ const scannerConfig = {
       
       showToast("読み取りOK", 1500);
 
-      await stopScanner();
-      
+      // ✅ v22.8.2: まず“読めたコード”を確実に残す（stopScannerが失敗しても次へ）
+      const __decoded = t;
+      if (isDebug()) {
+        try{ console.log('[Scan] decoded raw:', __decoded); }catch(e){}
+        try{ showToast('[Scan] ' + normalizeJan(__decoded), 2500); }catch(e){}
+      }
+
+      try {
+        await stopScanner();
+      } catch (e) {
+        if (isDebug()) {
+          try{ console.log('[Scan] stopScanner failed (continue):', e && e.message ? e.message : e); }catch(_e){}
+          try{ showToast('[Scan] stop失敗→継続', 2500); }catch(_e){}
+        }
+      }
+
       // ✅ 共通処理へ（手入力と同じ）
-      await processBarcodeData(t);
-    }).then(async () => {
+      try {
+        await processBarcodeData(__decoded);
+      } catch (e) {
+        showToast('商品情報の取得でエラーが出ました', 5000);
+        if (isDebug()) {
+          try{ console.log('[ProcessBarcode] error:', e && e.message ? e.message : e); }catch(_e){}
+        }
+      }
+}).then(async () => {
       // ✅ v22.8.1: start直後に“画面要素”と“カメラ最適化”を入れる（読み取り前に効かせる）
       try{
         ensureScanbarDom();
@@ -5286,30 +5305,10 @@ const scannerConfig = {
             constraints.push({ focusMode: "auto" });
           }
         }catch(e){}
-
-        // exposureMode / whiteBalanceMode: continuous（対応していれば）
-        try{
-          const em = capabilities.exposureMode;
-          if (em && ((Array.isArray(em) && em.includes("continuous")) || (em.includes && em.includes("continuous")))) {
-            constraints.push({ exposureMode: "continuous" });
-          }
-        }catch(e){}
         try{
           const wm = capabilities.whiteBalanceMode;
           if (wm && ((Array.isArray(wm) && wm.includes("continuous")) || (wm.includes && wm.includes("continuous")))) {
             constraints.push({ whiteBalanceMode: "continuous" });
-          }
-        }catch(e){}
-
-        // zoom: わずかに（対応端末のみ）
-        try{
-          if (capabilities.zoom && typeof capabilities.zoom === 'object') {
-            const min = Number(capabilities.zoom.min ?? 1);
-            const max = Number(capabilities.zoom.max ?? 1);
-            const target = Math.min(max, Math.max(min, 1.3));
-            if (Number.isFinite(target) && target > 1) {
-              constraints.push({ zoom: target });
-            }
           }
         }catch(e){}
 
