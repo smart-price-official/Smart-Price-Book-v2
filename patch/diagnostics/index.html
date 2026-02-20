@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+  <title>SmartPrice Diagnostics — v0.1.0 [2026-02-20_1832_diag-tool-r1]</title>
+  <style>
+    :root {
+      --bg:#0b0f14; --panel:#101826; --panel2:#0f1622;
+      --txt:#e7edf6; --mut:#9fb1c7; --accent:#ff4d4d; --ok:#2ecc71; --warn:#f1c40f;
+      --bd:rgba(255,255,255,.12);
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,"Segoe UI","Noto Sans JP",sans-serif;background:var(--bg);color:var(--txt);}
+    header{position:sticky;top:0;z-index:10;background:linear-gradient(180deg, rgba(255,77,77,.92), rgba(255,77,77,.72)); padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.15);}
+    header .row{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+    header .title{font-weight:800;letter-spacing:.2px}
+    header .meta{font-size:12px;opacity:.95}
+    main{padding:14px;max-width:980px;margin:0 auto;}
+    .grid{display:grid;grid-template-columns:1fr;gap:12px}
+    @media (min-width:900px){.grid{grid-template-columns:1.1fr .9fr;}}
+    .card{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--bd);border-radius:16px;padding:12px;box-shadow:0 8px 24px rgba(0,0,0,.28);}
+    .card h2{margin:0 0 8px 0;font-size:14px;letter-spacing:.3px}
+    .btns{display:flex;flex-wrap:wrap;gap:10px}
+    button{border:1px solid var(--bd);background:#0f1826;color:var(--txt);padding:10px 12px;border-radius:12px;font-weight:700;cursor:pointer}
+    button.primary{background:rgba(255,77,77,.16);border-color:rgba(255,77,77,.55)}
+    button.ok{background:rgba(46,204,113,.15);border-color:rgba(46,204,113,.55)}
+    button.warn{background:rgba(241,196,15,.15);border-color:rgba(241,196,15,.55)}
+    button:active{transform:translateY(1px)}
+    .kv{display:grid;grid-template-columns:140px 1fr;gap:6px 10px;font-size:12px;align-items:start}
+    .kv div:nth-child(odd){color:var(--mut)}
+    .pill{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid var(--bd);font-size:12px;color:var(--mut)}
+    .pill.ok{border-color:rgba(46,204,113,.6);color:var(--ok)}
+    .pill.bad{border-color:rgba(255,77,77,.6);color:var(--accent)}
+    .pill.warn{border-color:rgba(241,196,15,.6);color:var(--warn)}
+    pre{white-space:pre-wrap;word-break:break-word;background:#0b121d;border:1px solid var(--bd);border-radius:12px;padding:10px;margin:0;font-size:12px;line-height:1.35;max-height:340px;overflow:auto}
+    .simWrap{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .simBtn{width:min(520px,100%);height:86px;border-radius:18px;border:2px solid rgba(255,77,77,.55);
+      background:rgba(255,77,77,.20);display:flex;align-items:center;justify-content:center;
+      font-weight:900;font-size:22px;letter-spacing:1px; user-select:none; touch-action:manipulation;
+    }
+    .hint{font-size:12px;color:var(--mut);margin-top:6px}
+    video{width:100%;border-radius:16px;border:1px solid var(--bd);background:#000}
+  </style>
+</head>
+<body>
+<header>
+  <div class="row">
+    <div>
+      <div class="title">SmartPrice Diagnostics</div>
+      <div class="meta">v0.1.0 ｜ 2026-02-20_1832_diag-tool-r1 ｜ 2026-02-20 18:32 JST</div>
+    </div>
+    <div class="pill" id="securePill">…</div>
+  </div>
+</header>
+
+<main>
+  <div class="grid">
+    <section class="card">
+      <h2>1) まとめ（まずここを見る）</h2>
+      <div class="kv" id="summaryKv"></div>
+      <div class="btns" style="margin-top:10px">
+        <button class="primary" id="btnRunAll">RUN ALL CHECKS</button>
+        <button class="warn" id="btnCopy">ログコピー</button>
+        <button id="btnClear">ログクリア</button>
+      </div>
+      <div class="hint">※ debug=1 の代わりに、このページ自体が「診断ログ」を作ります。押せない/カメラが出ない/バーコードが無い…を一発で見分けます。</div>
+    </section>
+
+    <section class="card">
+      <h2>2) カメラ表示テスト</h2>
+      <div class="btns" style="margin-bottom:10px">
+        <button class="ok" id="btnStartCam">カメラ開始</button>
+        <button id="btnStopCam">停止</button>
+      </div>
+      <video id="v" playsinline muted></video>
+      <div class="hint">※ ここでカメラが出ないなら、SmartPrice側の問題ではなく「権限/HTTPS/端末/ブラウザ設定」です。</div>
+    </section>
+
+    <section class="card">
+      <h2>3) 「押せない」検証（タップ捕捉 & ヒットテスト）</h2>
+      <div class="simWrap">
+        <div class="simBtn" id="simScan">SCAN (SIM)</div>
+        <div>
+          <div class="pill" id="tapPill">tap: …</div>
+          <div class="hint">↑この赤ボタンをタップしても反応が無い場合、端末のタップ系が怪しい。反応があるなら、SmartPriceの配線/被せが怪しい。</div>
+        </div>
+      </div>
+      <div class="btns" style="margin-top:10px">
+        <button class="primary" id="btnHitTest">HIT TEST（要素一覧）</button>
+        <button id="btnListen">CAPTUREログON/OFF</button>
+      </div>
+      <div class="hint">HIT TESTは「このボタンの中心に居る一番上の要素」を出します。被せがあれば即わかります。</div>
+    </section>
+
+    <section class="card">
+      <h2>4) バーコード関連チェック</h2>
+      <div class="kv" id="barcodeKv"></div>
+      <div class="hint">BarcodeDetector / html5-qrcode の有無を確認します（SmartPrice内での読み込みミスも切り分け可能）。</div>
+    </section>
+
+    <section class="card" style="grid-column:1/-1">
+      <h2>5) 診断ログ</h2>
+      <pre id="log"></pre>
+      <div class="hint">このログをそのまま他AIに投げれば、原因特定が一気に進みます。</div>
+    </section>
+  </div>
+</main>
+
+<script>
+(() => {
+  const BUILD = "2026-02-20_1832_diag-tool-r1";
+  const VERSION = "v0.1.0";
+  const $ = (s) => document.querySelector(s);
+  const logEl = $("#log");
+  const securePill = $("#securePill");
+  const summaryKv = $("#summaryKv");
+  const barcodeKv = $("#barcodeKv");
+  const tapPill = $("#tapPill");
+  const simScan = $("#simScan");
+  const video = $("#v");
+  let stream = null;
+  let captureOn = true;
+
+  function now() {
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2,"0");
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }
+
+  function append(msg, obj) {
+    const line = `[${now()}] ${msg}` + (obj ? `\n${JSON.stringify(obj, null, 2)}` : "");
+    logEl.textContent = (logEl.textContent ? logEl.textContent + "\n\n" : "") + line;
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function pill(el, state, text) {
+    el.className = "pill " + (state || "");
+    el.textContent = text;
+  }
+
+  function kv(el, entries) {
+    el.innerHTML = "";
+    for (const [k,v] of entries) {
+      const a = document.createElement("div"); a.textContent = k;
+      const b = document.createElement("div"); b.textContent = v;
+      el.appendChild(a); el.appendChild(b);
+    }
+  }
+
+  function checkBasics() {
+    const secure = window.isSecureContext;
+    pill(securePill, secure ? "ok" : "bad", secure ? "HTTPS/SECURE" : "NOT SECURE");
+    const url = location.href;
+    const ua = navigator.userAgent;
+    const sw = navigator.serviceWorker ? "supported" : "n/a";
+    const perm = navigator.permissions ? "supported" : "n/a";
+    const md = navigator.mediaDevices ? "supported" : "n/a";
+    kv(summaryKv, [
+      ["URL", url],
+      ["UA", ua],
+      ["SecureContext", String(secure)],
+      ["serviceWorker", sw],
+      ["permissions", perm],
+      ["mediaDevices", md],
+      ["Build", BUILD],
+      ["Version", VERSION],
+    ]);
+    append("Basics", { url, ua, secure, sw, perm, md, BUILD, VERSION });
+  }
+
+  async function checkPermissions() {
+    if (!navigator.permissions) {
+      append("permissions API not available");
+      return;
+    }
+    try {
+      const s = await navigator.permissions.query({ name: "camera" });
+      append("Camera permission state", { state: s.state });
+    } catch(e) {
+      append("Camera permission query failed", { error: String(e) });
+    }
+  }
+
+  async function checkDevices() {
+    if (!navigator.mediaDevices?.enumerateDevices) {
+      append("enumerateDevices not available");
+      return;
+    }
+    try {
+      const list = await navigator.mediaDevices.enumerateDevices();
+      const cams = list.filter(d => d.kind === "videoinput").map(d => ({ id: d.deviceId, label: d.label }));
+      append("Devices", { total: list.length, cameras: cams.length, cams });
+    } catch(e) {
+      append("enumerateDevices failed", { error: String(e) });
+    }
+  }
+
+  async function startCam() {
+    try {
+      if (stream) stopCam();
+      const constraints = {
+        audio: false,
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        }
+      };
+      append("getUserMedia start", constraints);
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+      video.srcObject = stream;
+      await video.play();
+      append("Camera started", {
+        tracks: stream.getTracks().map(t => ({ kind: t.kind, label: t.label, settings: t.getSettings?.() }))
+      });
+      // try focus/zoom (safe)
+      const vt = stream.getVideoTracks()[0];
+      if (vt?.getCapabilities && vt?.applyConstraints) {
+        const caps = vt.getCapabilities();
+        const want = {};
+        if (caps.focusMode?.includes?.("continuous")) want.advanced = [{ focusMode: "continuous" }];
+        if (caps.zoom) {
+          const z = Math.min(caps.zoom.max, Math.max(caps.zoom.min, (caps.zoom.min + caps.zoom.max)/2));
+          (want.advanced ||= []).push({ zoom: z });
+        }
+        if (Object.keys(want).length) {
+          try {
+            await vt.applyConstraints(want);
+            append("applyConstraints ok", { want });
+          } catch(e) {
+            append("applyConstraints failed", { error: String(e), want });
+          }
+        } else {
+          append("No focus/zoom capabilities", { caps });
+        }
+      }
+    } catch(e) {
+      append("Camera start failed", { error: String(e) });
+      pill(securePill, "bad", "CAMERA FAIL");
+    }
+  }
+
+  function stopCam() {
+    try {
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+        stream = null;
+      }
+      video.srcObject = null;
+      append("Camera stopped");
+    } catch(e) {
+      append("Camera stop error", { error: String(e) });
+    }
+  }
+
+  function checkBarcode() {
+    const hasBD = "BarcodeDetector" in window;
+    let fmt = null;
+    pill($("#securePill"), window.isSecureContext ? "ok" : "bad", window.isSecureContext ? "HTTPS/SECURE" : "NOT SECURE");
+    const hasH5 = !!window.Html5Qrcode || !!window.Html5QrcodeScanner;
+    if (hasBD && window.BarcodeDetector?.getSupportedFormats) {
+      window.BarcodeDetector.getSupportedFormats().then(f => {
+        fmt = f;
+        kv(barcodeKv, [
+          ["BarcodeDetector", hasBD ? "YES" : "NO"],
+          ["BD formats", Array.isArray(f) ? f.join(", ") : String(f)],
+          ["html5-qrcode", hasH5 ? "YES" : "NO"],
+        ]);
+        append("Barcode check", { BarcodeDetector: hasBD, formats: f, html5_qrcode: hasH5 });
+      }).catch(e => {
+        kv(barcodeKv, [
+          ["BarcodeDetector", hasBD ? "YES" : "NO"],
+          ["BD formats", "getSupportedFormats failed"],
+          ["html5-qrcode", hasH5 ? "YES" : "NO"],
+        ]);
+        append("BarcodeDetector.getSupportedFormats failed", { error: String(e) });
+      });
+    } else {
+      kv(barcodeKv, [
+        ["BarcodeDetector", hasBD ? "YES" : "NO"],
+        ["BD formats", hasBD ? "n/a (no getSupportedFormats)" : "n/a"],
+        ["html5-qrcode", hasH5 ? "YES" : "NO"],
+      ]);
+      append("Barcode check (simple)", { BarcodeDetector: hasBD, html5_qrcode: hasH5 });
+    }
+  }
+
+  function hitTest() {
+    const r = simScan.getBoundingClientRect();
+    const x = r.left + r.width/2;
+    const y = r.top + r.height/2;
+    const top = document.elementFromPoint(x,y);
+    const stack = document.elementsFromPoint(x,y).slice(0, 10).map(el => {
+      const id = el.id ? "#" + el.id : "";
+      const cls = el.className ? "." + String(el.className).trim().split(/\s+/).slice(0,3).join(".") : "";
+      return el.tagName + id + cls;
+    });
+    append("HIT TEST", {
+      x, y,
+      top: top ? (top.tagName + (top.id ? "#"+top.id : "")) : null,
+      stack
+    });
+  }
+
+  function onCapture(ev) {
+    if (!captureOn) return;
+    const t = ev.target;
+    const id = t?.id ? "#"+t.id : "";
+    const cls = t?.className ? "."+String(t.className).split(/\s+/).slice(0,3).join(".") : "";
+    append("CAPTURE " + ev.type, {
+      target: (t?.tagName || "?") + id + cls,
+      x: ev.clientX, y: ev.clientY
+    });
+  }
+
+  function wireSim() {
+    const bump = (msg) => {
+      pill(tapPill, "ok", msg);
+      setTimeout(() => pill(tapPill, "", "tap: …"), 1200);
+    };
+    simScan.addEventListener("pointerdown", (e) => {
+      bump("tap: pointerdown");
+      append("SIM pointerdown (bubbled)", { x: e.clientX, y: e.clientY });
+    });
+    simScan.addEventListener("click", (e) => {
+      bump("tap: click");
+      append("SIM click (bubbled)", { x: e.clientX, y: e.clientY });
+    });
+  }
+
+  async function runAll() {
+    append("===== RUN ALL CHECKS =====");
+    checkBasics();
+    checkBarcode();
+    await checkPermissions();
+    await checkDevices();
+    append("===== DONE =====");
+  }
+
+  $("#btnRunAll").addEventListener("click", runAll);
+  $("#btnCopy").addEventListener("click", async () => {
+    const txt = logEl.textContent || "";
+    try {
+      await navigator.clipboard.writeText(txt);
+      append("Copied to clipboard", { length: txt.length });
+    } catch(e) {
+      append("Clipboard write failed", { error: String(e) });
+      // fallback: prompt
+      window.prompt("コピーできない場合はここから手動コピー", txt);
+    }
+  });
+  $("#btnClear").addEventListener("click", () => { logEl.textContent = ""; append("Log cleared"); });
+  $("#btnStartCam").addEventListener("click", startCam);
+  $("#btnStopCam").addEventListener("click", stopCam);
+  $("#btnHitTest").addEventListener("click", hitTest);
+  $("#btnListen").addEventListener("click", () => {
+    captureOn = !captureOn;
+    append("Capture logging", { enabled: captureOn });
+    pill(tapPill, captureOn ? "warn" : "", captureOn ? "capture: ON" : "capture: OFF");
+    setTimeout(() => pill(tapPill, "", "tap: …"), 900);
+  });
+
+  // capture listeners (top-level)
+  ["pointerdown","click","touchstart"].forEach(type => {
+    document.addEventListener(type, onCapture, true);
+  });
+
+  // boot
+  checkBasics();
+  checkBarcode();
+  wireSim();
+  append("Diagnostics ready", { BUILD, VERSION });
+})();
+</script>
+</body>
+</html>
