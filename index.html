@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <!--
   APP: Smart Price
-  VERSION: v22.8.10
-  2026-02-20 02:54 JST
+  VERSION: v22.8.11
+  2026-02-20 03:05 JST
   TITLE: recovery: auto-unblock overlay at scanBtn center (elementsFromPoint)
   AUTHOR: ChatGPT (patch) / base: Yui
   CHANGES:
@@ -58,8 +58,8 @@
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
-  const APP_VERSION = "v22.8.10";
-  const BUILD_ID = "2026-02-20_0254_scanbtn-autounblock-r10";
+  const APP_VERSION = "v22.8.11";
+  const P26-02-20_0305_scanbtn-capturefix-r11";
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID = BUILD_ID;
@@ -160,7 +160,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta charset="UTF-8">
   <script>
   // === VERSION SSOT (auto) ===
-  window.VERSION_INFO = 'v22.8.10 [2026-02-20_0254_scanbtn-autounblock-r10]';
+  window.VERSION_INFO = 'v22.8.11 [2026-02-20_0305_scanbtn-capturefix-r11]';
   </script>
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -786,7 +786,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 
 
 
-/* === v22.8.10: ensure scan button can receive taps === */
+/* === v22.8.11: ensure scan button can receive taps === */
 #scanBtnTop { position: relative !important; z-index: 9999 !important; pointer-events: auto !important; touch-action: manipulation !important; }
 
 </style>
@@ -7025,7 +7025,76 @@ return true;
   window.closeSettings = close;
   
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function() { setTimeout(init, 100);
+    
+// [ScanBtn CaptureFix] スキャンボタンが「押せない」時の最終迂回路（captureで拾う）
+function spInstallScanBtnCaptureBypass(){
+  if (window.__sp_scan_capturefix_installed) return;
+  window.__sp_scan_capturefix_installed = true;
+
+  let lastAt = 0;
+  function now(){ return Date.now(); }
+
+  function inRect(x,y, r){
+    return !!r && x>=r.left && x<=r.right && y>=r.top && y<=r.bottom;
+  }
+
+  function handler(ev){
+    try{
+      // 0. 連打/二重起動ガード
+      const t = now();
+      if (t - lastAt < 600) return;
+
+      const btn = document.getElementById('scanBtnTop');
+      if (!btn) return;
+
+      const r = btn.getBoundingClientRect();
+      const pt = ev.touches && ev.touches[0] ? ev.touches[0] : (ev.changedTouches && ev.changedTouches[0] ? ev.changedTouches[0] : ev);
+      const x = pt.clientX, y = pt.clientY;
+
+      if (!inRect(x,y,r)) return;
+
+      // 1. 本来のクリックが生きているならそれに任せる（ev.targetがbtn内の場合は二重を避ける）
+      const target = ev.target;
+      if (target && (target === btn || (btn.contains && btn.contains(target)))) {
+        // それでもクリックが発火しないケースがあるので、ここでは“安全に一回だけ”起動
+        // ただし、同一イベントで二重にならないように時間ガードのみ
+      }
+
+      lastAt = t;
+
+      if (typeof startScanner === 'function') {
+        if (typeof isDebug === 'function' && isDebug()) {
+          console.log('[ScanBtn CaptureFix] captured tap inside scanBtn rect -> startScanner()');
+          try{ setLastError('[ScanBtn CaptureFix] captured tap -> startScanner()'); }catch(e){}
+        }
+        // preventDefaultは「押せない」状態の改善が目的。必要最小限にする。
+        try{ ev.preventDefault(); }catch(e){}
+        try{ ev.stopPropagation(); }catch(e){}
+        startScanner();
+      } else {
+        if (typeof isDebug === 'function' && isDebug()) {
+          console.warn('[ScanBtn CaptureFix] startScanner not found');
+          try{ setLastError('[ScanBtn CaptureFix] startScanner not found'); }catch(e){}
+        }
+      }
+    }catch(e){}
+  }
+
+  // captureで最上流から拾う（被せ要素/stopPropagation対策）
+  window.addEventListener('pointerdown', handler, {capture:true, passive:false});
+  window.addEventListener('touchstart', handler, {capture:true, passive:false});
+
+  if (typeof isDebug === 'function' && isDebug()) {
+    console.log('[ScanBtn CaptureFix] installed');
+  }
+}
+
+
+document.addEventListener('DOMContentLoaded', function() {
+  // [ScanBtn CaptureFix] クリックが効かない端末/状態でも、座標でスキャン開始を拾う（被せ/イベント阻害を迂回）
+  try{ spInstallScanBtnCaptureBypass(); }catch(e){}
+
+ setTimeout(init, 100);
     try{ setupBackNavGuard(); }catch(e){} });
   } else {
     setTimeout(init, 100);
