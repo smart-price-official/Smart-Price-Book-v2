@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <!--
   APP: Smart Price
-  VERSION: v22.8.9
-  P26-02-20 00:07 JST
-  TITLE: fix: force scan button activation via document capture hitbox (bypass overlays)
+  VERSION: v22.8.10
+  2026-02-20 02:54 JST
+  TITLE: recovery: auto-unblock overlay at scanBtn center (elementsFromPoint)
   AUTHOR: ChatGPT (patch) / base: Yui
   CHANGES:
     - スキャン：ボタンが押せない場合でも、画面座標の当たり判定で強制起動（被せ要素をバイパス）
@@ -58,8 +58,8 @@
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
-  const APP_VERSION = "v22.8.9";
-  const BUILD_ID = "2026-02-20_0155_scanbtn-forced-capture-r9";
+  const APP_VERSION = "v22.8.10";
+  const BUILD_ID = "2026-02-20_0254_scanbtn-autounblock-r10";
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID = BUILD_ID;
@@ -160,7 +160,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta charset="UTF-8">
   <script>
   // === VERSION SSOT (auto) ===
-  window.VERSION_INFO = 'v22.8.9 [2026-02-20_0155_scanbtn-forced-capture-r9]';
+  window.VERSION_INFO = 'v22.8.10 [2026-02-20_0254_scanbtn-autounblock-r10]';
   </script>
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -783,6 +783,11 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 /* === v22.8.9: scan button forced capture === */
 #spTapBadge{ position:fixed; left:12px; top:72px; z-index:999999; font:12px/1.3 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   background:rgba(0,0,0,.65); color:#fff; padding:8px 10px; border-radius:10px; max-width:calc(100vw - 24px); white-space:pre-wrap; word-break:break-word; display:none; }
+
+
+
+/* === v22.8.10: ensure scan button can receive taps === */
+#scanBtnTop { position: relative !important; z-index: 9999 !important; pointer-events: auto !important; touch-action: manipulation !important; }
 
 </style>
 
@@ -8188,6 +8193,99 @@ function spSetupBackSwipeGuard(){
 
 // init guards
 try{ spSetupBackSwipeGuard(); }catch(e){}
+
+
+
+  // === v22.8.10: auto-unblock overlays that steal taps from scan button (debug=1 only) ===
+  (function(){
+    function isDbg(){ try{return (typeof isDebug==="function" && isDebug());}catch(e){return false;} }
+    function qs(sel){ try{return document.querySelector(sel);}catch(e){return null;} }
+    function fmt(el){
+      if(!el) return "(null)";
+      const id = el.id ? ("#" + el.id) : "";
+      const cls = (el.className && typeof el.className==="string") ? ("." + el.className.trim().split(/\s+/).slice(0,3).join(".")) : "";
+      return (el.tagName ? el.tagName.toLowerCase() : "node") + id + cls;
+    }
+    function isScanFamily(el, scanBtn){
+      if(!el || !scanBtn) return false;
+      return (el === scanBtn) || (scanBtn.contains(el));
+    }
+    function safeDisablePointer(el){
+      if(!el || el === document.body || el === document.documentElement) return false;
+      // do not disable camera area itself when scanning
+      if(el.id === "camera-area" || el.id === "interactive") return false;
+      // do not disable debug panel (we still want to drag)
+      if(el.id === "debug-panel" || el.id === "debug-toggle-btn") return false;
+      // if already disabled, skip
+      const pe = (el.style && el.style.pointerEvents) ? String(el.style.pointerEvents) : "";
+      if(pe === "none") return false;
+      try{
+        el.dataset.spUnblocked = "1";
+        el.style.pointerEvents = "none";
+        return true;
+      }catch(e){ return false; }
+    }
+
+    function computeHitTest(){
+      const scanBtn = qs("#scanBtnTop");
+      if(!scanBtn) return null;
+      const r = scanBtn.getBoundingClientRect();
+      const x = Math.round(r.left + r.width/2);
+      const y = Math.round(r.top + r.height/2);
+      const stack = (document.elementsFromPoint) ? document.elementsFromPoint(x,y) : [document.elementFromPoint(x,y)];
+      const top = stack && stack.length ? stack[0] : null;
+      return { x, y, scanBtn, top, stack };
+    }
+
+    function writeDebugHitInfo(info){
+      try{
+        if(!info) return;
+        // update debug panel text hook if present
+        window.__sp_hitTop = fmt(info.top);
+        window.__sp_hitStack = (info.stack||[]).slice(0,8).map(fmt).join(" > ");
+        if(typeof window.updateDebugPanelText === "function"){
+          try{ window.updateDebugPanelText(); }catch(e){}
+        }
+      }catch(e){}
+    }
+
+    function tick(){
+      try{
+        const info = computeHitTest();
+        if(!info) return;
+        writeDebugHitInfo(info);
+        const scanBtn = info.scanBtn;
+        const top = info.top;
+
+        if(isDbg()){
+          // If top is not scan button, progressively disable pointer events on the topmost blockers until scan rises.
+          if(top && !isScanFamily(top, scanBtn)){
+            // Disable the top element first
+            safeDisablePointer(top);
+            // Also disable its closest fixed-position ancestor if any
+            let p = top;
+            for(let i=0;i<6 && p;i++){
+              const cs = getComputedStyle(p);
+              if(cs && cs.position === "fixed"){
+                safeDisablePointer(p);
+                break;
+              }
+              p = p.parentElement;
+            }
+          }
+        }
+      }catch(e){}
+    }
+
+    // Run after load to ensure layout settled
+    window.addEventListener("load", ()=>{
+      // periodic check (no click needed)
+      setInterval(tick, 500);
+      // first tick soon
+      setTimeout(tick, 200);
+      setTimeout(tick, 800);
+    });
+  })();
 
 </script>
 
