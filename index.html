@@ -1,11 +1,12 @@
 <!DOCTYPE html>
 <!--
   APP: Smart Price
-  VERSION: v22.8.7
+  VERSION: v22.8.8
   P26-02-20 00:07 JST
-  TITLE: fix: scan button not clickable (z-index/pointer-events) + debug tap hit-test
+  TITLE: fix: startScanner wrapper wiring (define startScannerImpl alias)
   AUTHOR: ChatGPT (patch) / base: Yui
   CHANGES:
+    - スキャン：startScannerの配線修正（startScannerImpl 未定義で起動できない不具合を修正）
     - スキャン：ボタンが押せない問題に対策（z-index / pointer-events）
     - 診断：debug=1でタップ時の当たり判定（elementFromPoint）を表示
     - 診断：debugパネルに html5-qrcode の script src と推定versionを表示
@@ -55,8 +56,8 @@
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
-  const APP_VERSION = "v22.8.7";
-  const BUILD_ID = "2026-02-20_0136_scanbtn-hitfix-r7";
+  const APP_VERSION = "v22.8.8";
+  const BUILD_ID = "2026-02-20_0144_scanbtn-wirefix-r8";
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID = BUILD_ID;
@@ -157,7 +158,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta charset="UTF-8">
   <script>
   // === VERSION SSOT (auto) ===
-  window.VERSION_INFO = 'v22.8.7 [2026-02-20_0136_scanbtn-hitfix-r7]';
+  window.VERSION_INFO = 'v22.8.8 [2026-02-20_0144_scanbtn-wirefix-r8]';
   </script>
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -5469,6 +5470,11 @@ const scannerConfig = {
       }
     }, 300); // カメラ起動後0.3秒待ってから実行
   }
+// === v22.8.8: wiring for onclick wrapper ===
+// 既存HTMLの onclick="startScanner()" は、グローバルの wrapper を呼びます。
+// wrapper は startScannerImpl() を探すため、ここで alias を定義します。
+window.startScannerImpl = window.startScannerImpl || startScanner;
+
   
   // ✅ スキャンバーDOM要素を確実に生成・配置する関数（自己修復機能）
   function ensureScanbarDom() {
