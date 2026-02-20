@@ -1,14 +1,15 @@
 <!DOCTYPE html>
 <!--
   APP: Smart Price
-  VERSION: v22.8.4
+  VERSION: v22.8.5
   P26-02-20 00:07 JST
-  TITLE: barcode decode recovery: disable BarcodeDetector + default formats
+  TITLE: barcode revive: formats (no BD) + verbose debug + better qrbox + lower fps
   AUTHOR: ChatGPT (patch) / base: Yui
   CHANGES:
-    - バーコード：BarcodeDetectorを完全に無効化（デコード不発の回避）
-    - バーコード：formatsToSupportを使わず“デフォルト形式”へ（安定優先）
-    - バーコード：stopScanner失敗でも処理継続（読めたのに反映されない事故を防ぐ）
+    - バーコード：BarcodeDetectorは使わない（相性事故回避は維持）
+    - バーコード：formatsToSupportを復活（EAN/UPC/CODE128）※BD無効のまま
+    - バーコード：fpsを下げ、枠（qrbox）を見直し（読取り優先）
+    - デバッグ：debug=1時だけ verboseログ＋失敗カウンタ表示
     - ①/③ 複数端末・家族共有の文言を整理（迷いを減らす）
     - 生活圏登録ボタンの色を統一（押しやすく）
     - 「設定保存と同期」に説明モーダルを追加（何を保存/同期するか明確化）
@@ -51,8 +52,8 @@
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
-  const APP_VERSION = "v22.8.4";
-  const BUILD_ID = "2026-02-20_0056_barcode-safe-r4";
+  const APP_VERSION = "v22.8.5";
+  const BUILD_ID = "2026-02-20_0105_barcode-revive-r5";
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID = BUILD_ID;
@@ -153,7 +154,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta charset="UTF-8">
   <script>
   // === VERSION SSOT (auto) ===
-  window.VERSION_INFO = 'v22.8.4 [2026-02-20_0056_barcode-safe-r4]';
+  window.VERSION_INFO = 'v22.8.5 [2026-02-20_0105_barcode-revive-r5]';
   </script>
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -5188,7 +5189,7 @@ async function startScanner() {
     
     try {
       if(!scanner) {
-        scanner = new Html5Qrcode("interactive");
+        scanner = new Html5Qrcode("interactive", { verbose: (typeof isDebug === "function" ? !!isDebug() : false) });
         if (isDebug()) {
           console.log("[Scanner] Html5Qrcode instance created");
         }
@@ -5224,8 +5225,14 @@ async function startScanner() {
       Html5QrcodeSupportedFormats.CODE_128,    ] : undefined;
 
 const scannerConfig = {
-      fps: 10,
-      qrbox: {width: 280, height: 180}, // ROI内だけの検出を確実にする
+      fps: 6,
+      qrbox: (viewfinderWidth, viewfinderHeight) => {
+        // 横長バーコード向け：幅を広め、高さは控えめ
+        const w = Math.min(420, Math.floor(viewfinderWidth * 0.92));
+        const h = Math.min(220, Math.floor(viewfinderHeight * 0.35));
+        return { width: w, height: h };
+      },
+ // ROI内だけの検出を確実にする
       aspectRatio: 1.0, // 正方形に近い形状で精度向上
       disableFlip: false // フリップは無効（速度優先）
 // ✅ 注意: 解像度設定は、カメラ起動後にtrack.applyConstraints()で適用（後続の処理で実装済み）
