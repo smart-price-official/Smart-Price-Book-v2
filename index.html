@@ -1,11 +1,12 @@
 <!DOCTYPE html>
 <!--
   APP: Smart Price
-  VERSION: v22.8.5
+  VERSION: v22.8.6
   P26-02-20 00:07 JST
-  TITLE: barcode revive: formats (no BD) + verbose debug + better qrbox + lower fps
+  TITLE: diagnostics: show html5-qrcode script src + guessed version in debug panel
   AUTHOR: ChatGPT (patch) / base: Yui
   CHANGES:
+    - 診断：debugパネルに html5-qrcode の script src と推定versionを表示
     - バーコード：BarcodeDetectorは使わない（相性事故回避は維持）
     - バーコード：formatsToSupportを復活（EAN/UPC/CODE128）※BD無効のまま
     - バーコード：fpsを下げ、枠（qrbox）を見直し（読取り優先）
@@ -52,8 +53,8 @@
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
-  const APP_VERSION = "v22.8.5";
-  const BUILD_ID = "2026-02-20_0105_barcode-revive-r5";
+  const APP_VERSION = "v22.8.6";
+  const BUILD_ID = "2026-02-20_0118_diag-html5qrcode-r6";
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID = BUILD_ID;
@@ -154,7 +155,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta charset="UTF-8">
   <script>
   // === VERSION SSOT (auto) ===
-  window.VERSION_INFO = 'v22.8.5 [2026-02-20_0105_barcode-revive-r5]';
+  window.VERSION_INFO = 'v22.8.6 [2026-02-20_0118_diag-html5qrcode-r6]';
   </script>
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -1468,7 +1469,25 @@ Smart Price は、毎日の買い物をそっと支える相棒です。
 
   // ========= Debug =========
   function isDebug() {
-    try { return new URL(location.href).searchParams.get('debug') === '1'; } catch(e){ return false; }
+    try { return new URL(location.href).searchParams.get('debug') === '1'; } 
+  // === lib diagnostics: html5-qrcode ===
+  function getHtml5QrcodeLibInfo() {
+    try {
+      const s = document.querySelector('script[src*="html5-qrcode"]');
+      const src = s ? String(s.src || "") : "";
+      // よくあるCDN: .../html5-qrcode@2.3.8/... の @2.3.8 を抜く
+      let v = "";
+      const m = src.match(/html5-qrcode@([0-9]+\.[0-9]+\.[0-9]+)/);
+      if (m && m[1]) v = m[1];
+      // もしアプリ側で手動で埋めた期待値がある場合
+      const hinted = (window && window.__HTML5_QRCODE_VERSION_HINT__) ? String(window.__HTML5_QRCODE_VERSION_HINT__) : "";
+      if (!v && hinted) v = hinted;
+      return { src, version: v || "(unknown)" };
+    } catch (e) {
+      return { src: "", version: "(unknown)" };
+    }
+  }
+catch(e){ return false; }
   }
   
   // ✅ デバッグログ関数（トーストで表示）
