@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <!--
   APP: Smart Price
-  VERSION: v22.8.6
+  VERSION: v22.8.7
   P26-02-20 00:07 JST
-  TITLE: diagnostics: show html5-qrcode script src + guessed version in debug panel
+  TITLE: fix: scan button not clickable (z-index/pointer-events) + debug tap hit-test
   AUTHOR: ChatGPT (patch) / base: Yui
   CHANGES:
+    - スキャン：ボタンが押せない問題に対策（z-index / pointer-events）
+    - 診断：debug=1でタップ時の当たり判定（elementFromPoint）を表示
     - 診断：debugパネルに html5-qrcode の script src と推定versionを表示
     - バーコード：BarcodeDetectorは使わない（相性事故回避は維持）
     - バーコード：formatsToSupportを復活（EAN/UPC/CODE128）※BD無効のまま
@@ -53,8 +55,8 @@
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
-  const APP_VERSION = "v22.8.6";
-  const BUILD_ID = "2026-02-20_0118_diag-html5qrcode-r6";
+  const APP_VERSION = "v22.8.7";
+  const BUILD_ID = "2026-02-20_0136_scanbtn-hitfix-r7";
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID = BUILD_ID;
@@ -155,7 +157,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta charset="UTF-8">
   <script>
   // === VERSION SSOT (auto) ===
-  window.VERSION_INFO = 'v22.8.6 [2026-02-20_0118_diag-html5qrcode-r6]';
+  window.VERSION_INFO = 'v22.8.7 [2026-02-20_0136_scanbtn-hitfix-r7]';
   </script>
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -767,6 +769,11 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 #settingsModal .modal-content { display:flex; flex-direction:column; gap:10px; }
 #settingsModal .modal-content .btn { min-height: 52px; }
 #settingsModal .modal-content .btn.btn-link { min-height: auto; }
+
+
+/* === v22.8.7: click safety for main buttons === */
+.menu-container, .menu-buttons, .main-menu, .main-buttons, .button-container { position: relative; z-index: 20; }
+#scanbarOverlay, .scanbar-overlay, .scanbar-debug-overlay { pointer-events: none !important; }
 
 </style>
 
@@ -1482,7 +1489,43 @@ Smart Price は、毎日の買い物をそっと支える相棒です。
       // もしアプリ側で手動で埋めた期待値がある場合
       const hinted = (window && window.__HTML5_QRCODE_VERSION_HINT__) ? String(window.__HTML5_QRCODE_VERSION_HINT__) : "";
       if (!v && hinted) v = hinted;
-      return { src, version: v || "(unknown)" };
+      return { src, version: v || "(unknown)" }
+  // === v22.8.7: tap hit-test (debug=1) ===
+  let __sp_lastTap = null;
+  function __sp_fmtEl(el){
+    if(!el) return "(null)";
+    const id = el.id ? ("#" + el.id) : "";
+    const cls = (el.className && typeof el.className === "string") ? ("." + el.className.trim().split(/\s+/).slice(0,3).join(".")) : "";
+    return (el.tagName ? el.tagName.toLowerCase() : "node") + id + cls;
+  }
+  function __sp_updateTapInfo(x,y){
+    try{
+      const el = document.elementFromPoint(x,y);
+      __sp_lastTap = { x, y, el: __sp_fmtEl(el), t: Date.now() };
+      if (typeof window.updateDebugPanelText === "function") {
+        try{ window.updateDebugPanelText(); }catch(e){}
+      }
+    }catch(e){}
+  }
+  window.__sp_getLastTapInfo = function(){
+    if(!__sp_lastTap) return "none";
+    const age = Math.max(0, Date.now() - __sp_lastTap.t);
+    return `${__sp_lastTap.el} @(${Math.round(__sp_lastTap.x)},${Math.round(__sp_lastTap.y)}) age=${Math.round(age/100)/10}s`;
+  };
+
+  document.addEventListener("pointerdown", (ev)=>{
+    if(!(typeof isDebug === "function" && isDebug())) return;
+    const x = ev.clientX, y = ev.clientY;
+    __sp_updateTapInfo(x,y);
+  }, {capture:true, passive:true});
+
+  document.addEventListener("touchstart", (ev)=>{
+    if(!(typeof isDebug === "function" && isDebug())) return;
+    const t = ev.touches && ev.touches[0];
+    if(!t) return;
+    __sp_updateTapInfo(t.clientX, t.clientY);
+  }, {capture:true, passive:true});
+;
     } catch (e) {
       return { src: "", version: "(unknown)" };
     }
