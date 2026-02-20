@@ -1,14 +1,14 @@
 <!DOCTYPE html>
 <!--
   APP: Smart Price
-  VERSION: v22.8.3
+  VERSION: v22.8.4
   P26-02-20 00:07 JST
-  TITLE: barcode scan: decode restore (remove formatsToSupport)
+  TITLE: barcode decode recovery: disable BarcodeDetector + default formats
   AUTHOR: ChatGPT (patch) / base: Yui
   CHANGES:
-    - バーコード：formatsToSupport を削除（Pixel/Xperiaでデコードが止まる事故を回避）
-    - バーコード：stopScanner失敗でも処理継続（読めたのに登録されない事故を防ぐ）
-    - バーコード：applyConstraintsはstart直後（focusMode中心）
+    - バーコード：BarcodeDetectorを完全に無効化（デコード不発の回避）
+    - バーコード：formatsToSupportを使わず“デフォルト形式”へ（安定優先）
+    - バーコード：stopScanner失敗でも処理継続（読めたのに反映されない事故を防ぐ）
     - ①/③ 複数端末・家族共有の文言を整理（迷いを減らす）
     - 生活圏登録ボタンの色を統一（押しやすく）
     - 「設定保存と同期」に説明モーダルを追加（何を保存/同期するか明確化）
@@ -51,8 +51,8 @@
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
-  const APP_VERSION = "v22.8.3";
-  const BUILD_ID = "2026-02-20_0040_barcode-safe-r3";
+  const APP_VERSION = "v22.8.4";
+  const BUILD_ID = "2026-02-20_0056_barcode-safe-r4";
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID = BUILD_ID;
@@ -153,7 +153,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta charset="UTF-8">
   <script>
   // === VERSION SSOT (auto) ===
-  window.VERSION_INFO = 'v22.8.3 [2026-02-20_0040_barcode-safe-r3]';
+  window.VERSION_INFO = 'v22.8.4 [2026-02-20_0056_barcode-safe-r4]';
   </script>
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -5228,8 +5228,7 @@ const scannerConfig = {
       qrbox: {width: 280, height: 180}, // ROI内だけの検出を確実にする
       aspectRatio: 1.0, // 正方形に近い形状で精度向上
       disableFlip: false // フリップは無効（速度優先）
-      ,experimentalFeatures: { useBarCodeDetectorIfSupported: true }
-      // ✅ 注意: 解像度設定は、カメラ起動後にtrack.applyConstraints()で適用（後続の処理で実装済み）
+// ✅ 注意: 解像度設定は、カメラ起動後にtrack.applyConstraints()で適用（後続の処理で実装済み）
     };
     
     // ✅ P0: 検出は枠（ROI）内だけにして精度/速度を上げる（細い側面バーコードで特に）
