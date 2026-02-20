@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <!--
   APP: Smart Price
-  VERSION: v22.8.8
+  VERSION: v22.8.9
   P26-02-20 00:07 JST
-  TITLE: fix: startScanner wrapper wiring (define startScannerImpl alias)
+  TITLE: fix: force scan button activation via document capture hitbox (bypass overlays)
   AUTHOR: ChatGPT (patch) / base: Yui
   CHANGES:
+    - スキャン：ボタンが押せない場合でも、画面座標の当たり判定で強制起動（被せ要素をバイパス）
+    - 診断：debug=1で scanHit（当たり判定）とターゲット要素を表示
     - スキャン：startScannerの配線修正（startScannerImpl 未定義で起動できない不具合を修正）
     - スキャン：ボタンが押せない問題に対策（z-index / pointer-events）
     - 診断：debug=1でタップ時の当たり判定（elementFromPoint）を表示
@@ -56,8 +58,8 @@
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
-  const APP_VERSION = "v22.8.8";
-  const BUILD_ID = "2026-02-20_0144_scanbtn-wirefix-r8";
+  const APP_VERSION = "v22.8.9";
+  const BUILD_ID = "2026-02-20_0155_scanbtn-forced-capture-r9";
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID = BUILD_ID;
@@ -158,7 +160,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta charset="UTF-8">
   <script>
   // === VERSION SSOT (auto) ===
-  window.VERSION_INFO = 'v22.8.8 [2026-02-20_0144_scanbtn-wirefix-r8]';
+  window.VERSION_INFO = 'v22.8.9 [2026-02-20_0155_scanbtn-forced-capture-r9]';
   </script>
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -775,6 +777,12 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 /* === v22.8.7: click safety for main buttons === */
 .menu-container, .menu-buttons, .main-menu, .main-buttons, .button-container { position: relative; z-index: 20; }
 #scanbarOverlay, .scanbar-overlay, .scanbar-debug-overlay { pointer-events: none !important; }
+
+
+
+/* === v22.8.9: scan button forced capture === */
+#spTapBadge{ position:fixed; left:12px; top:72px; z-index:999999; font:12px/1.3 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  background:rgba(0,0,0,.65); color:#fff; padding:8px 10px; border-radius:10px; max-width:calc(100vw - 24px); white-space:pre-wrap; word-break:break-word; display:none; }
 
 </style>
 
@@ -1478,7 +1486,114 @@ Smart Price は、毎日の買い物をそっと支える相棒です。
   // ========= Debug =========
   function isDebug() {
     try { return new URL(location.href).searchParams.get('debug') === '1'; } 
-  // === lib diagnostics: html5-qrcode ===
+  
+
+  // === v22.8.9: force scan activation via capture hitbox ===
+  (function(){
+    function $(sel){ try{return document.querySelector(sel);}catch(e){return null;} }
+    function isDbg(){ try{return (typeof isDebug==="function" && isDebug());}catch(e){return false;} }
+    function ensureBadge(){
+      if(!isDbg()) return null;
+      let b = document.getElementById("spTapBadge");
+      if(!b){
+        b = document.createElement("div");
+        b.id = "spTapBadge";
+        document.body.appendChild(b);
+      }
+      b.style.display = "block";
+      return b;
+    }
+    function fmtEl(el){
+      if(!el) return "(null)";
+      const id = el.id ? ("#" + el.id) : "";
+      const cls = (el.className && typeof el.className==="string") ? ("." + el.className.trim().split(/\s+/).slice(0,3).join(".")) : "";
+      return (el.tagName ? el.tagName.toLowerCase() : "node") + id + cls;
+    }
+
+    // scan button selector candidates (keep UI unchanged)
+    function findScanButton(){
+      // 1) known ids
+      let el = $("#scanBtn") || $("#btnScan") || $("#scanButton");
+      if(el) return el;
+      // 2) button containing text "スキャン"
+      const nodes = Array.from(document.querySelectorAll("button, .btn, [role='button'], a")).slice(0, 200);
+      for(const n of nodes){
+        const t = (n.innerText || n.textContent || "").trim();
+        if(t === "スキャン") return n;
+      }
+      return null;
+    }
+
+    function withinRect(x,y, r){
+      return (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom);
+    }
+
+    function tryStartFromTap(ev, src){
+      const btn = findScanButton();
+      const b = ensureBadge();
+      const x = ("clientX" in ev) ? ev.clientX : (ev.touches && ev.touches[0] ? ev.touches[0].clientX : null);
+      const y = ("clientY" in ev) ? ev.clientY : (ev.touches && ev.touches[0] ? ev.touches[0].clientY : null);
+      const tgt = ev.target || null;
+
+      let hit = false;
+      let rect = null;
+      if(btn && x!=null && y!=null){
+        rect = btn.getBoundingClientRect();
+        hit = withinRect(x,y, rect);
+      }
+
+      if(b){
+        b.textContent =
+`[Tap] src=${src}
+target=${fmtEl(tgt)}
+scanBtn=${btn?fmtEl(btn):"(notfound)"}
+scanHit=${hit}
+xy=(${x!=null?Math.round(x):"?"},${y!=null?Math.round(y):"?"})`;
+      }
+
+      if(hit){
+        // stop normal handling, force start
+        try{ ev.preventDefault(); }catch(e){}
+        try{ ev.stopPropagation(); }catch(e){}
+        try{ ev.stopImmediatePropagation(); }catch(e){}
+        // Prefer wrapper if exists
+        const fn = (window.startScanner || window.startScannerImpl);
+        if(typeof fn === "function"){
+          try{ fn(); }catch(e){}
+        }
+        return true;
+      }
+      return false;
+    }
+
+    // capture listeners: overlays cannot block this
+    document.addEventListener("pointerdown", (ev)=>{
+      // only act for primary pointer (avoid scrolling gesture)
+      if(ev && ev.isPrimary === false) return;
+      // run only when not already scanning? we keep simple
+      tryStartFromTap(ev, "pointerdown(capture)");
+    }, {capture:true, passive:false});
+
+    document.addEventListener("touchstart", (ev)=>{
+      tryStartFromTap(ev, "touchstart(capture)");
+    }, {capture:true, passive:false});
+
+    // direct binding once DOM ready (if overlay not issue, this should work too)
+    window.addEventListener("DOMContentLoaded", ()=>{
+      const btn = findScanButton();
+      if(btn){
+        btn.addEventListener("click", (ev)=>{
+          if(isDbg()) ensureBadge();
+          const fn = (window.startScanner || window.startScannerImpl);
+          if(typeof fn === "function"){
+            try{ fn(); }catch(e){}
+          }
+        }, {capture:true});
+      }
+    });
+  })();
+
+// === lib diagnostics: html5-qrcode ===
   function getHtml5QrcodeLibInfo() {
     try {
       const s = document.querySelector('script[src*="html5-qrcode"]');
