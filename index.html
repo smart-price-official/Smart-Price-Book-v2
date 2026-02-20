@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   APP: Smart Price
-  VERSION: v22.8.14
+  VERSION: v22.8.15
   2026-02-20 23:55 JST
   TITLE: recovery: scan button hard-bind (capture hitbox on #scanBtnTop)
   AUTHOR: ChatGPT (patch) / base: Yui
@@ -59,7 +59,7 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   const APP_VERSION = "v22.8.14";
-  const BUILD_ID = "2026-02-21_0026_scanbtn-hardbind-r14";
+  const BUILD_ID = "2026-02-21_0026_scanbtn-jsfix-r15";
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
 
   // --- scan button hard-bind (UI unchanged) ---
@@ -1546,10 +1546,14 @@ Smart Price は、毎日の買い物をそっと支える相棒です。
 
   // ========= Debug =========
   function isDebug() {
-    try { return new URL(location.href).searchParams.get('debug') === '1'; } 
-  
+    try {
+      return new URL(location.href).searchParams.get('debug') === '1';
+    } catch (e) {
+      return false;
+    }
+  }
 
-  // === v22.8.9: force scan activation via capture hitbox ===
+// === v22.8.9: force scan activation via capture hitbox ===
   (function(){
     function $(sel){ try{return document.querySelector(sel);}catch(e){return null;} }
     function isDbg(){ try{return (typeof isDebug==="function" && isDebug());}catch(e){return false;} }
@@ -7672,14 +7676,14 @@ window.updateReferralStatus = updateReferralStatus;
 // v22.0: 複数端末同期（ユーザIDベース）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function ensureUserIdInProducts() {
-  if (!db || !db.products || !db.config || !db.config.personalId) return;
+  if (!window.db || !window.window.db.products || !window.window.db.config || !window.window.db.config.personalId) return;
   
-  const myId = db.config.personalId;
+  const myId = window.window.db.config.personalId;
   let updated = false;
   
-  Object.keys(db.products).forEach(code => {
-    if (!db.products[code].userId) {
-      db.products[code].userId = myId;
+  Object.keys(window.window.db.products).forEach(code => {
+    if (!window.window.db.products[code].userId) {
+      window.window.db.products[code].userId = myId;
       updated = true;
     }
   });
@@ -7704,7 +7708,7 @@ function showReferralStatus() {
   if (!container) return;
   
   // 仮データ（実際はFirebaseから取得）
-  const myId = (db && db.config && db.config.personalId) || 'UNKNOWN';
+  const myId = (window.db && window.window.db.config && window.window.db.config.personalId) || 'UNKNOWN';
   
   // 本来はFirebaseクエリで「referredBy === myId」のユーザーを取得
   const referredUsers = [
@@ -7783,7 +7787,7 @@ window.showReferralStatus = showReferralStatus;
     async function collect(){
       const lines = [];
       lines.push("APP_VERSION: " + (window.APP_VERSION || "n/a"));
-      lines.push("BUILD_ID: " + (window.BUILD_ID || "n/a"));
+      lines.push("BUILD_ID: 2026-02-21_0044_scanbtn-jsfix-r15ndow.BUILD_ID || "n/a"));
       lines.push("FULL_VERSION: " + (window.FULL_VERSION || "n/a"));
       lines.push("URL: " + location.href);
       lines.push("UA: " + navigator.userAgent);
@@ -7949,7 +7953,7 @@ async function spBuildSupportText(){
   try{
     const pid = (typeof getDeviceId === 'function') ? getDeviceId() : '';
     lines.push('APP_VERSION: ' + (window.APP_VERSION || 'n/a'));
-    lines.push('BUILD_ID: ' + (window.BUILD_ID || 'n/a'));
+    lines.push('BUILD_ID: 2026-02-21_0044_scanbtn-jsfix-r15ndow.BUILD_ID || 'n/a'));
     lines.push('URL: ' + location.href);
     lines.push('PERSONAL_ID: ' + (pid || ''));
     const symptom = (document.getElementById('support-symptom')||{}).value || '';
@@ -8045,7 +8049,7 @@ async function spCollectDiagnostics(){
     // fallback minimal
     const lines = [];
     lines.push('APP_VERSION: ' + (window.APP_VERSION||'n/a'));
-    lines.push('BUILD_ID: ' + (window.BUILD_ID||'n/a'));
+    lines.push('BUILD_ID: 2026-02-21_0044_scanbtn-jsfix-r15ndow.BUILD_ID||'n/a'));
     lines.push('URL: ' + location.href);
     lines.push('UA: ' + navigator.userAgent);
     ta.value = lines.join('\n');
@@ -8091,7 +8095,7 @@ async function spShareFamilyId(){
     async function collect() {
       const lines = [];
       lines.push("APP_VERSION: " + (window.APP_VERSION || "n/a"));
-      lines.push("BUILD_ID: " + (window.BUILD_ID || "n/a"));
+      lines.push("BUILD_ID: 2026-02-21_0044_scanbtn-jsfix-r15ndow.BUILD_ID || "n/a"));
       lines.push("FULL_VERSION: " + (window.FULL_VERSION || "n/a"));
       lines.push("URL: " + location.href);
       lines.push("UA: " + navigator.userAgent);
