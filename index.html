@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <!--
   APP: Smart Price
-  VERSION: v22.8.13
+  VERSION: v22.8.14
   2026-02-20 23:55 JST
-  TITLE: recovery: auto-unblock overlay at scanBtn center (elementsFromPoint)
+  TITLE: recovery: scan button hard-bind (capture hitbox on #scanBtnTop)
   AUTHOR: ChatGPT (patch) / base: Yui
   CHANGES:
     - スキャン：ボタンが押せない場合でも、画面座標の当たり判定で強制起動（被せ要素をバイパス）
@@ -58,9 +58,65 @@
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
-  const APP_VERSION = "v22.8.13";
-  const BUILD_ID = "2026-02-20_2355_scanbtn-forcecapture-r13";
+  const APP_VERSION = "v22.8.14";
+  const BUILD_ID = "2026-02-21_0026_scanbtn-hardbind-r14";
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
+
+  // --- scan button hard-bind (UI unchanged) ---
+  // Some devices report that only the Scan tile becomes "unclickable".
+  // We force-capture pointer/click events and, if the tap point is inside #scanBtnTop,
+  // we call startScanner() regardless of DOM target / overlays.
+  function __spLog(tag, obj){
+    try{
+      if (window.__SP_DEBUG_PUSH){ window.__SP_DEBUG_PUSH(tag, obj); return; }
+      if (window.SP && SP.debug && typeof SP.debug.push === "function"){ SP.debug.push(tag, obj); return; }
+      console.log("[SPDBG]", tag, obj||"");
+    }catch(e){}
+  }
+  function __spInRect(x,y, r){ return !!(r && x>=r.left && x<=r.right && y>=r.top && y<=r.bottom); }
+  function __spGetScanEl(){
+    return document.getElementById("scanBtnTop")
+        || document.querySelector('[onclick*="startScanner"]')
+        || null;
+  }
+  function __spSafeStartScanner(reason){
+    try{
+      if (typeof window.startScanner === "function"){
+        __spLog("SCAN hardbind fire", {reason});
+        window.startScanner();
+      }else{
+        __spLog("SCAN hardbind missing startScanner", {reason, type: typeof window.startScanner});
+      }
+    }catch(err){
+      __spLog("SCAN hardbind exception", {reason, message: String(err && err.message || err)});
+    }
+  }
+  function __spInstallScanHardBind(){
+    try{
+      const el = __spGetScanEl();
+      if (!el){ __spLog("SCAN hardbind: scanBtnTop not found", {}); return; }
+      // defensive: ensure it can receive events (no visual change)
+      try{ el.style.pointerEvents = "auto"; el.style.touchAction = "manipulation"; }catch(e){}
+      const handler = (ev) => {
+        try{
+          const x = (typeof ev.clientX === "number") ? ev.clientX : (ev.touches && ev.touches[0] ? ev.touches[0].clientX : null);
+          const y = (typeof ev.clientY === "number") ? ev.clientY : (ev.touches && ev.touches[0] ? ev.touches[0].clientY : null);
+          if (x==null || y==null) return;
+          const r = el.getBoundingClientRect();
+          if (__spInRect(x,y,r)){
+            // prevent double triggers only for this path
+            if (ev.type === "click" || ev.type === "pointerup") { /* allow natural click too */ }
+            __spSafeStartScanner(`evt=${ev.type}`);
+          }
+        }catch(e){}
+      };
+      // capture phase so overlays / stopPropagation won't block us
+      document.addEventListener("pointerdown", handler, true);
+      document.addEventListener("touchstart", handler, true);
+      document.addEventListener("click", handler, true);
+      __spLog("SCAN hardbind installed", {id: el.id || null});
+    }catch(e){}
+  }
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID = BUILD_ID;
   window.FULL_VERSION = FULL_VERSION;
@@ -1585,6 +1641,7 @@ xy=(${x!=null?Math.round(x):"?"},${y!=null?Math.round(y):"?"})`;
 
     // direct binding once DOM ready (if overlay not issue, this should work too)
     window.addEventListener("DOMContentLoaded", ()=>{
+      try{ __spInstallScanHardBind(); }catch(e){}
       const btn = findScanButton();
       if(btn){
         btn.addEventListener("click", (ev)=>{
