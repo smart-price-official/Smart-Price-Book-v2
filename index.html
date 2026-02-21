@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <!--
   APP: Smart Price
-  VERSION: v22.8.15
-  2026-02-20 23:55 JST
-  TITLE: recovery: scan button hard-bind (capture hitbox on #scanBtnTop)
+  VERSION: v22.8.16
+  2026-02-21 09:38 JST
+  TITLE: recovery: syntax-fix + debug/gps/barcode restore
   AUTHOR: ChatGPT (patch) / base: Yui
   CHANGES:
     - スキャン：ボタンが押せない場合でも、画面座標の当たり判定で強制起動（被せ要素をバイパス）
@@ -59,7 +59,7 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   const APP_VERSION = "v22.8.14";
-  const BUILD_ID = "2026-02-21_0026_scanbtn-jsfix-r15";
+  const BUILD_ID = "2026-02-21_0026_scanbtn-hardbind-r14";
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
 
   // --- scan button hard-bind (UI unchanged) ---
@@ -216,7 +216,10 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta charset="UTF-8">
   <script>
   // === VERSION SSOT (auto) ===
-  window.VERSION_INFO = 'v22.8.11 [2026-02-20_0305_scanbtn-capturefix-r11]';
+  window.VERSION_INFO = 'v22.8.16 [2026-02-21_0945_recover-r16]';
+  window.APP_VERSION = 'v22.8.16';
+  window.BUILD_ID = '2026-02-21_0945_recover-r16';
+  window.FULL_VERSION = 'v22.8.16 [2026-02-21_0945_recover-r16]';
   </script>
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -1553,7 +1556,7 @@ Smart Price は、毎日の買い物をそっと支える相棒です。
     }
   }
 
-// === v22.8.9: force scan activation via capture hitbox ===
+  // === v22.8.9: force scan activation via capture hitbox ===
   (function(){
     function $(sel){ try{return document.querySelector(sel);}catch(e){return null;} }
     function isDbg(){ try{return (typeof isDebug==="function" && isDebug());}catch(e){return false;} }
@@ -1660,61 +1663,30 @@ xy=(${x!=null?Math.round(x):"?"},${y!=null?Math.round(y):"?"})`;
   })();
 
 // === lib diagnostics: html5-qrcode ===
-  function getHtml5QrcodeLibInfo() {
-    try {
-      const s = document.querySelector('script[src*="html5-qrcode"]');
-      const src = s ? String(s.src || "") : "";
-      // よくあるCDN: .../html5-qrcode@2.3.8/... の @2.3.8 を抜く
-      let v = "";
-      const m = src.match(/html5-qrcode@([0-9]+\.[0-9]+\.[0-9]+)/);
-      if (m && m[1]) v = m[1];
-      // もしアプリ側で手動で埋めた期待値がある場合
-      const hinted = (window && window.__HTML5_QRCODE_VERSION_HINT__) ? String(window.__HTML5_QRCODE_VERSION_HINT__) : "";
-      if (!v && hinted) v = hinted;
-      return { src, version: v || "(unknown)" }
-  // === v22.8.7: tap hit-test (debug=1) ===
-  let __sp_lastTap = null;
-  function __sp_fmtEl(el){
-    if(!el) return "(null)";
-    const id = el.id ? ("#" + el.id) : "";
-    const cls = (el.className && typeof el.className === "string") ? ("." + el.className.trim().split(/\s+/).slice(0,3).join(".")) : "";
-    return (el.tagName ? el.tagName.toLowerCase() : "node") + id + cls;
-  }
-  function __sp_updateTapInfo(x,y){
+  function getHtml5QrcodeLibInfo(){
     try{
-      const el = document.elementFromPoint(x,y);
-      __sp_lastTap = { x, y, el: __sp_fmtEl(el), t: Date.now() };
-      if (typeof window.updateDebugPanelText === "function") {
-        try{ window.updateDebugPanelText(); }catch(e){}
-      }
-    }catch(e){}
-  }
-  window.__sp_getLastTapInfo = function(){
-    if(!__sp_lastTap) return "none";
-    const age = Math.max(0, Date.now() - __sp_lastTap.t);
-    return `${__sp_lastTap.el} @(${Math.round(__sp_lastTap.x)},${Math.round(__sp_lastTap.y)}) age=${Math.round(age/100)/10}s`;
-  };
+      var src = "";
+      var v = "";
+      try{
+        var scripts = document.querySelectorAll('script[src]');
+        for(var i=0;i<scripts.length;i++){
+          var s = scripts[i].getAttribute('src') || "";
+          if(/html5[-_]?qrcode/i.test(s)){ src = s; break; }
+        }
+      }catch(_e){}
 
-  document.addEventListener("pointerdown", (ev)=>{
-    if(!(typeof isDebug === "function" && isDebug())) return;
-    const x = ev.clientX, y = ev.clientY;
-    __sp_updateTapInfo(x,y);
-  }, {capture:true, passive:true});
+      try{
+        if(window.Html5Qrcode && (window.Html5Qrcode.VERSION || window.Html5Qrcode.version)){
+          v = String(window.Html5Qrcode.VERSION || window.Html5Qrcode.version || "");
+        }
+      }catch(_e2){}
 
-  document.addEventListener("touchstart", (ev)=>{
-    if(!(typeof isDebug === "function" && isDebug())) return;
-    const t = ev.touches && ev.touches[0];
-    if(!t) return;
-    __sp_updateTapInfo(t.clientX, t.clientY);
-  }, {capture:true, passive:true});
-;
-    } catch (e) {
-      return { src: "", version: "(unknown)" };
+      return { src: src, version: v || "(unknown)" };
+    }catch(e){
+      return { src: "", version: "(unknown)", error: String(e) };
     }
   }
-catch(e){ return false; }
-  }
-  
+
   // ✅ デバッグログ関数（トーストで表示）
   function debugLog(message, type = 'info') {
     if (!isDebug()) return;
@@ -7676,14 +7648,16 @@ window.updateReferralStatus = updateReferralStatus;
 // v22.0: 複数端末同期（ユーザIDベース）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function ensureUserIdInProducts() {
-  if (!window.db || !window.window.db.products || !window.window.db.config || !window.window.db.config.personalId) return;
+    try{ if(typeof db==='undefined' || !db){ return; } }catch(_e){ return; }
+
+  if (!db || !db.products || !db.config || !db.config.personalId) return;
   
-  const myId = window.window.db.config.personalId;
+  const myId = db.config.personalId;
   let updated = false;
   
-  Object.keys(window.window.db.products).forEach(code => {
-    if (!window.window.db.products[code].userId) {
-      window.window.db.products[code].userId = myId;
+  Object.keys(db.products).forEach(code => {
+    if (!db.products[code].userId) {
+      db.products[code].userId = myId;
       updated = true;
     }
   });
@@ -7708,7 +7682,7 @@ function showReferralStatus() {
   if (!container) return;
   
   // 仮データ（実際はFirebaseから取得）
-  const myId = (window.db && window.window.db.config && window.window.db.config.personalId) || 'UNKNOWN';
+  const myId = (db && db.config && db.config.personalId) || 'UNKNOWN';
   
   // 本来はFirebaseクエリで「referredBy === myId」のユーザーを取得
   const referredUsers = [
@@ -7787,7 +7761,7 @@ window.showReferralStatus = showReferralStatus;
     async function collect(){
       const lines = [];
       lines.push("APP_VERSION: " + (window.APP_VERSION || "n/a"));
-      lines.push("BUILD_ID: 2026-02-21_0044_scanbtn-jsfix-r15ndow.BUILD_ID || "n/a"));
+      lines.push("BUILD_ID: " + (window.BUILD_ID || "n/a"));
       lines.push("FULL_VERSION: " + (window.FULL_VERSION || "n/a"));
       lines.push("URL: " + location.href);
       lines.push("UA: " + navigator.userAgent);
@@ -7953,7 +7927,7 @@ async function spBuildSupportText(){
   try{
     const pid = (typeof getDeviceId === 'function') ? getDeviceId() : '';
     lines.push('APP_VERSION: ' + (window.APP_VERSION || 'n/a'));
-    lines.push('BUILD_ID: 2026-02-21_0044_scanbtn-jsfix-r15ndow.BUILD_ID || 'n/a'));
+    lines.push('BUILD_ID: ' + (window.BUILD_ID || 'n/a'));
     lines.push('URL: ' + location.href);
     lines.push('PERSONAL_ID: ' + (pid || ''));
     const symptom = (document.getElementById('support-symptom')||{}).value || '';
@@ -8049,7 +8023,7 @@ async function spCollectDiagnostics(){
     // fallback minimal
     const lines = [];
     lines.push('APP_VERSION: ' + (window.APP_VERSION||'n/a'));
-    lines.push('BUILD_ID: 2026-02-21_0044_scanbtn-jsfix-r15ndow.BUILD_ID||'n/a'));
+    lines.push('BUILD_ID: ' + (window.BUILD_ID||'n/a'));
     lines.push('URL: ' + location.href);
     lines.push('UA: ' + navigator.userAgent);
     ta.value = lines.join('\n');
@@ -8095,7 +8069,7 @@ async function spShareFamilyId(){
     async function collect() {
       const lines = [];
       lines.push("APP_VERSION: " + (window.APP_VERSION || "n/a"));
-      lines.push("BUILD_ID: 2026-02-21_0044_scanbtn-jsfix-r15ndow.BUILD_ID || "n/a"));
+      lines.push("BUILD_ID: " + (window.BUILD_ID || "n/a"));
       lines.push("FULL_VERSION: " + (window.FULL_VERSION || "n/a"));
       lines.push("URL: " + location.href);
       lines.push("UA: " + navigator.userAgent);
