@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <!--
   APP: Smart Price
-  VERSION: v22.8.16
-  2026-02-21 09:38 JST
+  VERSION: v22.8.17
+2026-02-21 11:42 JST
   TITLE: recovery: syntax-fix + debug/gps/barcode restore
   AUTHOR: ChatGPT (patch) / base: Yui
   CHANGES:
@@ -31,6 +31,21 @@
 <html lang="ja">
 <head>
 
+
+<script>
+/* === VERSION SSOT (single source of truth) ===
+   APP_VERSION: v22.8.17
+   BUILD_ID: 2026-02-21_1142_recover-r17
+   FULL_VERSION: v22.8.17 [2026-02-21_1142_recover-r17]
+   Date(JST): 2026-02-21 11:42
+*/
+var APP_VERSION = "v22.8.17";
+var BUILD_ID = "2026-02-21_1142_recover-r17";
+var FULL_VERSION = "v22.8.17 [2026-02-21_1142_recover-r17]";
+window.APP_VERSION = APP_VERSION;
+window.BUILD_ID = BUILD_ID;
+window.FULL_VERSION = FULL_VERSION;
+</script>
 <script>
 /* SSOT_MISMATCH_CHECK */
 (function(){
@@ -874,6 +889,17 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
     try { if (typeof showToast==='function') showToast('メニュー表示エラー: ' + (e?.message||e)); } catch(_){}
   }
 };
+</script>
+
+
+<script>
+(function(){
+  function qs(k){ try{return new URL(location.href).searchParams.get(k);}catch(e){return null;} }
+  function isDebugSSOT(){ return String(qs('debug')||'')==='1'; }
+  // expose unified helpers
+  window.isDebug = window.isDebug || isDebugSSOT;
+  window.__SP_SSOT__ = { APP_VERSION: window.APP_VERSION, BUILD_ID: window.BUILD_ID, FULL_VERSION: window.FULL_VERSION };
+})();
 </script>
 
 </head>
@@ -6892,11 +6918,11 @@ return true;
       const backTo = btn.getAttribute('data-back');
       
       if (action === 'close-settings' || btn.classList.contains('sp-close-btn')) {
-        e.preventDefault(); e.stopPropagation(); close();
+        e.preventDefault(); // e.stopPropagation(); [disabled: allow normal handlers] close();
       } else if (btn.classList.contains('sp-menu-btn') && target) {
-        e.preventDefault(); e.stopPropagation(); navigate(target.replace(/^panel/, ''));
+        e.preventDefault(); // e.stopPropagation(); [disabled: allow normal handlers] navigate(target.replace(/^panel/, ''));
       } else if (btn.classList.contains('sp-back-btn')) {
-        e.preventDefault(); e.stopPropagation(); back(backTo);
+        e.preventDefault(); // e.stopPropagation(); [disabled: allow normal handlers] back(backTo);
       }
     };
     modal.addEventListener('click', modal._spListener);
@@ -6909,7 +6935,7 @@ return true;
     const settingsBtn = document.getElementById('settingsBtn');
     if (settingsBtn && !settingsBtn._spBound) {
       settingsBtn._spBound = true;
-      settingsBtn.addEventListener('click', function(e) { e.preventDefault(); e.stopPropagation(); open(); });
+      settingsBtn.addEventListener('click', function(e) { e.preventDefault(); // e.stopPropagation(); [disabled: allow normal handlers] open(); });
     }
   }
   
@@ -8391,6 +8417,44 @@ try{ spSetupBackSwipeGuard(); }catch(e){}
     });
   })();
 
+</script>
+
+
+<script>
+(function(){
+  function onReady(fn){
+    if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn, {once:true});
+    else fn();
+  }
+  function startScannerSafe(src){
+    try{
+      if(typeof startScanner === 'function') return startScanner({__src:src||'bind'});
+      console.warn('[Scan] startScanner is not a function', typeof startScanner);
+    }catch(e){
+      console.error('[Scan] startScanner threw', e);
+    }
+  }
+  onReady(function(){
+    var btn = document.getElementById('scanBtnTop') || document.getElementById('btnScan') || document.querySelector('[data-role="scanBtn"]');
+    if(!btn) return;
+    // remove duplicate listeners by replacing node (safe)
+    try{
+      var clone = btn.cloneNode(true);
+      btn.parentNode.replaceChild(clone, btn);
+      btn = clone;
+    }catch(e){}
+    var handler = function(ev){
+      try{
+        ev.preventDefault();
+        ev.stopPropagation();
+      }catch(e){}
+      startScannerSafe(ev.type);
+    };
+    btn.addEventListener('click', handler, {capture:true, passive:false});
+    btn.addEventListener('touchstart', handler, {capture:true, passive:false});
+    btn.addEventListener('pointerdown', handler, {capture:true, passive:false});
+  });
+})();
 </script>
 
 </body>
