@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <!--
   APP: Smart Price
-  VERSION: v22.8.23
-2026-02-21 11:42 JST
-  TITLE: recovery: syntax-fix + debug/gps/barcode restore
+  VERSION: v22.8.25
+2026-02-22 21:45 JST
+  TITLE: scan tap-proof + version/time SSOT (CHATGPT_yui)
 AUTHOR: CHATGPT_yui
   AUTHOR: ChatGPT (patch) / base: Yui
   CHANGES:
@@ -58,8 +58,8 @@ AUTHOR: CHATGPT_yui
     defineConst('__SP_IS_DEBUG', (q.get('debug') === '1'));
   } catch(e) {
     try {
-      window.APP_VERSION = "v22.8.24";
-      window.BUILD_ID = "2026-02-22_2145_scan-asyncfix-yui-r24";
+      window.APP_VERSION = "v22.8.25";
+      window.BUILD_ID = "2026-02-22_2145_scan-tapproof-yui-r25";
       window.FULL_VERSION = "v22.8.20 [2026-02-22_0215_recover-r20]";
       window.VERSION_INFO = window.FULL_VERSION;
     } catch(_e) {}
@@ -305,7 +305,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#D50000">
-  <title>Smart Price v22.8.24 [2026-02-22_2107_dbscan-timefix-yui-r23]</title>
+  <title>Smart Price v22.8.25 (CHATGPT_yui)</title>
   <!-- ✅ SW RESET TOOL (v22.7.9) : ?reset=sw -->
   <script>
   (function() {
@@ -979,7 +979,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 <div class="container p-3">
   <div id="mainView">
     <div class="row g-2 mb-4">
-      <div class="col-7"><button id="scanBtnTop" class="btn btn-danger w-100 py-3 rounded-4 shadow" onclick="startScanner()"><i class="bi bi-upc-scan fs-1"></i><br>スキャン</button></div>
+      <div class="col-7"><button id="scanBtnTop" class="btn btn-danger w-100 py-3 rounded-4 shadow" onclick="return window.__spOnScanBtnTap(event)"><i class="bi bi-upc-scan fs-1"></i><br>スキャン</button></div>
       <div class="col-5"><button class="btn btn-dark w-100 py-3 rounded-4 border-secondary shadow" onclick="openBarcodeManual()"><i class="bi bi-keyboard fs-1"></i><br>手入力</button></div>
     </div>
     <div id="aiOneLiner" class="hint mb-3" style="display:none;"></div>
@@ -5534,6 +5534,28 @@ async
       return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
     }catch(e){ return ''; }
   }
+
+// === CHATGPT_yui: Scan button tap-proof wrapper (v22.8.25) ===
+window.__spOnScanBtnTap = function(ev){
+  try{
+    if(ev){ ev.preventDefault(); ev.stopPropagation(); }
+  }catch(_e){}
+  try{
+    if(typeof window.__spLog === "function"){ window.__spLog("[ScanTap] onclick wrapper fired"); }
+    if(typeof window.showToast === "function" && (typeof window.isDebug === "function" ? window.isDebug() : (new URLSearchParams(location.search).get("debug")==="1"))){
+      try{ window.showToast("タップ", "スキャンを起動します…", "info"); }catch(_e){}
+    }
+  }catch(_e){}
+  try{
+    // make sure global binding exists
+    if(typeof window.startScanner === "function"){ window.startScanner(); return false; }
+    if(typeof startScanner === "function"){ startScanner(); return false; }
+    if(typeof window.showToast === "function"){ window.showToast("エラー", "startScanner が見つかりません", "danger"); }
+  }catch(e){
+    try{ if(typeof window.showToast==="function"){ window.showToast("エラー", String(e && e.message ? e.message : e), "danger"); } }catch(_e){}
+  }
+  return false;
+};
 async function startScanner() {
     if(isScanning) {
       if (isDebug()) {
@@ -7284,6 +7306,9 @@ async function spInstallScanBtnCaptureBypass(){
   }
 }
 
+// CHATGPT_yui: expose as global for inline onclick
+window.startScanner = startScanner;
+
 
 document.addEventListener('DOMContentLoaded', function() {
   // [ScanBtn CaptureFix] クリックが効かない端末/状態でも、座標でスキャン開始を拾う（被せ/イベント阻害を迂回）
@@ -8591,6 +8616,27 @@ try{ spSetupBackSwipeGuard(); }catch(e){}
     btn.addEventListener('pointerdown', handler, {capture:true, passive:false});
   });
 })();
+
+// === CHATGPT_yui: direct listener (fallback) ===
+(function(){
+  function bind(){
+    try{
+      var btn = document.getElementById("scanBtnTop");
+      if(!btn) return;
+      // avoid double bind
+      if(btn.__spBoundYui) return;
+      btn.__spBoundYui = true;
+      btn.addEventListener("click", window.__spOnScanBtnTap, {capture:false, passive:false});
+      btn.addEventListener("touchstart", window.__spOnScanBtnTap, {capture:false, passive:false});
+      if(typeof window.__spLog === "function"){ window.__spLog("[ScanTap] direct listeners bound"); }
+    }catch(e){
+      try{ if(typeof window.__spError==="function"){ window.__spError(e, "bindScanBtnTop"); } }catch(_e){}
+    }
+  }
+  if(document.readyState==="loading"){ document.addEventListener("DOMContentLoaded", bind); }
+  else { bind(); }
+})();
+
 </script>
 
 </body>
