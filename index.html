@@ -4,7 +4,7 @@
   VERSION: v22.8.17
 2026-02-21 11:42 JST
   TITLE: recovery: syntax-fix + debug/gps/barcode restore
-  AUTHOR: ChatGPT (patch) / base: Yui
+  AUTHOR: Claude / base: Yui
   CHANGES:
     - スキャン：ボタンが押せない場合でも、画面座標の当たり判定で強制起動（被せ要素をバイパス）
     - 診断：debug=1で scanHit（当たり判定）とターゲット要素を表示
@@ -35,13 +35,13 @@
 <script>
 /* === VERSION SSOT (single source of truth) ===
    APP_VERSION: v22.8.17
-   BUILD_ID: 2026-02-21_1142_recover-r17
-   FULL_VERSION: v22.8.17 [2026-02-21_1142_recover-r17]
+   BUILD_ID: 2026-02-22_0300_rootfix-r18
+   FULL_VERSION: v22.8.17 [2026-02-22_0300_rootfix-r18]
    Date(JST): 2026-02-21 11:42
 */
 var APP_VERSION = "v22.8.17";
-var BUILD_ID = "2026-02-21_1142_recover-r17";
-var FULL_VERSION = "v22.8.17 [2026-02-21_1142_recover-r17]";
+var BUILD_ID = "2026-02-22_0300_rootfix-r18";
+var FULL_VERSION = "v22.8.17 [2026-02-22_0300_rootfix-r18]";
 window.APP_VERSION = APP_VERSION;
 window.BUILD_ID = BUILD_ID;
 window.FULL_VERSION = FULL_VERSION;
@@ -73,8 +73,8 @@ window.FULL_VERSION = FULL_VERSION;
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
-  const APP_VERSION = "v22.8.17";
-  const BUILD_ID = "2026-02-21_1142_recover-r17";
+  const APP_VERSION = "v22.8.14";
+  const BUILD_ID = "2026-02-21_0026_scanbtn-hardbind-r14";
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
 
   // --- scan button hard-bind (UI unchanged) ---
@@ -88,7 +88,11 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
       console.log("[SPDBG]", tag, obj||"");
     }catch(e){}
   }
-  function __spInRect(x,y, r){ return !!(r && x>=r.left && x<=r.right && y>=r.top && y<=r.bottom); }
+  function __spInRect(x, y, r, margin) {
+    if (!r) return false;
+    const m = (typeof margin === "number") ? margin : 40; // デフォルト40pxマージン
+    return !!(x >= r.left - m && x <= r.right + m && y >= r.top - m && y <= r.bottom + m);
+  }
   function __spGetScanEl(){
     return document.getElementById("scanBtnTop")
         || document.querySelector('[onclick*="startScanner"]')
@@ -112,25 +116,48 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
       if (!el){ __spLog("SCAN hardbind: scanBtnTop not found", {}); return; }
       // defensive: ensure it can receive events (no visual change)
       try{ el.style.pointerEvents = "auto"; el.style.touchAction = "manipulation"; }catch(e){}
+      
+      let lastFireTime = 0;
       const handler = (ev) => {
         try{
           const x = (typeof ev.clientX === "number") ? ev.clientX : (ev.touches && ev.touches[0] ? ev.touches[0].clientX : null);
           const y = (typeof ev.clientY === "number") ? ev.clientY : (ev.touches && ev.touches[0] ? ev.touches[0].clientY : null);
-          if (x==null || y==null) return;
+          if (x == null || y == null) return;
+          
           const r = el.getBoundingClientRect();
-          if (__spInRect(x,y,r)){
-            // prevent double triggers only for this path
-            if (ev.type === "click" || ev.type === "pointerup") { /* allow natural click too */ }
+          const now = Date.now();
+          
+          // ★ 根本修正: マージン判定（40pxの緩い判定）
+          const hitWithMargin = __spInRect(x, y, r, 40);
+          
+          if (hitWithMargin) {
+            // ダブルクリック防止（500ms以内は無視）
+            if (now - lastFireTime < 500) {
+              __spLog("SCAN hardbind debounce", {reason: `evt=${ev.type}`});
+              return;
+            }
+            lastFireTime = now;
+            
+            __spLog("SCAN hardbind fire", {reason: `evt=${ev.type}`, xy: `(${Math.round(x)},${Math.round(y)})`, margin: 40});
             __spSafeStartScanner(`evt=${ev.type}`);
+          } else {
+            // デバッグ: 判定外を詳しくログ
+            const dist = Math.sqrt((x - (r.left + r.width/2))**2 + (y - (r.top + r.height/2))**2);
+            __spLog("SCAN hardbind miss", {xy: `(${Math.round(x)},${Math.round(y)})`, rect: `L${Math.round(r.left)}T${Math.round(r.top)}W${Math.round(r.width)}H${Math.round(r.height)}`, distance: Math.round(dist)});
           }
-        }catch(e){}
+        }catch(e){
+          __spLog("SCAN hardbind handler error", {err: String(e)});
+        }
       };
+      
       // capture phase so overlays / stopPropagation won't block us
       document.addEventListener("pointerdown", handler, true);
       document.addEventListener("touchstart", handler, true);
       document.addEventListener("click", handler, true);
-      __spLog("SCAN hardbind installed", {id: el.id || null});
-    }catch(e){}
+      __spLog("SCAN hardbind installed", {id: el.id || null, version: "v2-rootfix"});
+    }catch(e){
+      __spLog("SCAN hardbind install error", {err: String(e)});
+    }
   }
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID = BUILD_ID;
@@ -231,10 +258,10 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta charset="UTF-8">
   <script>
   // === VERSION SSOT (auto) ===
-  window.VERSION_INFO = 'v22.8.17 [2026-02-21_1142_recover-r17]';
-  window.APP_VERSION = 'v22.8.17';
-  window.BUILD_ID = '2026-02-21_1142_recover-r17';
-  window.FULL_VERSION = 'v22.8.17 [2026-02-21_1142_recover-r17]';
+  window.VERSION_INFO = 'v22.8.16 [2026-02-21_0945_recover-r16]';
+  window.APP_VERSION = 'v22.8.16';
+  window.BUILD_ID = '2026-02-21_0945_recover-r16';
+  window.FULL_VERSION = 'v22.8.16 [2026-02-21_0945_recover-r16]';
   </script>
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -242,7 +269,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#D50000">
-  <title>Smart Price v22.8.17 (2026-02-21 11:42 JST)</title>
+  <title>Smart Price v22.7.9 (2026-02-19 11:39 JST)</title>
   <!-- ✅ SW RESET TOOL (v22.7.9) : ?reset=sw -->
   <script>
   (function() {
