@@ -39,7 +39,7 @@ AUTHOR: CHATGPT_yui
   try {
     var q = new URL(location.href).searchParams;
     var b = q.get('b') || '';
-    var APP_VERSION = "v22.8.23";
+    var APP_VERSION = "v22.8.24";
     var BUILD_ID = b ? b : "2026-02-22_0215_recover-r20";
     var FULL_VERSION = APP_VERSION + " [" + BUILD_ID + "]";
     function defineConst(k,v){
@@ -58,8 +58,8 @@ AUTHOR: CHATGPT_yui
     defineConst('__SP_IS_DEBUG', (q.get('debug') === '1'));
   } catch(e) {
     try {
-      window.APP_VERSION = "v22.8.20";
-      window.BUILD_ID = "2026-02-22_0215_recover-r20";
+      window.APP_VERSION = "v22.8.24";
+      window.BUILD_ID = "2026-02-22_2145_scan-asyncfix-yui-r24";
       window.FULL_VERSION = "v22.8.20 [2026-02-22_0215_recover-r20]";
       window.VERSION_INFO = window.FULL_VERSION;
     } catch(_e) {}
@@ -93,7 +93,7 @@ AUTHOR: CHATGPT_yui
    FULL_VERSION: v22.8.23 [2026-02-22_2107_dbscan-timefix-yui-r23]
    Date(JST): 2026-02-22 19:40
 */
-var APP_VERSION = "v22.8.23";
+var APP_VERSION = "v22.8.24";
 var BUILD_ID_DEFAULT = "2026-02-22_2107_dbscan-timefix-yui-r23";
 var AUTHOR = "CHATGPT_yui";
 var BUILD_ID = (function(){ try{ return new URL(location.href).searchParams.get("b") || BUILD_ID_DEFAULT; }catch(e){ return BUILD_ID_DEFAULT; } })();
@@ -305,7 +305,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#D50000">
-  <title>Smart Price v22.8.23 [2026-02-22_2107_dbscan-timefix-yui-r23]</title>
+  <title>Smart Price v22.8.24 [2026-02-22_2107_dbscan-timefix-yui-r23]</title>
   <!-- ✅ SW RESET TOOL (v22.7.9) : ?reset=sw -->
   <script>
   (function() {
@@ -5534,7 +5534,7 @@ async
       return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
     }catch(e){ return ''; }
   }
-function startScanner() {
+async function startScanner() {
     if(isScanning) {
       if (isDebug()) {
         console.log("[Scanner] Already scanning, skip");
