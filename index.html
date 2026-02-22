@@ -72,10 +72,10 @@ window.FULL_VERSION = FULL_VERSION;
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
-(() => {
-  const APP_VERSION = "v22.8.14";
-  const BUILD_ID = "2026-02-21_0026_scanbtn-hardbind-r14";
-  const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
+  // バージョン情報は外側で定義済み - 上書き禁止
+  // const APP_VERSION = "v22.8.17";  ← グローバル版を使用
+  // const BUILD_ID = "2026-02-22_0300_rootfix-r18";
+  const FULL_VERSION = `${window.APP_VERSION} [${window.BUILD_ID}]`;  // グローバル参照
 
   // --- scan button hard-bind (UI unchanged) ---
   // Some devices report that only the Scan tile becomes "unclickable".
@@ -159,9 +159,10 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
       __spLog("SCAN hardbind install error", {err: String(e)});
     }
   }
-  window.APP_VERSION = APP_VERSION;
-  window.BUILD_ID = BUILD_ID;
-  window.FULL_VERSION = FULL_VERSION;
+  // グローバル値を再度確保（重複上書き防止）
+  if (!window.APP_VERSION) window.APP_VERSION = "v22.8.17";
+  if (!window.BUILD_ID) window.BUILD_ID = "2026-02-22_0300_rootfix-r18";
+  if (!window.FULL_VERSION) window.FULL_VERSION = `${window.APP_VERSION} [${window.BUILD_ID}]`;
   // === localStorage namespace (v2 only; stableは従来通り) ===
   const SP_LS_PREFIX = (function(){
     try{
@@ -258,10 +259,11 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta charset="UTF-8">
   <script>
   // === VERSION SSOT (auto) ===
-  window.VERSION_INFO = 'v22.8.16 [2026-02-21_0945_recover-r16]';
-  window.APP_VERSION = 'v22.8.16';
-  window.BUILD_ID = '2026-02-21_0945_recover-r16';
-  window.FULL_VERSION = 'v22.8.16 [2026-02-21_0945_recover-r16]';
+  // グローバル値を再度確保（キャッシュ問題対策）
+  window.VERSION_INFO = `v22.8.17 [2026-02-22_0300_rootfix-r18]`;
+  if (!window.APP_VERSION) window.APP_VERSION = 'v22.8.17';
+  if (!window.BUILD_ID) window.BUILD_ID = '2026-02-22_0300_rootfix-r18';
+  if (!window.FULL_VERSION) window.FULL_VERSION = `v22.8.17 [2026-02-22_0300_rootfix-r18]`;
   </script>
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
