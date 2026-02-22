@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <!--
   APP: Smart Price
-  VERSION: v22.8.21
+  VERSION: v22.8.23
 2026-02-21 11:42 JST
   TITLE: recovery: syntax-fix + debug/gps/barcode restore
+AUTHOR: CHATGPT_yui
   AUTHOR: ChatGPT (patch) / base: Yui
   CHANGES:
     - スキャン：ボタンが押せない場合でも、画面座標の当たり判定で強制起動（被せ要素をバイパス）
@@ -38,7 +39,7 @@
   try {
     var q = new URL(location.href).searchParams;
     var b = q.get('b') || '';
-    var APP_VERSION = "v22.8.21";
+    var APP_VERSION = "v22.8.23";
     var BUILD_ID = b ? b : "2026-02-22_0215_recover-r20";
     var FULL_VERSION = APP_VERSION + " [" + BUILD_ID + "]";
     function defineConst(k,v){
@@ -87,19 +88,29 @@
 
 <script>
 /* === VERSION SSOT (single source of truth) ===
-   APP_VERSION: v22.8.21
-   BUILD_ID: 2026-02-21_1142_recover-r17
-   FULL_VERSION: v22.8.21 [2026-02-21_1142_recover-r17]
+   APP_VERSION: v22.8.23
+   P26-02-22_2107_dbscan-timefix-yui-r23
+   FULL_VERSION: v22.8.23 [2026-02-22_2107_dbscan-timefix-yui-r23]
    Date(JST): 2026-02-22 19:40
 */
-var APP_VERSION = "v22.8.19";
-var BUILD_ID_DEFAULT = "2026-02-22_0105_recover-r19";
+var APP_VERSION = "v22.8.23";
+var BUILD_ID_DEFAULT = "2026-02-22_2107_dbscan-timefix-yui-r23";
+var AUTHOR = "CHATGPT_yui";
 var BUILD_ID = (function(){ try{ return new URL(location.href).searchParams.get("b") || BUILD_ID_DEFAULT; }catch(e){ return BUILD_ID_DEFAULT; } })();
 var FULL_VERSION = APP_VERSION + " [" + BUILD_ID + "]";
 window.APP_VERSION = APP_VERSION;
 window.BUILD_ID = BUILD_ID;
 window.FULL_VERSION = FULL_VERSION;
 window.VERSION_INFO = FULL_VERSION;
+  window.AUTHOR = AUTHOR;
+
+  // ==== DB STUB (MUST EXIST BEFORE ANY USE) ====
+  // IndexedDBが未初期化でも、参照で落ちない「型だけのDB」を先に用意する（UI変更なし）
+  window.db = window.db || { products: {}, purchases: [], stores: [], settings: {} };
+  // 既存コードが `db` という変数名で参照しているので、別名を安全に用意
+  // ※ 実DBが初期化されたら window.db を差し替える運用（db は常に window.db を参照）
+  try { window.db.__stub = true; } catch(e){}
+  var db = window.db;
 </script>
 <script>
 /* SSOT_MISMATCH_CHECK */
@@ -294,7 +305,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#D50000">
-  <title>Smart Price v22.8.19</title>
+  <title>Smart Price v22.8.23 [2026-02-22_2107_dbscan-timefix-yui-r23]</title>
   <!-- ✅ SW RESET TOOL (v22.7.9) : ?reset=sw -->
   <script>
   (function() {
@@ -5505,7 +5516,25 @@ async function spLoadHtml5QrcodeLib(){
     }catch(e){}
   }
 
-async function startScanner() {
+async 
+  // ==== SCAN UX: hide top scan button while camera is active ====
+  function __spSetScanBtnVisible(visible){
+    try{
+      var btn = document.getElementById('scanBtnTop');
+      if(!btn) return;
+      btn.style.visibility = visible ? 'visible' : 'hidden';
+      btn.style.pointerEvents = visible ? 'auto' : 'none';
+    }catch(e){}
+  }
+
+  function __spNowLocalStr(){
+    try{
+      const d = new Date();
+      const pad = (n)=>String(n).padStart(2,'0');
+      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    }catch(e){ return ''; }
+  }
+function startScanner() {
     if(isScanning) {
       if (isDebug()) {
         console.log("[Scanner] Already scanning, skip");
