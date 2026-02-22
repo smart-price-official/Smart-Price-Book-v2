@@ -4,7 +4,7 @@
   VERSION: v22.8.17
 2026-02-21 11:42 JST
   TITLE: recovery: syntax-fix + debug/gps/barcode restore
-  AUTHOR: Claude / base: Yui
+  AUTHOR: ChatGPT (patch) / base: Yui
   CHANGES:
     - スキャン：ボタンが押せない場合でも、画面座標の当たり判定で強制起動（被せ要素をバイパス）
     - 診断：debug=1で scanHit（当たり判定）とターゲット要素を表示
@@ -35,16 +35,18 @@
 <script>
 /* === VERSION SSOT (single source of truth) ===
    APP_VERSION: v22.8.17
-   BUILD_ID: 2026-02-22_0300_rootfix-r18
-   FULL_VERSION: v22.8.17 [2026-02-22_0300_rootfix-r18]
+   BUILD_ID: 2026-02-21_1142_recover-r17
+   FULL_VERSION: v22.8.17 [2026-02-21_1142_recover-r17]
    Date(JST): 2026-02-21 11:42
 */
-var APP_VERSION = "v22.8.17";
-var BUILD_ID = "2026-02-22_0300_rootfix-r18";
-var FULL_VERSION = "v22.8.17 [2026-02-22_0300_rootfix-r18]";
+var APP_VERSION = "v22.8.19";
+var BUILD_ID_DEFAULT = "2026-02-22_0105_recover-r19";
+var BUILD_ID = (function(){ try{ return new URL(location.href).searchParams.get("b") || BUILD_ID_DEFAULT; }catch(e){ return BUILD_ID_DEFAULT; } })();
+var FULL_VERSION = APP_VERSION + " [" + BUILD_ID + "]";
 window.APP_VERSION = APP_VERSION;
 window.BUILD_ID = BUILD_ID;
 window.FULL_VERSION = FULL_VERSION;
+window.VERSION_INFO = FULL_VERSION;
 </script>
 <script>
 /* SSOT_MISMATCH_CHECK */
@@ -72,12 +74,12 @@ window.FULL_VERSION = FULL_VERSION;
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
-  // バージョン情報は外側で定義済み - 上書き禁止
-  // const APP_VERSION = "v22.8.17";  ← グローバル版を使用
-  // const BUILD_ID = "2026-02-22_0300_rootfix-r18";
-  const FULL_VERSION = `${window.APP_VERSION} [${window.BUILD_ID}]`;  // グローバル参照
+(() => {
+  const APP_VERSION = (window.APP_VERSION || "v0.0.0");
+  const BUILD_ID = (window.BUILD_ID || "dev");
+  const FULL_VERSION = (window.FULL_VERSION || (APP_VERSION + " [" + BUILD_ID + "]"));
 
-  // --- scan button hard-bind (UI unchanged) ---
+// --- scan button hard-bind (UI unchanged) ---
   // Some devices report that only the Scan tile becomes "unclickable".
   // We force-capture pointer/click events and, if the tap point is inside #scanBtnTop,
   // we call startScanner() regardless of DOM target / overlays.
@@ -88,11 +90,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
       console.log("[SPDBG]", tag, obj||"");
     }catch(e){}
   }
-  function __spInRect(x, y, r, margin) {
-    if (!r) return false;
-    const m = (typeof margin === "number") ? margin : 40; // デフォルト40pxマージン
-    return !!(x >= r.left - m && x <= r.right + m && y >= r.top - m && y <= r.bottom + m);
-  }
+  function __spInRect(x,y, r){ return !!(r && x>=r.left && x<=r.right && y>=r.top && y<=r.bottom); }
   function __spGetScanEl(){
     return document.getElementById("scanBtnTop")
         || document.querySelector('[onclick*="startScanner"]')
@@ -116,53 +114,29 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
       if (!el){ __spLog("SCAN hardbind: scanBtnTop not found", {}); return; }
       // defensive: ensure it can receive events (no visual change)
       try{ el.style.pointerEvents = "auto"; el.style.touchAction = "manipulation"; }catch(e){}
-      
-      let lastFireTime = 0;
       const handler = (ev) => {
         try{
           const x = (typeof ev.clientX === "number") ? ev.clientX : (ev.touches && ev.touches[0] ? ev.touches[0].clientX : null);
           const y = (typeof ev.clientY === "number") ? ev.clientY : (ev.touches && ev.touches[0] ? ev.touches[0].clientY : null);
-          if (x == null || y == null) return;
-          
+          if (x==null || y==null) return;
           const r = el.getBoundingClientRect();
-          const now = Date.now();
-          
-          // ★ 根本修正: マージン判定（40pxの緩い判定）
-          const hitWithMargin = __spInRect(x, y, r, 40);
-          
-          if (hitWithMargin) {
-            // ダブルクリック防止（500ms以内は無視）
-            if (now - lastFireTime < 500) {
-              __spLog("SCAN hardbind debounce", {reason: `evt=${ev.type}`});
-              return;
-            }
-            lastFireTime = now;
-            
-            __spLog("SCAN hardbind fire", {reason: `evt=${ev.type}`, xy: `(${Math.round(x)},${Math.round(y)})`, margin: 40});
+          if (__spInRect(x,y,r)){
+            // prevent double triggers only for this path
+            if (ev.type === "click" || ev.type === "pointerup") { /* allow natural click too */ }
             __spSafeStartScanner(`evt=${ev.type}`);
-          } else {
-            // デバッグ: 判定外を詳しくログ
-            const dist = Math.sqrt((x - (r.left + r.width/2))**2 + (y - (r.top + r.height/2))**2);
-            __spLog("SCAN hardbind miss", {xy: `(${Math.round(x)},${Math.round(y)})`, rect: `L${Math.round(r.left)}T${Math.round(r.top)}W${Math.round(r.width)}H${Math.round(r.height)}`, distance: Math.round(dist)});
           }
-        }catch(e){
-          __spLog("SCAN hardbind handler error", {err: String(e)});
-        }
+        }catch(e){}
       };
-      
       // capture phase so overlays / stopPropagation won't block us
       document.addEventListener("pointerdown", handler, true);
       document.addEventListener("touchstart", handler, true);
       document.addEventListener("click", handler, true);
-      __spLog("SCAN hardbind installed", {id: el.id || null, version: "v2-rootfix"});
-    }catch(e){
-      __spLog("SCAN hardbind install error", {err: String(e)});
-    }
+      __spLog("SCAN hardbind installed", {id: el.id || null});
+    }catch(e){}
   }
-  // グローバル値を再度確保（重複上書き防止）
-  if (!window.APP_VERSION) window.APP_VERSION = "v22.8.17";
-  if (!window.BUILD_ID) window.BUILD_ID = "2026-02-22_0300_rootfix-r18";
-  if (!window.FULL_VERSION) window.FULL_VERSION = `${window.APP_VERSION} [${window.BUILD_ID}]`;
+  window.APP_VERSION = APP_VERSION;
+  window.BUILD_ID = BUILD_ID;
+  window.FULL_VERSION = FULL_VERSION;
   // === localStorage namespace (v2 only; stableは従来通り) ===
   const SP_LS_PREFIX = (function(){
     try{
@@ -176,7 +150,10 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   window.spLSSet = function(k,v){ try{ localStorage.setItem(window.spLSKey(k), String(v)); return true; }catch(e){ return false; } };
   window.spLSRemove = function(k){ try{ localStorage.removeItem(window.spLSKey(k)); return true; }catch(e){ return false; } };
   window.spLSHasPrefix = function(){ return !!SP_LS_PREFIX; };
-  function setHeaderVersionBadge(){
+  // Bind also on globalThis for safety (module/strict environments)
+  try{ globalThis.spLSKey = window.spLSKey; globalThis.spLSGet = window.spLSGet; globalThis.spLSSet = window.spLSSet; globalThis.spLSRemove = window.spLSRemove; globalThis.spLSHasPrefix = window.spLSHasPrefix; }catch(e){}
+
+  async function setHeaderVersionBadge(){
     const badge = document.getElementById('versionBadge') || document.getElementById('version-badge');
     if(!badge) return;
 
@@ -211,11 +188,11 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 
     // Persist last build (from ?b=) to detect rollout changes
     const b = q.get("b") || "";
-    if (b) spLSSet('sp_last_b', b);
+    if (b) window.spLSSet('sp_last_b', b);
     // UIFIX21: b無しで古いSW/キャッシュを掴んでいる可能性を軽く通知
     try{
       if(!b){
-        const last = spLSGet('sp_last_b') || "";
+        const last = window.spLSGet('sp_last_b') || "";
         if(last && last !== BUILD_ID){
           // 「何十回リロードしても古い」対策：URLに ?b= を付ける運用へ誘導
           setTimeout(()=>{ try{ showToast(`更新が反映されない場合はURLに ?b=${BUILD_ID} を付けて開いてください`, 7000); }catch(e){} }, 600);
@@ -257,21 +234,14 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 </script>
 
   <meta charset="UTF-8">
-  <script>
-  // === VERSION SSOT (auto) ===
-  // グローバル値を再度確保（キャッシュ問題対策）
-  window.VERSION_INFO = `v22.8.17 [2026-02-22_0300_rootfix-r18]`;
-  if (!window.APP_VERSION) window.APP_VERSION = 'v22.8.17';
-  if (!window.BUILD_ID) window.BUILD_ID = '2026-02-22_0300_rootfix-r18';
-  if (!window.FULL_VERSION) window.FULL_VERSION = `v22.8.17 [2026-02-22_0300_rootfix-r18]`;
-  </script>
+  <!-- removed stale VERSION SSOT auto block -->
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <link rel="manifest" href="manifest.json">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#D50000">
-  <title>Smart Price v22.7.9 (2026-02-19 11:39 JST)</title>
+  <title>Smart Price v22.8.19</title>
   <!-- ✅ SW RESET TOOL (v22.7.9) : ?reset=sw -->
   <script>
   (function() {
@@ -280,7 +250,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 
   // --- FORCE FIREBASE MODE (no DevTools needed) ---
   // If URL has &force=1, we unregister Service Worker + clear caches once, then reload without force.
-  (function forceCleanOnce(){
+  (async function forceCleanOnce(){
     try{
       const p = new URLSearchParams(location.search);
       if(p.get('force') !== '1') return;
@@ -923,10 +893,11 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 
 <script>
 (function(){
-  function qs(k){ try{return new URL(location.href).searchParams.get(k);}catch(e){return null;} }
-  function isDebugSSOT(){ return String(qs('debug')||'')==='1'; }
-  // expose unified helpers
-  window.isDebug = window.isDebug || isDebugSSOT;
+  function isDebugSync(){
+    try{ return new URL(location.href).searchParams.get("debug")==="1"; }catch(e){ return false; }
+  }
+  // Do not override if already defined, but ensure window.isDebug exists and is sync
+  if(typeof window.isDebug !== "function") window.isDebug = isDebugSync;
   window.__SP_SSOT__ = { APP_VERSION: window.APP_VERSION, BUILD_ID: window.BUILD_ID, FULL_VERSION: window.FULL_VERSION };
 })();
 </script>
@@ -1636,7 +1607,7 @@ Smart Price は、毎日の買い物をそっと支える相棒です。
     // scan button selector candidates (keep UI unchanged)
     function findScanButton(){
       // 1) known ids
-      let el = $("#scanBtn") || $("#btnScan") || $("#scanButton");
+      let el = $("#scanBtnTop") || $("#scanBtn") || $("#btnScan") || $("#scanButton");
       if(el) return el;
       // 2) button containing text "スキャン"
       const nodes = Array.from(document.querySelectorAll("button, .btn, [role='button'], a")).slice(0, 200);
@@ -1777,7 +1748,7 @@ xy=(${x!=null?Math.round(x):"?"},${y!=null?Math.round(y):"?"})`;
       }
       // localStorageにも保存（診断ツールで読み込むため）
       try {
-        spLSSet('smartPrice_errorLogs', JSON.stringify(errorLogs));
+        window.spLSSet('smartPrice_errorLogs', JSON.stringify(errorLogs));
       } catch(e) {
         console.warn('[ErrorLog] Failed to save to localStorage:', e);
       }
@@ -1913,7 +1884,7 @@ xy=(${x!=null?Math.round(x):"?"},${y!=null?Math.round(y):"?"})`;
   const IMG_STORE = "images";
   let imgDbPromise = null;
 
-  function openImgDb() {
+  async function openImgDb() {
     if (!('indexedDB' in window)) return Promise.resolve(null);
     if (imgDbPromise) return imgDbPromise;
     imgDbPromise = new Promise((resolve) => {
@@ -2006,7 +1977,7 @@ xy=(${x!=null?Math.round(x):"?"},${y!=null?Math.round(y):"?"})`;
     });
   }
 
-  function dataUrlToBlob(dataUrl) {
+  async function dataUrlToBlob(dataUrl) {
     try {
       const arr = dataUrl.split(',');
       const mime = arr[0].match(/:(.*?);/)[1];
@@ -2019,7 +1990,7 @@ xy=(${x!=null?Math.round(x):"?"},${y!=null?Math.round(y):"?"})`;
   }
 
   // ✅ dataURLtoBlob（保存用、より安全な実装）
-  function dataURLtoBlob(dataurl){
+  async function dataURLtoBlob(dataurl){
     try{
       const parts = String(dataurl).split(',');
       const head = parts[0] || '';
@@ -2378,7 +2349,7 @@ xy=(${x!=null?Math.round(x):"?"},${y!=null?Math.round(y):"?"})`;
    */
   function getUserProfile() {
     try {
-      const json = spLSGet('smartPrice_userProfile');
+      const json = window.spLSGet('smartPrice_userProfile');
       if (json) {
         const profile = JSON.parse(json);
         // 必須フィールドの検証
@@ -2398,7 +2369,7 @@ xy=(${x!=null?Math.round(x):"?"},${y!=null?Math.round(y):"?"})`;
    */
   function setUserProfile(profile) {
     try {
-      spLSSet('smartPrice_userProfile', JSON.stringify(profile));
+      window.spLSSet('smartPrice_userProfile', JSON.stringify(profile));
       if (isDebug()) console.log('[UserProfile] Saved:', profile);
     } catch(e) {
       if (isDebug()) console.error('[UserProfile] Failed to save:', e);
@@ -2427,10 +2398,10 @@ xy=(${x!=null?Math.round(x):"?"},${y!=null?Math.round(y):"?"})`;
    * @param {string} jan 
    * @returns {object|null} { name, maker, imageUrl, imageRefType, areaId, cachedAt }
    */
-  function getJanCache(jan) {
+  async function getJanCache(jan) {
     try {
       const key = `smartPrice_jan_${jan}`;
-      const json = spLSGet(key);
+      const json = window.spLSGet(key);
       if (json) {
         const data = JSON.parse(json);
         // キャッシュの有効期限チェック（7日間）
@@ -2439,7 +2410,7 @@ xy=(${x!=null?Math.round(x):"?"},${y!=null?Math.round(y):"?"})`;
           const age = now - data.cachedAt;
           if (age > 7 * 24 * 60 * 60 * 1000) {
             // 期限切れ
-            spLSRemove(key);
+            window.spLSRemove(key);
             return null;
           }
         }
@@ -2456,7 +2427,7 @@ xy=(${x!=null?Math.round(x):"?"},${y!=null?Math.round(y):"?"})`;
    * @param {string} jan 
    * @param {object} data { name, maker, imageUrl, imageRefType, areaId, source }
    */
-  function setJanCache(jan, data) {
+  async function setJanCache(jan, data) {
     try {
       const userProfile = getUserProfile();
       const cacheData = {
@@ -2465,7 +2436,7 @@ xy=(${x!=null?Math.round(x):"?"},${y!=null?Math.round(y):"?"})`;
         areaId: data.areaId || (userProfile ? userProfile.areaId : null)
       };
       const key = `smartPrice_jan_${jan}`;
-      spLSSet(key, JSON.stringify(cacheData));
+      window.spLSSet(key, JSON.stringify(cacheData));
       if (isDebug()) console.log('[JanCache] Saved:', jan, cacheData);
     } catch(e) {
       if (isDebug()) console.error('[JanCache] Failed to save:', jan, e);
@@ -2484,7 +2455,7 @@ xy=(${x!=null?Math.round(x):"?"},${y!=null?Math.round(y):"?"})`;
   let deferredPrompt = null; // ✅ PWAインストールプロンプト
 
   // ✅ ここは必ず let（const にすると "Assignment to constant variable" の原因になる）
-  let fbUrl = spLSGet('smartPriceFirebaseUrl') || '';
+  let fbUrl = window.spLSGet('smartPriceFirebaseUrl') || '';
 
   // ========= Config.json (Yahoo Proxy URL) =========
   window.SP_CONFIG = {};
@@ -2559,36 +2530,36 @@ xy=(${x!=null?Math.round(x):"?"},${y!=null?Math.round(y):"?"})`;
   }
 
   // ========= 端末ID（投稿者ID）生成・保持 =========
-  function getDeviceId() {
-    let deviceId = spLSGet('smartPriceDeviceId');
+  async function getDeviceId() {
+    let deviceId = window.spLSGet('smartPriceDeviceId');
     if (!deviceId) {
       // 端末IDを生成（ランダム文字列）
       deviceId = 'dev_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 11);
-      spLSSet('smartPriceDeviceId', deviceId);
+      window.spLSSet('smartPriceDeviceId', deviceId);
     }
 
   // ========= 個人ID（端末をまたいで共有するID）生成・保持 =========
   // 目的：購入履歴/設定の保存先を「Firebase UID」ではなく「個人ID」に統一して、1ユーザー複数端末を実現する
-  function getOrCreatePersonalId(){
+  async function getOrCreatePersonalId(){
     try{
       db.config = db.config || {};
       // 優先順：db.config.personalId → 明示保存(sp_personal_id) → 旧キー(smartPriceDeviceId) → 生成
-      let pid = (db.config.personalId || spLSGet('sp_personal_id') || spLSGet('smartPriceDeviceId') || '').toString().trim();
+      let pid = (db.config.personalId || window.spLSGet('sp_personal_id') || window.spLSGet('smartPriceDeviceId') || '').toString().trim();
       if(!pid){
         pid = 'dev_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 11);
       }
       db.config.personalId = pid;
-      spLSSet('sp_personal_id', pid);
+      window.spLSSet('sp_personal_id', pid);
       // 旧キーも維持（既存実装との互換）
-      if(!spLSGet('smartPriceDeviceId')) spLSSet('smartPriceDeviceId', pid);
+      if(!window.spLSGet('smartPriceDeviceId')) window.spLSSet('smartPriceDeviceId', pid);
       return pid;
     }catch(e){
-      return (spLSGet('sp_personal_id')||spLSGet('smartPriceDeviceId')||'').toString();
+      return (window.spLSGet('sp_personal_id')||window.spLSGet('smartPriceDeviceId')||'').toString();
     }
   }
 
   // Firebase UID（認証用）も参照できるようにしておく（保存先には使わない）
-  function getFirebaseUidSafe(){
+  async function getFirebaseUidSafe(){
     try{
       if(window.firebaseAuth && firebaseAuth.currentUser && firebaseAuth.currentUser.uid){
         return String(firebaseAuth.currentUser.uid);
@@ -2967,7 +2938,7 @@ function isQuotaError(e) {
 
   function saveLocalOnly() {
     try {
-      spLSSet('smart_price_db', JSON.stringify(db));
+      window.spLSSet('smart_price_db', JSON.stringify(db));
       return true;
     } catch (e) {
       if (!isQuotaError(e)) {
@@ -2976,14 +2947,14 @@ function isQuotaError(e) {
       }
       const slim = makeSlimDb(db);
       try {
-        spLSSet('smart_price_db', JSON.stringify(slim));
+        window.spLSSet('smart_price_db', JSON.stringify(slim));
         db = slim;
         showToast("端末容量が厳しいので軽量保存に切替えました", 8000);
         return true;
       } catch (e2) {
         try {
-          spLSRemove('smart_price_db');
-          spLSSet('smart_price_db', JSON.stringify(slim));
+          window.spLSRemove('smart_price_db');
+          window.spLSSet('smart_price_db', JSON.stringify(slim));
           db = slim;
           showToast("端末容量を整理して復旧しました", 8000);
           return true;
@@ -2997,7 +2968,7 @@ function isQuotaError(e) {
 
   
   // ✅ UIFIX21: 過去データ復旧（localStorageの別キーに残っているDBを探索して取り込み）
-  function tryImportLegacyDbIfEmpty(){
+  async function tryImportLegacyDbIfEmpty(){
     try{
       // v2 は stable の localStorage と混ざらない運用（誤取り込み防止）
       if(window.SP_LS_PREFIX){ return false; }
@@ -3011,7 +2982,7 @@ function isQuotaError(e) {
         if(!key) continue;
         if(key === 'smart_price_db' || key === 'smart_price_img_db') continue;
         
-        const raw = spLSGet(key);
+        const raw = window.spLSGet(key);
         if(!raw || raw.length < 50) continue;
 
         try{
@@ -3071,7 +3042,7 @@ function isQuotaError(e) {
 
 async function loadLocal() {
     try {
-      const saved = spLSGet('smart_price_db');
+      const saved = window.spLSGet('smart_price_db');
       if (saved) db = JSON.parse(saved);
       db = normalizeDb(db);
             // UIFIX21: 別キーに残っている履歴を自動復旧
@@ -3100,28 +3071,28 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     }
   }
 
-  function getBaseUrl(url) {
+  async function getBaseUrl(url) {
     if(!url) return "";
     let base = url.trim().replace(/\/rules$/, "").replace(/\/+$/, "");
     if(base.endsWith('.json')) base = base.slice(0, -5);
     if(base.endsWith('/smart_price') || base.endsWith('smart_price')) base = base.replace(/\/?smart_price$/, '');
     return base.replace(/\/+$/, '');
   }
-  function getSafeUrl(url) {
+  async function getSafeUrl(url) {
     const base = getBaseUrl(url);
     return base ? `${base}/smart_price.json` : "";
   }
 
   // UIFIX24: ユーザーID（複数端末・複数ユーザーの同期単位）
-  function getOrCreateUserId(){
+  async function getOrCreateUserId(){
     try{
       db.config = db.config || {};
-      let uid = (db.config.userId || spLSGet('sp_user_id') || '').toString().trim();
+      let uid = (db.config.userId || window.spLSGet('sp_user_id') || '').toString().trim();
       if(!uid){
         uid = 'U' + Math.random().toString(36).slice(2,8) + '-' + Math.random().toString(36).slice(2,6);
       }
   // UIFIX UIDSYNC: Settings UI for personalId (copy / change)
-  function shortCode6(s){
+  async function shortCode6(s){
     try{
       s = (s || '').toString();
       let h = 2166136261;
@@ -3134,7 +3105,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     }catch(e){ return '------'; }
   }
 
-  function updateUserIdPreview(){
+  async function updateUserIdPreview(){
     try{
       const pid = getOrCreatePersonalId();
       const el = document.getElementById('userIdPreview');
@@ -3170,9 +3141,9 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       }
       db.config = db.config || {};
       db.config.personalId = nv;
-      try{ spLSSet('sp_personal_id', nv); }catch(e){}
+      try{ window.spLSSet('sp_personal_id', nv); }catch(e){}
       // 旧キーも維持（既存実装との互換）※ v2 は名前空間内に入るので stable へは影響しない
-      try{ spLSSet('smartPriceDeviceId', nv); }catch(e){}
+      try{ window.spLSSet('smartPriceDeviceId', nv); }catch(e){}
       try{ saveDb(); }catch(e){}
       updateUserIdPreview();
       try{ showToast('個人IDを設定しました', 2200);}catch(e){}
@@ -3181,7 +3152,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
 
       db.config = db.config || {};
       db.config.userId = nv;
-      spLSSet('sp_user_id', nv);
+      window.spLSSet('sp_user_id', nv);
       try{ saveDb(); }catch(e){}
       updateUserIdPreview();
       try{ showToast('個人IDを設定しました', 2200);}catch(e){}
@@ -3189,7 +3160,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
   }
 
 
-  function scopeUrlByUser(baseJsonUrl, userId){
+  async function scopeUrlByUser(baseJsonUrl, userId){
     // 例: https://xxx.firebaseio.com/smart_price.json → .../users/<uid>/smart_price.json
     try{
       const u = baseJsonUrl || '';
@@ -3322,7 +3293,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     return base;
   }
 
-  function mergeConfig(localC, cloudC) {
+  async function mergeConfig(localC, cloudC) {
     const lc = (localC && typeof localC === 'object') ? deepClone(localC) : {};
     const cc = (cloudC && typeof cloudC === 'object') ? deepClone(cloudC) : {};
 
@@ -3355,7 +3326,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     return out;
   }
 
-  function mergeDb(localDb, cloudDb) {
+  async function mergeDb(localDb, cloudDb) {
     const ld = normalizeDb(deepClone(localDb || {}));
     const cd = normalizeDb(deepClone(cloudDb || {}));
 
@@ -3522,7 +3493,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
   }
   
   // ✅ マージ済みDBの検証
-  function validateMergedDb(mergedDb) {
+  async function validateMergedDb(mergedDb) {
     try {
       if (!mergedDb || typeof mergedDb !== 'object') {
         return { valid: false, error: 'DBがオブジェクトではありません' };
@@ -3636,7 +3607,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     if (sub) sub.style.display = 'none';
   }
 
-  function initSubCategorySelect(cat) {
+  async function initSubCategorySelect(cat) {
     const sub = document.getElementById('inputSubCategory');
     if (!sub) return;
     if (!cat || cat === "__NONE__") { sub.style.display = 'none'; return; }
@@ -4372,7 +4343,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     });
   }
 
-  function editHistoryMode(idx) {
+  async function editHistoryMode(idx) {
     editingHistIdx = idx;
 
     const p = db.products[curBarcode];
@@ -4400,7 +4371,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     document.getElementById('priceSection').scrollIntoView({behavior: 'smooth'});
   }
 
-  function jumpToStoreChips() {
+  async function jumpToStoreChips() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
     showToast("上の店名チップで変更できます", 3000);
   }
@@ -4527,7 +4498,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     }
   }
 
-  function toggleHistoryList() {
+  async function toggleHistoryList() {
     const div = document.getElementById('detailHistory');
     const btn = document.getElementById('toggleHistBtn');
     if (!div || !btn) return;
@@ -4547,6 +4518,39 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     return R * c;
   }
+
+  // ========= GPS 初期化関数 =========
+  async function initGPS() {
+    try {
+      if (!navigator.geolocation) {
+        if (isDebug()) console.warn('[GPS] Geolocation API not available');
+        return false;
+      }
+      
+      return new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            curPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+            const d = new Date();
+            lastGpsTime = `${d.getHours()}:${d.getMinutes().toString().padStart(2,'0')}`;
+            if (isDebug()) console.log('[GPS] Initialized:', curPos);
+            resolve(curPos);
+          },
+          (err) => {
+            if (isDebug()) console.warn('[GPS] Init failed:', err);
+            reject(err);
+          },
+          { timeout: 10000 }
+        );
+      });
+    } catch (err) {
+      if (isDebug()) console.error('[GPS] Exception:', err);
+      return false;
+    }
+  }
+  
+  // グローバルに公開
+  window.initGPS = initGPS;
 
   async function toggleGps() {
     if(!isGpsOn) {
@@ -5161,7 +5165,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       
       if (!forceUpdate) {
         try {
-          const cached = spLSGet(cacheKey);
+          const cached = window.spLSGet(cacheKey);
           if (cached) {
             const cacheData = JSON.parse(cached);
             if (cacheData && cacheData.ts && (Date.now() - cacheData.ts < cacheTtl)) {
@@ -5228,7 +5232,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         
         // ✅ キャッシュに保存（整形後）
         try {
-          spLSSet(cacheKey, JSON.stringify({
+          window.spLSSet(cacheKey, JSON.stringify({
             ts: Date.now(),
             data: result
           }));
@@ -5338,7 +5342,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
   // ✅ 手入力（カメラ無し）：スキャン画面の位置に「コード入力＋テンキー」だけを出す
   // - ユーザー要望: 「スキャン画面に手動コード入力＋テンキー」
   
-function openSettingsPanel(panelId){
+async function openSettingsPanel(panelId){
   try{
     document.querySelectorAll('.sp-panel').forEach(p=>p.style.display='none');
     const main = document.getElementById('settingsMainMenu');
@@ -5347,22 +5351,22 @@ function openSettingsPanel(panelId){
     if(p) p.style.display='block';
   }catch(e){}
 }
-function openCityModal(){
+async function openCityModal(){
   const w = document.getElementById('cityModalWrap');
   if(w) w.style.display='block';
   try{ setHeaderVersionBadge(); }catch(e){}
 }
-function closeCityModal(){
+async function closeCityModal(){
   const w = document.getElementById('cityModalWrap');
   if(w) w.style.display='none';
   try{ setHeaderVersionBadge(); }catch(e){}
 }
-function saveCityAndClose(){
+async function saveCityAndClose(){
   try{ if(typeof saveSettings==='function') saveSettings(); }catch(e){}
   closeCityModal();
 }
 
-function openManualEntryOnly(){
+async function openManualEntryOnly(){
     try{
       const ca = document.getElementById('camera-area');
       const inter = document.getElementById('interactive');
@@ -5795,7 +5799,7 @@ window.startScannerImpl = window.startScannerImpl || startScanner;
     }catch(e){}
   }
 
-function ensureManualEntryDom() {
+async function ensureManualEntryDom() {
     const cameraArea = document.getElementById('camera-area');
     const manual = document.getElementById('manual-entry');
     const frame = cameraArea ? cameraArea.querySelector('.scan-frame') : null;
@@ -5814,7 +5818,7 @@ function ensureManualEntryDom() {
   // UIFIX21: 手入力コード（数字窓＋専用テンキー）— キーボードは出さない
   window.__spManual = window.__spManual || { len: 13, code: "" };
 
-  function spRenderManualBoxes(){
+  async function spRenderManualBoxes(){
     const wrap = document.getElementById('manualBoxes');
     if(!wrap) return;
     const len = window.__spManual.len || 13;
@@ -5840,7 +5844,7 @@ function ensureManualEntryDom() {
     spUpdateManualBoxes();
   }
 
-  function spUpdateManualBoxes(){
+  async function spUpdateManualBoxes(){
     const input = document.getElementById('manualCodeInput');
     const code = (window.__spManual.code || '').toString();
     if(input) input.value = code;
@@ -6779,7 +6783,7 @@ return true;
     }
   }
 
-  function customPrompt(msg, def = "", options) {
+  async function customPrompt(msg, def = "", options) {
     return new Promise(res => {
       document.getElementById('dialogMsg').innerText = msg;
       document.getElementById('dialogInputArea').style.display="block";
@@ -6880,7 +6884,7 @@ return true;
 
       // ✅ 成功後：GETで読み直し（Edgeの空表示対策、マージ方式で画像が消えない）
       fbUrl = u;
-      spLSSet('smartPriceFirebaseUrl', u);
+      window.spLSSet('smartPriceFirebaseUrl', u);
       await syncFirebase();
 
       showToast("同期成功！", 3000);
@@ -7115,14 +7119,14 @@ return true;
   if (document.readyState === 'loading') {
     
 // [ScanBtn CaptureFix] スキャンボタンが「押せない」時の最終迂回路（captureで拾う）
-function spInstallScanBtnCaptureBypass(){
+async function spInstallScanBtnCaptureBypass(){
   if (window.__sp_scan_capturefix_installed) return;
   window.__sp_scan_capturefix_installed = true;
 
   let lastAt = 0;
-  function now(){ return Date.now(); }
+  async function now(){ return Date.now(); }
 
-  function inRect(x,y, r){
+  async function inRect(x,y, r){
     return !!r && x>=r.left && x<=r.right && y>=r.top && y<=r.bottom;
   }
 
@@ -7521,7 +7525,7 @@ function unlockOperator() {
 
 
 
-function loadPurchaseHistory() {
+async function loadPurchaseHistory() {
   const container = document.getElementById('purchase-history-list');
   if (!db || !db.products) {
     container.innerHTML = '<div class="text-warning">購入履歴がありません</div>';
@@ -7559,7 +7563,7 @@ function loadPurchaseHistory() {
   container.innerHTML = html;
 }
 
-function loadStats() {
+async function loadStats() {
   const container = document.getElementById('stats-info');
   if (!db || !db.products) {
     container.innerHTML = '<div class="text-warning">データがありません</div>';
@@ -7732,7 +7736,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // v22.0: 紹介者利用状況確認
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-function showReferralStatus() {
+async function showReferralStatus() {
   const container = document.getElementById('referral-status-list');
   if (!container) return;
   
@@ -7782,7 +7786,7 @@ function showReferralStatus() {
 
 window.showReferralStatus = showReferralStatus;
 
-
+})();
 
 </script>
 
@@ -7838,7 +7842,7 @@ window.showReferralStatus = showReferralStatus;
       }else{
         lines.push("caches: (unsupported)");
       }
-      lines.push("localStorage.sp_last_b: " + (spLSGet('sp_last_b')||""));
+      lines.push("localStorage.sp_last_b: " + (window.spLSGet('sp_last_b')||""));
       return lines.join("\n");
     }
 
@@ -7928,14 +7932,14 @@ async function spCopyTextFallback(text){
 }
 
 // ===== Support (メール送信) =====
-function spGetSupportEmail(){
+async function spGetSupportEmail(){
   try{
     // config.json に supportEmail があれば最優先
     if(window.APP_CONFIG && window.APP_CONFIG.supportEmail) return String(window.APP_CONFIG.supportEmail||'').trim();
   }catch(e){}
   return '';
 }
-function spParseDeviceInfo(){
+async function spParseDeviceInfo(){
   const ua = navigator.userAgent || '';
   let device = '';
   let os = '';
@@ -7966,7 +7970,7 @@ function spParseDeviceInfo(){
   }catch(e){}
   return { device, os, browser, ua };
 }
-function spFillSupportDeviceInfo(force){
+async function spFillSupportDeviceInfo(force){
   try{
     const info = spParseDeviceInfo();
     const d = document.getElementById('support-device');
@@ -8033,7 +8037,7 @@ async function spMailSupport(){
     try{ const body = await spBuildSupportText(); await spCopyTextFallback(body); }catch(_){}
   }
 }
-function spSaveSupport(){
+async function spSaveSupport(){
   try{
     spFillSupportDeviceInfo(false);
     setTimeout(async ()=>{
@@ -8057,7 +8061,7 @@ try{
 }catch(e){}
 
 // ===== Family Code (optional) =====
-function spSaveFamilyCode(){
+async function spSaveFamilyCode(){
   try{
     const v = (document.getElementById('family-code-input')||{}).value || '';
     localStorage.setItem('sp_family_code', v);
@@ -8169,13 +8173,13 @@ async function spShareFamilyId(){
 /* === PATCH v22.8.1: barcode scan safe (BD auto + formats + constraints order) === */
 
 // --- Sync modal ---
-function openSyncModal(){
+async function openSyncModal(){
   try{ const m = document.getElementById('syncModal'); if(m) m.style.display='block'; }catch(e){}
 }
-function closeSyncModal(){
+async function closeSyncModal(){
   try{ const m = document.getElementById('syncModal'); if(m) m.style.display='none'; }catch(e){}
 }
-function runSyncConfirmed(){
+async function runSyncConfirmed(){
   try{ closeSyncModal(); }catch(e){}
   try{ if(typeof startMigration === 'function') startMigration(); }catch(e){}
 }
@@ -8358,7 +8362,7 @@ try{ spSetupBackSwipeGuard(); }catch(e){}
   // === v22.8.10: auto-unblock overlays that steal taps from scan button (debug=1 only) ===
   (function(){
     function isDbg(){ try{return (typeof isDebug==="function" && isDebug());}catch(e){return false;} }
-    function qs(sel){ try{return document.querySelector(sel);}catch(e){return null;} }
+    async function qs(sel){ try{return document.querySelector(sel);}catch(e){return null;} }
     function fmt(el){
       if(!el) return "(null)";
       const id = el.id ? ("#" + el.id) : "";
