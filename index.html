@@ -5,7 +5,7 @@
 2026-02-22 21:45 JST
   TITLE: scan tap-proof + version/time SSOT (CHATGPT_yui)
 AUTHOR: CHATGPT_yui
-  AUTHOR: ChatGPT (patch) / base: Yui
+  AUTHOR: CHATGPT_yui
   CHANGES:
     - スキャン：ボタンが押せない場合でも、画面座標の当たり判定で強制起動（被せ要素をバイパス）
     - 診断：debug=1で scanHit（当たり判定）とターゲット要素を表示
@@ -39,7 +39,7 @@ AUTHOR: CHATGPT_yui
   try {
     var q = new URL(location.href).searchParams;
     var b = q.get('b') || '';
-    var APP_VERSION = "v22.8.24";
+    var APP_VERSION = "v22.8.26";
     var BUILD_ID = b ? b : "2026-02-22_0215_recover-r20";
     var FULL_VERSION = APP_VERSION + " [" + BUILD_ID + "]";
     function defineConst(k,v){
@@ -88,13 +88,13 @@ AUTHOR: CHATGPT_yui
 
 <script>
 /* === VERSION SSOT (single source of truth) ===
-   APP_VERSION: v22.8.23
+   APP_VERSION: v22.8.26
    P26-02-22_2107_dbscan-timefix-yui-r23
-   FULL_VERSION: v22.8.23 [2026-02-22_2107_dbscan-timefix-yui-r23]
+   FULL_VERSION: v22.8.26 [2026-02-22_2317_scan-diag-yui-r26]
    Date(JST): 2026-02-22 19:40
 */
-var APP_VERSION = "v22.8.24";
-var BUILD_ID_DEFAULT = "2026-02-22_2107_dbscan-timefix-yui-r23";
+var APP_VERSION = "v22.8.26";
+var BUILD_ID_DEFAULT="2026-02-22_2317_scan-diag-yui-r26";
 var AUTHOR = "CHATGPT_yui";
 var BUILD_ID = (function(){ try{ return new URL(location.href).searchParams.get("b") || BUILD_ID_DEFAULT; }catch(e){ return BUILD_ID_DEFAULT; } })();
 var FULL_VERSION = APP_VERSION + " [" + BUILD_ID + "]";
@@ -8639,5 +8639,95 @@ try{ spSetupBackSwipeGuard(); }catch(e){}
 
 </script>
 
+
+<script>
+
+/* === CHATGPT_yui: VERSION SSOT + TAP DIAGNOSTICS (v22.8.26 [2026-02-22_2317_scan-diag-yui-r26]) === */
+(function(){
+  try{
+    const SSOT = Object.freeze({
+      AUTHOR: "CHATGPT_yui",
+      APP_VERSION: "v22.8.26",
+      BUILD_ID: "2026-02-22_2317_scan-diag-yui-r26",
+      FULL_VERSION: "v22.8.26 [2026-02-22_2317_scan-diag-yui-r26]",
+      BUILD_JST: "2026-02-22 23:17:43 JST"
+    });
+    window.__SP_SSOT = SSOT;
+
+    window.__spEnforceVersionSSOT = function(){
+      try{
+        window.APP_VERSION = SSOT.APP_VERSION;
+        window.BUILD_ID = SSOT.BUILD_ID;
+        window.FULL_VERSION = SSOT.FULL_VERSION;
+        window.VERSION_INFO = SSOT.FULL_VERSION;
+        try{ document.title = "Smart Price " + SSOT.APP_VERSION; }catch(_e){}
+        try{
+          const el = document.getElementById("spDebugPanel");
+          if(el && el.querySelector){
+            const t = el.querySelector("[data-sp='APP_VERSION']"); if(t) t.textContent = SSOT.APP_VERSION;
+            const b = el.querySelector("[data-sp='BUILD_ID']"); if(b) b.textContent = SSOT.BUILD_ID;
+            const f = el.querySelector("[data-sp='FULL_VERSION']"); if(f) f.textContent = SSOT.FULL_VERSION;
+          }
+        }catch(_e){}
+      }catch(_e){}
+    };
+
+    window.__spEnforceVersionSSOT();
+    window.addEventListener("DOMContentLoaded", ()=>window.__spEnforceVersionSSOT(), {once:true});
+    window.addEventListener("load", ()=>window.__spEnforceVersionSSOT(), {once:true});
+
+    function isDbg(){
+      try{ return (new URLSearchParams(location.search).get("debug")==="1"); }catch(e){ return false; }
+    }
+    function safeStr(v){ try{ return String(v); }catch(e){ return ""; } }
+    function fmtEl(el){
+      if(!el) return "(null)";
+      let s = el.tagName ? el.tagName.toLowerCase() : "(node)";
+      if(el.id) s += "#"+el.id;
+      if(el.className) s += "."+safeStr(el.className).trim().split(/\s+/).slice(0,3).join(".");
+      return s;
+    }
+    function pick(x,y){
+      try{ return document.elementFromPoint(x,y); }catch(e){ return null; }
+    }
+
+    window.__spLastTap = null;
+    function recordTap(kind, ev){
+      if(!isDbg()) return;
+      const t = (ev.touches && ev.touches[0]) ? ev.touches[0] : (ev.changedTouches && ev.changedTouches[0]) ? ev.changedTouches[0] : ev;
+      const x = t && (t.clientX!=null) ? t.clientX : null;
+      const y = t && (t.clientY!=null) ? t.clientY : null;
+      const at = (x!=null && y!=null) ? pick(x,y) : null;
+      const trg = ev && ev.target ? ev.target : null;
+      const msg = "[TapTrace] "+kind+" target="+fmtEl(trg)+" at="+fmtEl(at)+" xy=("+(x!=null?Math.round(x):"?")+","+(y!=null?Math.round(y):"?")+")";
+      window.__spLastTap = {ts: Date.now(), kind, x, y, target: fmtEl(trg), at: fmtEl(at), msg};
+      try{ if(typeof window.__spLog==="function") window.__spLog(msg); }catch(_e){}
+      try{ console.log(msg); }catch(_e){}
+    }
+
+    ["touchstart","pointerdown","click"].forEach((type)=>{
+      window.addEventListener(type, (ev)=>recordTap(type, ev), {capture:true, passive:true});
+    });
+
+    window.addEventListener("error", (ev)=>{
+      if(!isDbg()) return;
+      try{
+        const msg = "[JS ERROR] "+safeStr(ev.message||ev.error)+" @ "+safeStr(ev.filename)+":"+safeStr(ev.lineno)+":"+safeStr(ev.colno);
+        if(typeof window.__spLog==="function") window.__spLog(msg);
+        console.error(msg);
+      }catch(_e){}
+    });
+    window.addEventListener("unhandledrejection", (ev)=>{
+      if(!isDbg()) return;
+      try{
+        const msg = "[PROMISE] "+safeStr(ev.reason);
+        if(typeof window.__spLog==="function") window.__spLog(msg);
+        console.error(msg);
+      }catch(_e){}
+    });
+  }catch(e){}
+})();
+
+</script>
 </body>
 </html>
