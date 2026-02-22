@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <!--
   APP: Smart Price
-  VERSION: v22.8.18
-2026-02-22 00:46 JST
+  VERSION: v22.8.17
+2026-02-21 11:42 JST
   TITLE: recovery: syntax-fix + debug/gps/barcode restore
   AUTHOR: ChatGPT (patch) / base: Yui
   CHANGES:
@@ -34,14 +34,14 @@
 
 <script>
 /* === VERSION SSOT (single source of truth) ===
-   APP_VERSION: v22.8.18
-   BUILD_ID: 2026-02-22_0046_recover-r18
-   FULL_VERSION: v22.8.18 [2026-02-22_0046_recover-r18]
-   Date(JST): 2026-02-22 00:46
+   APP_VERSION: v22.8.17
+   BUILD_ID: 2026-02-21_1142_recover-r17
+   FULL_VERSION: v22.8.17 [2026-02-21_1142_recover-r17]
+   Date(JST): 2026-02-21 11:42
 */
-var APP_VERSION = "v22.8.18";
-var BUILD_ID = "2026-02-22_0046_recover-r18";
-var FULL_VERSION = "v22.8.18 [2026-02-22_0046_recover-r18]";
+var APP_VERSION = "v22.8.17";
+var BUILD_ID = "2026-02-21_1142_recover-r17";
+var FULL_VERSION = "v22.8.17 [2026-02-21_1142_recover-r17]";
 window.APP_VERSION = APP_VERSION;
 window.BUILD_ID = BUILD_ID;
 window.FULL_VERSION = FULL_VERSION;
@@ -148,7 +148,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   window.spLSSet = function(k,v){ try{ localStorage.setItem(window.spLSKey(k), String(v)); return true; }catch(e){ return false; } };
   window.spLSRemove = function(k){ try{ localStorage.removeItem(window.spLSKey(k)); return true; }catch(e){ return false; } };
   window.spLSHasPrefix = function(){ return !!SP_LS_PREFIX; };
-  async function setHeaderVersionBadge(){
+  function setHeaderVersionBadge(){
     const badge = document.getElementById('versionBadge') || document.getElementById('version-badge');
     if(!badge) return;
 
@@ -251,7 +251,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 
   // --- FORCE FIREBASE MODE (no DevTools needed) ---
   // If URL has &force=1, we unregister Service Worker + clear caches once, then reload without force.
-  (async function forceCleanOnce(){
+  (function forceCleanOnce(){
     try{
       const p = new URLSearchParams(location.search);
       if(p.get('force') !== '1') return;
@@ -894,8 +894,8 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 
 <script>
 (function(){
-  async function qs(k){ try{return new URL(location.href).searchParams.get(k);}catch(e){return null;} }
-  async function isDebugSSOT(){ return String(qs('debug')||'')==='1'; }
+  function qs(k){ try{return new URL(location.href).searchParams.get(k);}catch(e){return null;} }
+  function isDebugSSOT(){ return String(qs('debug')||'')==='1'; }
   // expose unified helpers
   window.isDebug = window.isDebug || isDebugSSOT;
   window.__SP_SSOT__ = { APP_VERSION: window.APP_VERSION, BUILD_ID: window.BUILD_ID, FULL_VERSION: window.FULL_VERSION };
@@ -1884,7 +1884,7 @@ xy=(${x!=null?Math.round(x):"?"},${y!=null?Math.round(y):"?"})`;
   const IMG_STORE = "images";
   let imgDbPromise = null;
 
-  async function openImgDb() {
+  function openImgDb() {
     if (!('indexedDB' in window)) return Promise.resolve(null);
     if (imgDbPromise) return imgDbPromise;
     imgDbPromise = new Promise((resolve) => {
@@ -1977,7 +1977,7 @@ xy=(${x!=null?Math.round(x):"?"},${y!=null?Math.round(y):"?"})`;
     });
   }
 
-  async function dataUrlToBlob(dataUrl) {
+  function dataUrlToBlob(dataUrl) {
     try {
       const arr = dataUrl.split(',');
       const mime = arr[0].match(/:(.*?);/)[1];
@@ -1990,7 +1990,7 @@ xy=(${x!=null?Math.round(x):"?"},${y!=null?Math.round(y):"?"})`;
   }
 
   // ✅ dataURLtoBlob（保存用、より安全な実装）
-  async function dataURLtoBlob(dataurl){
+  function dataURLtoBlob(dataurl){
     try{
       const parts = String(dataurl).split(',');
       const head = parts[0] || '';
@@ -2398,7 +2398,7 @@ xy=(${x!=null?Math.round(x):"?"},${y!=null?Math.round(y):"?"})`;
    * @param {string} jan 
    * @returns {object|null} { name, maker, imageUrl, imageRefType, areaId, cachedAt }
    */
-  async function getJanCache(jan) {
+  function getJanCache(jan) {
     try {
       const key = `smartPrice_jan_${jan}`;
       const json = spLSGet(key);
@@ -2427,7 +2427,7 @@ xy=(${x!=null?Math.round(x):"?"},${y!=null?Math.round(y):"?"})`;
    * @param {string} jan 
    * @param {object} data { name, maker, imageUrl, imageRefType, areaId, source }
    */
-  async function setJanCache(jan, data) {
+  function setJanCache(jan, data) {
     try {
       const userProfile = getUserProfile();
       const cacheData = {
@@ -2530,7 +2530,7 @@ xy=(${x!=null?Math.round(x):"?"},${y!=null?Math.round(y):"?"})`;
   }
 
   // ========= 端末ID（投稿者ID）生成・保持 =========
-  async function getDeviceId() {
+  function getDeviceId() {
     let deviceId = spLSGet('smartPriceDeviceId');
     if (!deviceId) {
       // 端末IDを生成（ランダム文字列）
@@ -2540,7 +2540,7 @@ xy=(${x!=null?Math.round(x):"?"},${y!=null?Math.round(y):"?"})`;
 
   // ========= 個人ID（端末をまたいで共有するID）生成・保持 =========
   // 目的：購入履歴/設定の保存先を「Firebase UID」ではなく「個人ID」に統一して、1ユーザー複数端末を実現する
-  async function getOrCreatePersonalId(){
+  function getOrCreatePersonalId(){
     try{
       db.config = db.config || {};
       // 優先順：db.config.personalId → 明示保存(sp_personal_id) → 旧キー(smartPriceDeviceId) → 生成
@@ -2559,7 +2559,7 @@ xy=(${x!=null?Math.round(x):"?"},${y!=null?Math.round(y):"?"})`;
   }
 
   // Firebase UID（認証用）も参照できるようにしておく（保存先には使わない）
-  async function getFirebaseUidSafe(){
+  function getFirebaseUidSafe(){
     try{
       if(window.firebaseAuth && firebaseAuth.currentUser && firebaseAuth.currentUser.uid){
         return String(firebaseAuth.currentUser.uid);
@@ -2968,7 +2968,7 @@ function isQuotaError(e) {
 
   
   // ✅ UIFIX21: 過去データ復旧（localStorageの別キーに残っているDBを探索して取り込み）
-  async function tryImportLegacyDbIfEmpty(){
+  function tryImportLegacyDbIfEmpty(){
     try{
       // v2 は stable の localStorage と混ざらない運用（誤取り込み防止）
       if(window.SP_LS_PREFIX){ return false; }
@@ -3071,20 +3071,20 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     }
   }
 
-  async function getBaseUrl(url) {
+  function getBaseUrl(url) {
     if(!url) return "";
     let base = url.trim().replace(/\/rules$/, "").replace(/\/+$/, "");
     if(base.endsWith('.json')) base = base.slice(0, -5);
     if(base.endsWith('/smart_price') || base.endsWith('smart_price')) base = base.replace(/\/?smart_price$/, '');
     return base.replace(/\/+$/, '');
   }
-  async function getSafeUrl(url) {
+  function getSafeUrl(url) {
     const base = getBaseUrl(url);
     return base ? `${base}/smart_price.json` : "";
   }
 
   // UIFIX24: ユーザーID（複数端末・複数ユーザーの同期単位）
-  async function getOrCreateUserId(){
+  function getOrCreateUserId(){
     try{
       db.config = db.config || {};
       let uid = (db.config.userId || spLSGet('sp_user_id') || '').toString().trim();
@@ -3092,7 +3092,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         uid = 'U' + Math.random().toString(36).slice(2,8) + '-' + Math.random().toString(36).slice(2,6);
       }
   // UIFIX UIDSYNC: Settings UI for personalId (copy / change)
-  async function shortCode6(s){
+  function shortCode6(s){
     try{
       s = (s || '').toString();
       let h = 2166136261;
@@ -3105,7 +3105,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     }catch(e){ return '------'; }
   }
 
-  async function updateUserIdPreview(){
+  function updateUserIdPreview(){
     try{
       const pid = getOrCreatePersonalId();
       const el = document.getElementById('userIdPreview');
@@ -3160,7 +3160,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
   }
 
 
-  async function scopeUrlByUser(baseJsonUrl, userId){
+  function scopeUrlByUser(baseJsonUrl, userId){
     // 例: https://xxx.firebaseio.com/smart_price.json → .../users/<uid>/smart_price.json
     try{
       const u = baseJsonUrl || '';
@@ -3293,7 +3293,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     return base;
   }
 
-  async function mergeConfig(localC, cloudC) {
+  function mergeConfig(localC, cloudC) {
     const lc = (localC && typeof localC === 'object') ? deepClone(localC) : {};
     const cc = (cloudC && typeof cloudC === 'object') ? deepClone(cloudC) : {};
 
@@ -3326,7 +3326,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     return out;
   }
 
-  async function mergeDb(localDb, cloudDb) {
+  function mergeDb(localDb, cloudDb) {
     const ld = normalizeDb(deepClone(localDb || {}));
     const cd = normalizeDb(deepClone(cloudDb || {}));
 
@@ -3493,7 +3493,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
   }
   
   // ✅ マージ済みDBの検証
-  async function validateMergedDb(mergedDb) {
+  function validateMergedDb(mergedDb) {
     try {
       if (!mergedDb || typeof mergedDb !== 'object') {
         return { valid: false, error: 'DBがオブジェクトではありません' };
@@ -3607,7 +3607,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     if (sub) sub.style.display = 'none';
   }
 
-  async function initSubCategorySelect(cat) {
+  function initSubCategorySelect(cat) {
     const sub = document.getElementById('inputSubCategory');
     if (!sub) return;
     if (!cat || cat === "__NONE__") { sub.style.display = 'none'; return; }
@@ -4343,7 +4343,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     });
   }
 
-  async function editHistoryMode(idx) {
+  function editHistoryMode(idx) {
     editingHistIdx = idx;
 
     const p = db.products[curBarcode];
@@ -4371,7 +4371,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     document.getElementById('priceSection').scrollIntoView({behavior: 'smooth'});
   }
 
-  async function jumpToStoreChips() {
+  function jumpToStoreChips() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
     showToast("上の店名チップで変更できます", 3000);
   }
@@ -4498,7 +4498,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     }
   }
 
-  async function toggleHistoryList() {
+  function toggleHistoryList() {
     const div = document.getElementById('detailHistory');
     const btn = document.getElementById('toggleHistBtn');
     if (!div || !btn) return;
@@ -4518,39 +4518,6 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     return R * c;
   }
-
-  // ========= GPS 初期化関数 =========
-  async function initGPS() {
-    try {
-      if (!navigator.geolocation) {
-        if (isDebug()) console.warn('[GPS] Geolocation API not available');
-        return false;
-      }
-      
-      return new Promise((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(
-          (pos) => {
-            curPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-            const d = new Date();
-            lastGpsTime = `${d.getHours()}:${d.getMinutes().toString().padStart(2,'0')}`;
-            if (isDebug()) console.log('[GPS] Initialized:', curPos);
-            resolve(curPos);
-          },
-          (err) => {
-            if (isDebug()) console.warn('[GPS] Init failed:', err);
-            reject(err);
-          },
-          { timeout: 10000 }
-        );
-      });
-    } catch (err) {
-      if (isDebug()) console.error('[GPS] Exception:', err);
-      return false;
-    }
-  }
-  
-  // グローバルに公開
-  window.initGPS = initGPS;
 
   async function toggleGps() {
     if(!isGpsOn) {
@@ -5342,7 +5309,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
   // ✅ 手入力（カメラ無し）：スキャン画面の位置に「コード入力＋テンキー」だけを出す
   // - ユーザー要望: 「スキャン画面に手動コード入力＋テンキー」
   
-async function openSettingsPanel(panelId){
+function openSettingsPanel(panelId){
   try{
     document.querySelectorAll('.sp-panel').forEach(p=>p.style.display='none');
     const main = document.getElementById('settingsMainMenu');
@@ -5351,22 +5318,22 @@ async function openSettingsPanel(panelId){
     if(p) p.style.display='block';
   }catch(e){}
 }
-async function openCityModal(){
+function openCityModal(){
   const w = document.getElementById('cityModalWrap');
   if(w) w.style.display='block';
   try{ setHeaderVersionBadge(); }catch(e){}
 }
-async function closeCityModal(){
+function closeCityModal(){
   const w = document.getElementById('cityModalWrap');
   if(w) w.style.display='none';
   try{ setHeaderVersionBadge(); }catch(e){}
 }
-async function saveCityAndClose(){
+function saveCityAndClose(){
   try{ if(typeof saveSettings==='function') saveSettings(); }catch(e){}
   closeCityModal();
 }
 
-async function openManualEntryOnly(){
+function openManualEntryOnly(){
     try{
       const ca = document.getElementById('camera-area');
       const inter = document.getElementById('interactive');
@@ -5799,7 +5766,7 @@ window.startScannerImpl = window.startScannerImpl || startScanner;
     }catch(e){}
   }
 
-async function ensureManualEntryDom() {
+function ensureManualEntryDom() {
     const cameraArea = document.getElementById('camera-area');
     const manual = document.getElementById('manual-entry');
     const frame = cameraArea ? cameraArea.querySelector('.scan-frame') : null;
@@ -5818,7 +5785,7 @@ async function ensureManualEntryDom() {
   // UIFIX21: 手入力コード（数字窓＋専用テンキー）— キーボードは出さない
   window.__spManual = window.__spManual || { len: 13, code: "" };
 
-  async function spRenderManualBoxes(){
+  function spRenderManualBoxes(){
     const wrap = document.getElementById('manualBoxes');
     if(!wrap) return;
     const len = window.__spManual.len || 13;
@@ -5844,7 +5811,7 @@ async function ensureManualEntryDom() {
     spUpdateManualBoxes();
   }
 
-  async function spUpdateManualBoxes(){
+  function spUpdateManualBoxes(){
     const input = document.getElementById('manualCodeInput');
     const code = (window.__spManual.code || '').toString();
     if(input) input.value = code;
@@ -6783,7 +6750,7 @@ return true;
     }
   }
 
-  async function customPrompt(msg, def = "", options) {
+  function customPrompt(msg, def = "", options) {
     return new Promise(res => {
       document.getElementById('dialogMsg').innerText = msg;
       document.getElementById('dialogInputArea').style.display="block";
@@ -6968,7 +6935,7 @@ return true;
     const settingsBtn = document.getElementById('settingsBtn');
     if (settingsBtn && !settingsBtn._spBound) {
       settingsBtn._spBound = true;
-      settingsBtn.addEventListener('click', function(e) { e.preventDefault(); /* e.stopPropagation(); disabled: allow normal handlers */ open(); });
+      settingsBtn.addEventListener('click', function(e) { e.preventDefault(); // e.stopPropagation(); [disabled: allow normal handlers] open(); });
     }
   }
   
@@ -7119,14 +7086,14 @@ return true;
   if (document.readyState === 'loading') {
     
 // [ScanBtn CaptureFix] スキャンボタンが「押せない」時の最終迂回路（captureで拾う）
-async function spInstallScanBtnCaptureBypass(){
+function spInstallScanBtnCaptureBypass(){
   if (window.__sp_scan_capturefix_installed) return;
   window.__sp_scan_capturefix_installed = true;
 
   let lastAt = 0;
-  async function now(){ return Date.now(); }
+  function now(){ return Date.now(); }
 
-  async function inRect(x,y, r){
+  function inRect(x,y, r){
     return !!r && x>=r.left && x<=r.right && y>=r.top && y<=r.bottom;
   }
 
@@ -7525,7 +7492,7 @@ function unlockOperator() {
 
 
 
-async function loadPurchaseHistory() {
+function loadPurchaseHistory() {
   const container = document.getElementById('purchase-history-list');
   if (!db || !db.products) {
     container.innerHTML = '<div class="text-warning">購入履歴がありません</div>';
@@ -7563,7 +7530,7 @@ async function loadPurchaseHistory() {
   container.innerHTML = html;
 }
 
-async function loadStats() {
+function loadStats() {
   const container = document.getElementById('stats-info');
   if (!db || !db.products) {
     container.innerHTML = '<div class="text-warning">データがありません</div>';
@@ -7736,7 +7703,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // v22.0: 紹介者利用状況確認
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-async function showReferralStatus() {
+function showReferralStatus() {
   const container = document.getElementById('referral-status-list');
   if (!container) return;
   
@@ -7785,6 +7752,8 @@ async function showReferralStatus() {
 }
 
 window.showReferralStatus = showReferralStatus;
+
+
 
 </script>
 
@@ -7930,14 +7899,14 @@ async function spCopyTextFallback(text){
 }
 
 // ===== Support (メール送信) =====
-async function spGetSupportEmail(){
+function spGetSupportEmail(){
   try{
     // config.json に supportEmail があれば最優先
     if(window.APP_CONFIG && window.APP_CONFIG.supportEmail) return String(window.APP_CONFIG.supportEmail||'').trim();
   }catch(e){}
   return '';
 }
-async function spParseDeviceInfo(){
+function spParseDeviceInfo(){
   const ua = navigator.userAgent || '';
   let device = '';
   let os = '';
@@ -7968,7 +7937,7 @@ async function spParseDeviceInfo(){
   }catch(e){}
   return { device, os, browser, ua };
 }
-async function spFillSupportDeviceInfo(force){
+function spFillSupportDeviceInfo(force){
   try{
     const info = spParseDeviceInfo();
     const d = document.getElementById('support-device');
@@ -8035,7 +8004,7 @@ async function spMailSupport(){
     try{ const body = await spBuildSupportText(); await spCopyTextFallback(body); }catch(_){}
   }
 }
-async function spSaveSupport(){
+function spSaveSupport(){
   try{
     spFillSupportDeviceInfo(false);
     setTimeout(async ()=>{
@@ -8059,7 +8028,7 @@ try{
 }catch(e){}
 
 // ===== Family Code (optional) =====
-async function spSaveFamilyCode(){
+function spSaveFamilyCode(){
   try{
     const v = (document.getElementById('family-code-input')||{}).value || '';
     localStorage.setItem('sp_family_code', v);
@@ -8171,13 +8140,13 @@ async function spShareFamilyId(){
 /* === PATCH v22.8.1: barcode scan safe (BD auto + formats + constraints order) === */
 
 // --- Sync modal ---
-async function openSyncModal(){
+function openSyncModal(){
   try{ const m = document.getElementById('syncModal'); if(m) m.style.display='block'; }catch(e){}
 }
-async function closeSyncModal(){
+function closeSyncModal(){
   try{ const m = document.getElementById('syncModal'); if(m) m.style.display='none'; }catch(e){}
 }
-async function runSyncConfirmed(){
+function runSyncConfirmed(){
   try{ closeSyncModal(); }catch(e){}
   try{ if(typeof startMigration === 'function') startMigration(); }catch(e){}
 }
@@ -8360,7 +8329,7 @@ try{ spSetupBackSwipeGuard(); }catch(e){}
   // === v22.8.10: auto-unblock overlays that steal taps from scan button (debug=1 only) ===
   (function(){
     function isDbg(){ try{return (typeof isDebug==="function" && isDebug());}catch(e){return false;} }
-    async function qs(sel){ try{return document.querySelector(sel);}catch(e){return null;} }
+    function qs(sel){ try{return document.querySelector(sel);}catch(e){return null;} }
     function fmt(el){
       if(!el) return "(null)";
       const id = el.id ? ("#" + el.id) : "";
