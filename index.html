@@ -58,9 +58,9 @@ AUTHOR: CHATGPT_yui
     defineConst('__SP_IS_DEBUG', (q.get('debug') === '1'));
   } catch(e) {
     try {
-      window.APP_VERSION = "v22.8.25";
-      window.BUILD_ID = "2026-02-22_2145_scan-tapproof-yui-r25";
-      window.FULL_VERSION = "v22.8.20 [2026-02-22_0215_recover-r20]";
+      window.APP_VERSION = "v22.8.27";
+      window.BUILD_ID = "2026-02-22_2335_event-monitor-yui-r27";
+      window.FULL_VERSION = "v22.8.27 [2026-02-22_2335_event-monitor-yui-r27]";
       window.VERSION_INFO = window.FULL_VERSION;
     } catch(_e) {}
   }
@@ -88,7 +88,7 @@ AUTHOR: CHATGPT_yui
 
 <script>
 /* === VERSION SSOT (single source of truth) ===
-   APP_VERSION: v22.8.26
+   APP_VERSION: v22.8.27
    P26-02-22_2107_dbscan-timefix-yui-r23
    FULL_VERSION: v22.8.26 [2026-02-22_2317_scan-diag-yui-r26]
    Date(JST): 2026-02-22 19:40
@@ -8729,5 +8729,219 @@ try{ spSetupBackSwipeGuard(); }catch(e){}
 })();
 
 </script>
+
+<script>
+/* =========================================================
+ * EVENT MONITOR DIAGNOSTICS (debug=1 only)
+ * AUTHOR: CHATGPT_yui
+ * APP_VERSION: v22.8.27
+ * BUILD_ID: 2026-02-22_2335_event-monitor-yui-r27
+ * DATE(JST): 2026-02-22 23:35 JST
+ * ========================================================= */
+(function() {
+  function isDbg() {
+    try { return new URL(location.href).searchParams.get('debug') === '1'; } catch(e) { return false; }
+  }
+  if(!isDbg()) return;
+
+  // -------- robust log sink (on-screen) --------
+  function qs(sel) { try{ return document.querySelector(sel); }catch(e){ return null; } }
+  function el(id) { return document.getElementById(id); }
+  function ensureBox() {
+    var box = el('spEventMonBox');
+    if(box) return box;
+    box = document.createElement('div');
+    box.id = 'spEventMonBox';
+    box.style.cssText = [
+      'position:fixed','left:12px','right:12px','bottom:12px',
+      'z-index:999999','background:rgba(0,0,0,.72)','color:#fff',
+      'border:1px solid rgba(255,255,255,.18)','border-radius:14px',
+      'padding:10px 10px 8px','font:12px/1.35 system-ui, -apple-system, Segoe UI, Roboto, sans-serif',
+      'backdrop-filter:blur(6px)','max-height:36vh','overflow:auto'
+    ].join(';');
+    box.innerHTML = ''
+      + '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
+      + '  <div style="font-weight:700">Event Monitor</div>'
+      + '  <div id="spEventMonMeta" style="opacity:.9"></div>'
+      + '  <button id="spEventMonClear" style="margin-left:auto;border:0;border-radius:10px;padding:6px 10px;background:#2b6cb0;color:#fff">Clear</button>'
+      + '  <button id="spEventMonCopy" style="border:0;border-radius:10px;padding:6px 10px;background:#38a169;color:#fff">Copy</button>'
+      + '</div>'
+      + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">'
+      + '  <button id="spForceScan" style="border:0;border-radius:10px;padding:8px 10px;background:#e53e3e;color:#fff">FORCE: Scan click()</button>'
+      + '  <button id="spForceManual" style="border:0;border-radius:10px;padding:8px 10px;background:#805ad5;color:#fff">FORCE: Manual click()</button>'
+      + '  <button id="spForceSettings" style="border:0;border-radius:10px;padding:8px 10px;background:#718096;color:#fff">FORCE: Settings click()</button>'
+      + '</div>'
+      + '<pre id="spEventMonLog" style="white-space:pre-wrap;word-break:break-word;margin:10px 0 0;opacity:.95"></pre>';
+    document.body.appendChild(box);
+
+    el('spEventMonMeta').textContent = 'v22.8.27 / 2026-02-22_2335_event-monitor-yui-r27';
+
+    el('spEventMonClear').addEventListener('click', function() {
+      el('spEventMonLog').textContent = '';
+    });
+    el('spEventMonCopy').addEventListener('click', async function() {
+      var t = el('spEventMonLog').textContent || '';
+      try {
+        await navigator.clipboard.writeText(t);
+        logLine('[COPY] OK (' + t.length + ' chars)');
+      } catch(e) {
+        logLine('[COPY] FAIL: ' + (e && e.message ? e.message : e));
+      }
+    });
+
+    // FORCE click helpers
+    function tryClick(targetId, label) {
+      var b = el(targetId);
+      if(!b) {
+        logLine('[FORCE] ' + label + ': element #' + targetId + ' not found');
+        return;
+      }
+      try {
+        // Ensure pointer-events on
+        b.style.pointerEvents = 'auto';
+        b.style.touchAction = 'manipulation';
+      } catch(e) {}
+      try {
+        b.click();
+        logLine('[FORCE] ' + label + ': click() called');
+      } catch(e) {
+        logLine('[FORCE] ' + label + ': click() ERROR ' + (e && e.message ? e.message : e));
+      }
+    }
+
+    el('spForceScan').addEventListener('click', function() { tryClick('scanBtnTop','Scan'); });
+    el('spForceManual').addEventListener('click', function() { tryClick('manual-entry','Manual'); });
+    el('spForceSettings').addEventListener('click', function() { tryClick('settingsBtn','Settings'); });
+
+    return box;
+  }
+
+  function ts() {
+    var d = new Date();
+    var hh = String(d.getHours()).padStart(2,'0');
+    var mm = String(d.getMinutes()).padStart(2,'0');
+    var ss = String(d.getSeconds()).padStart(2,'0');
+    var ms = String(d.getMilliseconds()).padStart(3,'0');
+    return hh+':'+mm+':'+ss+'.'+ms;
+  }
+
+  function logLine(s) {
+    ensureBox();
+    var pre = el('spEventMonLog');
+    pre.textContent += ts() + ' ' + s + '\n';
+    pre.scrollTop = pre.scrollHeight;
+  }
+
+  // capture JS errors that stop handlers
+  window.addEventListener('error', function(ev) {
+    var msg = (ev && ev.message) ? ev.message : 'unknown';
+    logLine('[ERROR] ' + msg);
+    if(ev && ev.filename) logLine('  at ' + ev.filename + ':' + (ev.lineno||'?') + ':' + (ev.colno||'?'));
+  });
+  window.addEventListener('unhandledrejection', function(ev) {
+    var r = (ev && ev.reason) ? ev.reason : '';
+    logLine('[PROMISE] ' + (r && r.message ? r.message : String(r)));
+  });
+
+  // ---- event path diagnostics ----
+  function describeEl(node) {
+    if(!node) return '(null)';
+    if(node === window) return 'window';
+    if(node === document) return 'document';
+    var s = node.tagName ? node.tagName.toLowerCase() : String(node);
+    if(node.id) s += '#' + node.id;
+    if(node.classList && node.classList.length) s += '.' + Array.from(node.classList).slice(0,3).join('.');
+    return s;
+  }
+
+  function elementAt(x,y) {
+    try { return document.elementFromPoint(x,y); } catch(e) { return null; }
+  }
+
+  function rectStr(r) {
+    if(!r) return '(no-rect)';
+    return 'L'+Math.round(r.left)+',T'+Math.round(r.top)+',R'+Math.round(r.right)+',B'+Math.round(r.bottom)+' W'+Math.round(r.width)+' H'+Math.round(r.height);
+  }
+
+  function dumpCovering(x,y) {
+    var top = elementAt(x,y);
+    if(!top) return;
+    var r = top.getBoundingClientRect ? top.getBoundingClientRect() : null;
+    var pe = '';
+    try { pe = getComputedStyle(top).pointerEvents; } catch(e) {}
+    logLine('[HIT] elementFromPoint=' + describeEl(top) + ' rect=' + rectStr(r) + ' pointer-events=' + pe);
+  }
+
+  function onAnyEvent(ev) {
+    ensureBox();
+    var t = ev.touches && ev.touches[0] ? ev.touches[0] : (ev.changedTouches && ev.changedTouches[0] ? ev.changedTouches[0] : null);
+    var x = t ? t.clientX : (typeof ev.clientX === 'number' ? ev.clientX : null);
+    var y = t ? t.clientY : (typeof ev.clientY === 'number' ? ev.clientY : null);
+    var target = ev.target;
+    logLine('[' + ev.type + '][cap=' + (ev.eventPhase===1?'Y':'N') + '] target=' + describeEl(target) + ' xy=' + (x===null?'?':Math.round(x)) + ',' + (y===null?'?':Math.round(y)) + ' defaultPrevented=' + (ev.defaultPrevented?'Y':'N'));
+    if(x!=null && y!=null) dumpCovering(x,y);
+  }
+
+  // listen broadly (capture) to prove whether events reach the document
+  var types = ['pointerdown','pointerup','click','touchstart','touchend','mousedown','mouseup'];
+  types.forEach(function(tp) {
+    document.addEventListener(tp, onAnyEvent, {capture:true, passive:false});
+  });
+
+  // also attach direct listeners to key buttons to check whether *they* receive events
+  function armButton(id,label) {
+    var b = el(id);
+    if(!b) {
+      logLine('[ARM] ' + label + ' #' + id + ' NOT FOUND');
+      return;
+    }
+    try {
+      b.style.pointerEvents = 'auto';
+      b.style.touchAction = 'manipulation';
+    } catch(e) {}
+    ['pointerdown','touchstart','click'].forEach(function(tp) {
+      b.addEventListener(tp, function(ev) {
+        logLine('[BTN:' + label + '] ' + tp + ' received defaultPrevented=' + (ev.defaultPrevented?'Y':'N'));
+      }, {capture:true, passive:false});
+    });
+    logLine('[ARM] ' + label + ' #' + id + ' OK rect=' + rectStr(b.getBoundingClientRect()));
+  }
+
+  function boot() {
+    logLine('[BOOT] start');
+    armButton('scanBtnTop','SCAN');
+    armButton('manual-entry','MANUAL');
+    armButton('settingsBtn','SETTINGS');
+
+    // show gps existence
+    var gpsSel = el('gps-range-select');
+    if(gpsSel) logLine('[GPS] gps-range-select found');
+    else logLine('[GPS] gps-range-select NOT FOUND');
+
+    // If buttons appear dead, check if an overlay covers them
+    setTimeout(function() {
+      try {
+        var sb = el('scanBtnTop');
+        if(sb) {
+          var r = sb.getBoundingClientRect();
+          var cx = r.left + r.width/2;
+          var cy = r.top + r.height/2;
+          logLine('[CHECK] scanBtn center point ' + Math.round(cx)+','+Math.round(cy));
+          dumpCovering(cx,cy);
+        }
+      } catch(e) {}
+    }, 300);
+
+    logLine('[BOOT] done');
+  }
+
+  if(document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+})();
+</script>
+
 </body>
 </html>
