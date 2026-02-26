@@ -1,0 +1,125 @@
+<!doctype html>
+<!--
+APP: Smart Price
+VERSION: v0.1.0
+DATE(JST): 2026-02-26 21:49 JST
+TITLE: SAFE MODE 最小構成（A：表示のみ）
+AUTHOR: ChatGPT_Yui
+CHANGES:
+- SAFE MODE表示（SW/キャッシュ/外部APIなし）
+- VERSION SSOT（表示の正本を1ヶ所に固定）
+- ダミー購入履歴の表示（テーブル）
+- debug=1時のみ診断パネル表示（UA/URLパラメータ/時刻）
+BUILD_PARAM: ?b=2026-02-26_2149_safemode-a   (配布/キャッシュ回避)
+DEBUG_PARAM: &debug=1        (検証時のみ)
+POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
+-->
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
+  <!-- できるだけキャッシュされにくくする（万能ではないが事故を減らす） -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+
+  <title>Smart Price（SAFE MODE）</title>
+  <link rel="stylesheet" href="./app.css" />
+</head>
+
+<body>
+  <header class="top">
+    <div class="top__left">
+      <div class="badge">SAFE MODE</div>
+      <div class="brand">
+        <div class="brand__name">Smart Price</div>
+        <div class="brand__sub">最小構成（A：表示のみ）</div>
+      </div>
+    </div>
+
+    <div class="top__right">
+      <div class="kv">
+        <div class="kv__k">VERSION</div>
+        <div class="kv__v" id="vAppVersion">-</div>
+      </div>
+      <div class="kv">
+        <div class="kv__k">BUILD(b)</div>
+        <div class="kv__v" id="vBuild">-</div>
+      </div>
+    </div>
+  </header>
+
+  <main class="main">
+    <section class="card">
+      <h2 class="card__title">購入履歴（ダミー表示）</h2>
+      <p class="card__note">
+        このSAFE MODEは、Service Worker（オフライン機能）・キャッシュ・外部APIを<strong>一切使いません</strong>。<br>
+        まずは「表示が壊れない」土台を作る段階です（次に保存・エクスポートへ）。
+      </p>
+
+      <div class="toolbar">
+        <button class="btn" id="btnReload">ダミーデータを再読込</button>
+      </div>
+
+      <div class="tableWrap">
+        <table class="table" aria-label="purchase list">
+          <thead>
+            <tr>
+              <th class="colDate">日付</th>
+              <th class="colStore">店</th>
+              <th class="colName">商品</th>
+              <th class="colNum">価格</th>
+              <th class="colNum">個数</th>
+              <th class="colNote">メモ</th>
+            </tr>
+          </thead>
+          <tbody id="purchaseTbody">
+            <!-- JSで描画 -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="empty" id="emptyState" hidden>
+        まだ表示するデータがありません。
+      </div>
+    </section>
+
+    <section class="card debug" id="debugPanel" hidden>
+      <h2 class="card__title">診断（debug=1 のときだけ表示）</h2>
+      <div class="debug__grid">
+        <div class="kv">
+          <div class="kv__k">FULL VERSION</div>
+          <div class="kv__v" id="vFullVersion">-</div>
+        </div>
+        <div class="kv">
+          <div class="kv__k">URL</div>
+          <div class="kv__v mono" id="vUrl">-</div>
+        </div>
+        <div class="kv">
+          <div class="kv__k">UA</div>
+          <div class="kv__v mono" id="vUa">-</div>
+        </div>
+        <div class="kv">
+          <div class="kv__k">NOW</div>
+          <div class="kv__v mono" id="vNow">-</div>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <button class="btn btn--sub" id="btnCopyDiag">診断ログをコピー</button>
+      </div>
+
+      <pre class="debug__pre mono" id="diagText"></pre>
+    </section>
+
+    <footer class="foot">
+      <div class="foot__muted">
+        次の段階：保存（localStorage/IndexedDB）→ JSONエクスポート/インポート
+      </div>
+    </footer>
+  </main>
+
+  <script defer src="./app.js"></script>
+</body>
+</html>
