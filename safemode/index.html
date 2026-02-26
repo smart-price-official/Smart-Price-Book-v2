@@ -1,16 +1,16 @@
 <!doctype html>
 <!--
 APP: Smart Price
-VERSION: v0.1.0
-DATE(JST): 2026-02-26 21:49 JST
-TITLE: SAFE MODE 最小構成（A：表示のみ）
+VERSION: v0.2.0
+DATE(JST): 2026-02-26 22:35 JST
+TITLE: SAFE MODE 最小構成（B：保存=localStorage）
 AUTHOR: ChatGPT_Yui
 CHANGES:
-- SAFE MODE表示（SW/キャッシュ/外部APIなし）
-- VERSION SSOT（表示の正本を1ヶ所に固定）
-- ダミー購入履歴の表示（テーブル）
-- debug=1時のみ診断パネル表示（UA/URLパラメータ/時刻）
-BUILD_PARAM: ?b=2026-02-26_2149_safemode-a   (配布/キャッシュ回避)
+- A（表示のみ）をベースに、localStorage保存を追加
+- 追加フォーム（最小）を追加：日付/店/商品/価格/個数/メモ
+- 保存キー固定（sp_safemode_purchases_v1）・自動保存
+- debug=1診断にlocalStorage件数/キー情報を追加
+BUILD_PARAM: ?b=2026-02-26_2235_safemode-b   (配布/キャッシュ回避)
 DEBUG_PARAM: &debug=1        (検証時のみ)
 POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
 -->
@@ -34,7 +34,7 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
       <div class="badge">SAFE MODE</div>
       <div class="brand">
         <div class="brand__name">Smart Price</div>
-        <div class="brand__sub">最小構成（A：表示のみ）</div>
+        <div class="brand__sub">最小構成（B：保存=localStorage）</div>
       </div>
     </div>
 
@@ -52,14 +52,53 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
 
   <main class="main">
     <section class="card">
-      <h2 class="card__title">購入履歴（ダミー表示）</h2>
+      <h2 class="card__title">購入履歴（保存されます）</h2>
       <p class="card__note">
         このSAFE MODEは、Service Worker（オフライン機能）・キャッシュ・外部APIを<strong>一切使いません</strong>。<br>
-        まずは「表示が壊れない」土台を作る段階です（次に保存・エクスポートへ）。
+        追加した内容は<strong>端末内に保存</strong>され、再読み込みしても残ります（localStorage）。
       </p>
 
-      <div class="toolbar">
-        <button class="btn" id="btnReload">ダミーデータを再読込</button>
+      <div class="form">
+        <div class="form__row">
+          <label class="field">
+            <div class="field__k">日付</div>
+            <input class="field__v" type="date" id="fDate">
+          </label>
+
+          <label class="field">
+            <div class="field__k">店</div>
+            <input class="field__v" type="text" id="fStore" placeholder="例：カスミ">
+          </label>
+
+          <label class="field field--wide">
+            <div class="field__k">商品</div>
+            <input class="field__v" type="text" id="fName" placeholder="例：牛乳 1L">
+          </label>
+        </div>
+
+        <div class="form__row">
+          <label class="field">
+            <div class="field__k">価格</div>
+            <input class="field__v" type="number" id="fPrice" inputmode="numeric" placeholder="例：238">
+          </label>
+
+          <label class="field">
+            <div class="field__k">個数</div>
+            <input class="field__v" type="number" id="fQty" inputmode="numeric" value="1" min="1">
+          </label>
+
+          <label class="field field--wide">
+            <div class="field__k">メモ</div>
+            <input class="field__v" type="text" id="fNote" placeholder="任意">
+          </label>
+        </div>
+
+        <div class="toolbar">
+          <button class="btn" id="btnAdd">追加（保存）</button>
+          <button class="btn btn--sub" id="btnSeed">ダミーデータ投入（保存）</button>
+          <button class="btn btn--danger" id="btnClear">全消去（保存も消す）</button>
+          <div class="status" id="statusText">-</div>
+        </div>
       </div>
 
       <div class="tableWrap">
@@ -81,7 +120,7 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
       </div>
 
       <div class="empty" id="emptyState" hidden>
-        まだ表示するデータがありません。
+        まだデータがありません。上で追加してみてください。
       </div>
     </section>
 
@@ -91,6 +130,14 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
         <div class="kv">
           <div class="kv__k">FULL VERSION</div>
           <div class="kv__v" id="vFullVersion">-</div>
+        </div>
+        <div class="kv">
+          <div class="kv__k">STORAGE KEY</div>
+          <div class="kv__v mono" id="vStorageKey">-</div>
+        </div>
+        <div class="kv">
+          <div class="kv__k">STORAGE COUNT</div>
+          <div class="kv__v" id="vStorageCount">-</div>
         </div>
         <div class="kv">
           <div class="kv__k">URL</div>
@@ -115,7 +162,7 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
 
     <footer class="foot">
       <div class="foot__muted">
-        次の段階：保存（localStorage/IndexedDB）→ JSONエクスポート/インポート
+        次の段階：JSONエクスポート/インポート（データ退避）
       </div>
     </footer>
   </main>
