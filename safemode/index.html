@@ -1,16 +1,16 @@
 <!doctype html>
 <!--
 APP: Smart Price
-VERSION: v0.2.0
-DATE(JST): 2026-02-26 22:35 JST
-TITLE: SAFE MODE 最小構成（B：保存=localStorage）
+VERSION: v0.3.0
+DATE(JST): 2026-02-26 23:15 JST
+TITLE: SAFE MODE 最小構成（C：JSONエクスポート/インポート）
 AUTHOR: ChatGPT_Yui
 CHANGES:
-- A（表示のみ）をベースに、localStorage保存を追加
-- 追加フォーム（最小）を追加：日付/店/商品/価格/個数/メモ
-- 保存キー固定（sp_safemode_purchases_v1）・自動保存
-- debug=1診断にlocalStorage件数/キー情報を追加
-BUILD_PARAM: ?b=2026-02-26_2235_safemode-b   (配布/キャッシュ回避)
+- B（保存=localStorage）をベースにJSONエクスポート/インポートを追加
+- エクスポート：JSONをダウンロード（メタ情報付き）
+- インポート：JSONファイル or 貼り付け → 検証 → 置換保存
+- debug=1診断にエクスポート/インポート時刻を追記
+BUILD_PARAM: ?b=2026-02-26_2315_safemode-c   (配布/キャッシュ回避)
 DEBUG_PARAM: &debug=1        (検証時のみ)
 POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
 -->
@@ -19,7 +19,6 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 
-  <!-- できるだけキャッシュされにくくする（万能ではないが事故を減らす） -->
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
@@ -34,7 +33,7 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
       <div class="badge">SAFE MODE</div>
       <div class="brand">
         <div class="brand__name">Smart Price</div>
-        <div class="brand__sub">最小構成（B：保存=localStorage）</div>
+        <div class="brand__sub">最小構成（C：JSON退避）</div>
       </div>
     </div>
 
@@ -52,10 +51,10 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
 
   <main class="main">
     <section class="card">
-      <h2 class="card__title">購入履歴（保存されます）</h2>
+      <h2 class="card__title">購入履歴（保存＋JSON退避）</h2>
       <p class="card__note">
-        このSAFE MODEは、Service Worker（オフライン機能）・キャッシュ・外部APIを<strong>一切使いません</strong>。<br>
-        追加した内容は<strong>端末内に保存</strong>され、再読み込みしても残ります（localStorage）。
+        SAFE MODE：Service Worker（オフライン機能）・キャッシュ・外部APIは<strong>一切使いません</strong>。<br>
+        端末内保存（localStorage）＋ JSONエクスポート/インポートで、データを守ります。
       </p>
 
       <div class="form">
@@ -113,14 +112,40 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
               <th class="colNote">メモ</th>
             </tr>
           </thead>
-          <tbody id="purchaseTbody">
-            <!-- JSで描画 -->
-          </tbody>
+          <tbody id="purchaseTbody"></tbody>
         </table>
       </div>
 
       <div class="empty" id="emptyState" hidden>
         まだデータがありません。上で追加してみてください。
+      </div>
+
+      <hr class="hr">
+
+      <h3 class="subTitle">データ退避（JSON）</h3>
+      <p class="subNote">
+        エクスポートしたJSONは、別PC/別ブラウザでもインポートできます。<br>
+        インポートすると<strong>現在のデータを置き換え</strong>ます（安全のため確認あり）。
+      </p>
+
+      <div class="toolbar">
+        <button class="btn" id="btnExport">エクスポート（JSONを保存）</button>
+
+        <label class="btn btn--sub fileBtn">
+          インポート（JSONファイル）
+          <input type="file" id="fileImport" accept="application/json,.json" hidden>
+        </label>
+
+        <button class="btn btn--sub" id="btnPasteToggle">貼り付けでインポート</button>
+      </div>
+
+      <div class="paste" id="pasteBox" hidden>
+        <div class="paste__k">JSONをここに貼り付け → 「この内容でインポート」</div>
+        <textarea class="paste__v mono" id="pasteText" rows="6" placeholder='例：{ "purchases": [ ... ] } または [ ... ]'></textarea>
+        <div class="toolbar">
+          <button class="btn btn--sub" id="btnPasteImport">この内容でインポート</button>
+          <button class="btn" id="btnPasteClear">消す</button>
+        </div>
       </div>
     </section>
 
@@ -138,6 +163,14 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
         <div class="kv">
           <div class="kv__k">STORAGE COUNT</div>
           <div class="kv__v" id="vStorageCount">-</div>
+        </div>
+        <div class="kv">
+          <div class="kv__k">LAST EXPORT</div>
+          <div class="kv__v mono" id="vLastExport">-</div>
+        </div>
+        <div class="kv">
+          <div class="kv__k">LAST IMPORT</div>
+          <div class="kv__v mono" id="vLastImport">-</div>
         </div>
         <div class="kv">
           <div class="kv__k">URL</div>
@@ -162,7 +195,7 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
 
     <footer class="foot">
       <div class="foot__muted">
-        次の段階：JSONエクスポート/インポート（データ退避）
+        SAFE MODE の核（表示・保存・退避）が完成。次は「元Smart Price機能」を1個ずつ移植。
       </div>
     </footer>
   </main>

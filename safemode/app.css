@@ -1,4 +1,4 @@
-/* Smart Price SAFE MODE - minimal CSS (B: localStorage) */
+/* Smart Price SAFE MODE - minimal CSS (C: export/import) */
 :root{
   --bg:#0f1115;
   --card:#171a21;
@@ -126,6 +126,9 @@ body{
   border-radius:12px;
   cursor:pointer;
   font-weight:800;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
 }
 .btn:hover{ background:var(--btnHover); }
 .btn--sub{ font-weight:800; }
@@ -133,9 +136,9 @@ body{
   border-color: rgba(255,69,58,.35);
   background: rgba(255,69,58,.10);
 }
-.btn--danger:hover{
-  background: rgba(255,69,58,.16);
-}
+.btn--danger:hover{ background: rgba(255,69,58,.16); }
+
+.fileBtn{ cursor:pointer; }
 
 .status{
   margin-left:auto;
@@ -183,6 +186,38 @@ body{
   border:1px dashed rgba(170,179,189,.35);
   color:var(--muted);
   font-size:12px;
+}
+
+.hr{
+  border:none;
+  border-top:1px solid rgba(170,179,189,.18);
+  margin:14px 0;
+}
+
+.subTitle{ margin:0 0 6px 0; font-size:13px; }
+.subNote{ margin:0 0 10px 0; font-size:12px; color:var(--muted); line-height:1.6; }
+
+.paste{
+  margin-top:10px;
+  border:1px solid rgba(170,179,189,.18);
+  border-radius:12px;
+  padding:12px;
+  background:rgba(0,0,0,.12);
+}
+.paste__k{
+  font-size:10px;
+  color:var(--muted);
+  letter-spacing:.08em;
+  margin-bottom:8px;
+}
+.paste__v{
+  width:100%;
+  border-radius:12px;
+  border:1px solid var(--line);
+  background:rgba(23,26,33,.75);
+  color:var(--text);
+  padding:10px;
+  outline:none;
 }
 
 .debug__grid{
