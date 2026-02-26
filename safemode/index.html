@@ -1,16 +1,16 @@
 <!doctype html>
 <!--
 APP: Smart Price
-VERSION: v0.3.0
-DATE(JST): 2026-02-26 23:15 JST
-TITLE: SAFE MODE 最小構成（C：JSONエクスポート/インポート）
+VERSION: v0.3.1
+DATE(JST): 2026-02-26 23:33 JST
+TITLE: SAFE MODE 最小構成（C：JSON退避）
 AUTHOR: ChatGPT_Yui
 CHANGES:
-- B（保存=localStorage）をベースにJSONエクスポート/インポートを追加
-- エクスポート：JSONをダウンロード（メタ情報付き）
-- インポート：JSONファイル or 貼り付け → 検証 → 置換保存
-- debug=1診断にエクスポート/インポート時刻を追記
-BUILD_PARAM: ?b=2026-02-26_2315_safemode-c   (配布/キャッシュ回避)
+- エクスポートが効かない問題の対策：app.js/app.css に ?b=... を付与してキャッシュ回避
+- ボタンを type=button に固定（意図しない送信/リロード防止）
+- C（JSONエクスポート/インポート）を継続（保存キー同一でデータ引継ぎ）
+- debug=1 の診断は従来通り
+BUILD_PARAM: ?b=2026-02-26_2333_safemode-c_fixcache   (配布/キャッシュ回避)
 DEBUG_PARAM: &debug=1        (検証時のみ)
 POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
 -->
@@ -18,13 +18,13 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-
   <title>Smart Price（SAFE MODE）</title>
-  <link rel="stylesheet" href="./app.css" />
+
+  <!-- ★重要：CSS/JSにも b を付けて“確実に最新”を取る -->
+  <link rel="stylesheet" href="./app.css?b=2026-02-26_2333_safemode-c_fixcache" />
 </head>
 
 <body>
@@ -93,9 +93,9 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
         </div>
 
         <div class="toolbar">
-          <button class="btn" id="btnAdd">追加（保存）</button>
-          <button class="btn btn--sub" id="btnSeed">ダミーデータ投入（保存）</button>
-          <button class="btn btn--danger" id="btnClear">全消去（保存も消す）</button>
+          <button class="btn" type="button" id="btnAdd">追加（保存）</button>
+          <button class="btn btn--sub" type="button" id="btnSeed">ダミーデータ投入（保存）</button>
+          <button class="btn btn--danger" type="button" id="btnClear">全消去（保存も消す）</button>
           <div class="status" id="statusText">-</div>
         </div>
       </div>
@@ -129,22 +129,22 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
       </p>
 
       <div class="toolbar">
-        <button class="btn" id="btnExport">エクスポート（JSONを保存）</button>
+        <button class="btn" type="button" id="btnExport">エクスポート（JSONを保存）</button>
 
         <label class="btn btn--sub fileBtn">
           インポート（JSONファイル）
           <input type="file" id="fileImport" accept="application/json,.json" hidden>
         </label>
 
-        <button class="btn btn--sub" id="btnPasteToggle">貼り付けでインポート</button>
+        <button class="btn btn--sub" type="button" id="btnPasteToggle">貼り付けでインポート</button>
       </div>
 
       <div class="paste" id="pasteBox" hidden>
         <div class="paste__k">JSONをここに貼り付け → 「この内容でインポート」</div>
         <textarea class="paste__v mono" id="pasteText" rows="6" placeholder='例：{ "purchases": [ ... ] } または [ ... ]'></textarea>
         <div class="toolbar">
-          <button class="btn btn--sub" id="btnPasteImport">この内容でインポート</button>
-          <button class="btn" id="btnPasteClear">消す</button>
+          <button class="btn btn--sub" type="button" id="btnPasteImport">この内容でインポート</button>
+          <button class="btn" type="button" id="btnPasteClear">消す</button>
         </div>
       </div>
     </section>
@@ -187,7 +187,7 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
       </div>
 
       <div class="toolbar">
-        <button class="btn btn--sub" id="btnCopyDiag">診断ログをコピー</button>
+        <button class="btn btn--sub" type="button" id="btnCopyDiag">診断ログをコピー</button>
       </div>
 
       <pre class="debug__pre mono" id="diagText"></pre>
@@ -200,6 +200,7 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
     </footer>
   </main>
 
-  <script defer src="./app.js"></script>
+  <!-- ★重要：JSにも b を付けて“確実に最新”を取る -->
+  <script defer src="./app.js?b=2026-02-26_2333_safemode-c_fixcache"></script>
 </body>
 </html>

@@ -1,16 +1,16 @@
 'use strict';
 /*
 APP: Smart Price
-VERSION: v0.3.0
-DATE(JST): 2026-02-26 23:15 JST
-TITLE: SAFE MODE 最小構成（C：JSONエクスポート/インポート）
+VERSION: v0.3.1
+DATE(JST): 2026-02-26 23:33 JST
+TITLE: SAFE MODE 最小構成（C：JSON退避）
 AUTHOR: ChatGPT_Yui
 CHANGES:
-- B（保存=localStorage）をベースにJSONエクスポート/インポートを追加
-- エクスポート：JSONをダウンロード（メタ情報付き）
-- インポート：JSONファイル or 貼り付け → 検証 → 置換保存
-- debug=1診断にエクスポート/インポート時刻を追記
-BUILD_PARAM: ?b=2026-02-26_2315_safemode-c
+- エクスポートが効かない問題の対策：app.js/app.css に ?b=... を付与してキャッシュ回避
+- ボタンを type=button に固定（意図しない送信/リロード防止）
+- C（JSONエクスポート/インポート）を継続（保存キー同一でデータ引継ぎ）
+- debug=1 の診断は従来通り
+BUILD_PARAM: ?b=2026-02-26_2333_safemode-c_fixcache
 DEBUG_PARAM: &debug=1
 POLICY: SAFE MODE / 最小構成 / 外部依存なし
 */
@@ -18,9 +18,9 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
 (function(){
   var APP = {
     NAME: 'Smart Price',
-    VERSION: 'v0.3.0',
+    VERSION: 'v0.3.1',
     AUTHOR: 'ChatGPT_Yui',
-    TITLE: 'SAFE MODE 最小構成（C：JSONエクスポート/インポート）'
+    TITLE: 'SAFE MODE 最小構成（C：JSON退避）'
   };
   var STORAGE_KEY = 'sp_safemode_purchases_v1';
 
