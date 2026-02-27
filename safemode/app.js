@@ -1,16 +1,16 @@
 'use strict';
 /*
 APP: Smart Price
-VERSION: v0.6.4
+VERSION: v0.6.5
 DATE(JST): 2026-02-27 12:10 JST
 TITLE: SAFE MODE 最小構成（H：分類別集計）
 AUTHOR: ChatGPT_Yui
-BUILD_PARAM: ?b=2026-02-27_1326_safemode-j_rowdelete
+BUILD_PARAM: ?b=2026-02-27_1356_safemode-j_rowdeletefix2
 DEBUG_PARAM: &debug=1
 POLICY: SAFE MODE / 最小構成 / 外部依存なし
 */
 (function(){
-  var APP={NAME:'Smart Price',VERSION:'v0.6.4',AUTHOR:'ChatGPT_Yui',TITLE:'SAFE MODE 最小構成（H：分類別集計）'};
+  var APP={NAME:'Smart Price',VERSION:'v0.6.5',AUTHOR:'ChatGPT_Yui',TITLE:'SAFE MODE 最小構成（H：分類別集計）'};
   var PURCHASE_KEY='sp_safemode_purchases_v1', STORE_KEY='sp_safemode_stores_v1', PRODUCT_KEY='sp_safemode_products_v1';
   var params=new URLSearchParams(location.search);
   var BUILD=(params.get('b')||'no-b').trim();
@@ -115,32 +115,29 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
   function syncMastersFromPurchases(){var changed=false; for(var i=0;i<purchases.length;i++){var r=purchases[i]; if(ensureStoreName(r.store))changed=true; if(ensureProductName(r.name))changed=true;} return changed;}
   function findProductByName(name){var k=key(name); for(var i=0;i<products.length;i++){ if(key(products[i].name)===k) return products[i]; } return null; }
 
+  function requestDeletePurchaseById(id){
+    var r = purchases.find(function(x){ return x.id===id; });
+    if(!r) return;
+    var msg = 'この購入を削除します。\n\n' +
+      '日付: ' + (r.date||'') + '\n' +
+      '店: ' + (r.store||'') + '\n' +
+      '商品: ' + (r.name||'') + '\n' +
+      '価格: ' + (Number(r.price)||0) + '円\n' +
+      '個数: ' + (Number(r.qty)||1) + '\n\n' +
+      'よろしいですか？';
+    if(!confirm(msg)) return;
+    purchases = purchases.filter(function(x){ return x.id!==id; });
+    saveAll();
+    renderPurchases();
+    computeStats();
+    updateDebug();
+    setStatus('削除しました（購入 ' + purchases.length + '件）');
+  }
+
   function renderPurchases(){
     elTbody.innerHTML='';
     if(!purchases.length){ elEmpty.hidden=false; return; }
     elEmpty.hidden=true;
-
-    // 行の削除（UI追加なし）
-    // PC: ダブルクリック / 右クリック
-    // スマホ: 長押し（約650ms）
-    function requestDelete(id){
-      var r = purchases.find(function(x){ return x.id===id; });
-      if(!r) return;
-      var msg = 'この購入を削除します。\n\n' +
-        '日付: ' + (r.date||'') + '\n' +
-        '店: ' + (r.store||'') + '\n' +
-        '商品: ' + (r.name||'') + '\n' +
-        '価格: ' + (Number(r.price)||0) + '円\n' +
-        '個数: ' + (Number(r.qty)||1) + '\n\n' +
-        'よろしいですか？';
-      if(!confirm(msg)) return;
-      purchases = purchases.filter(function(x){ return x.id!==id; });
-      saveAll();
-      renderPurchases();
-      computeStats();
-      updateDebug();
-      setStatus('削除しました（購入 ' + purchases.length + '件）');
-    }
 
     var frag=document.createDocumentFragment();
     for(var i=0;i<purchases.length;i++){
@@ -148,23 +145,23 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
       var tr=document.createElement('tr');
       tr.dataset.id = r.id;
 
-      // PC: dblclick
+      // PC: ダブルクリック
       tr.addEventListener('dblclick', function(){
-        requestDelete(this.dataset.id);
+        requestDeletePurchaseById(this.dataset.id);
       });
 
-      // PC: right click
+      // PC: 右クリック
       tr.addEventListener('contextmenu', function(e){
         e.preventDefault();
-        requestDelete(this.dataset.id);
+        requestDeletePurchaseById(this.dataset.id);
       });
 
-      // Mobile: long press
+      // モバイル: 長押し（約0.65秒）
       var pressTimer = null;
-      tr.addEventListener('pointerdown', function(e){
+      tr.addEventListener('pointerdown', function(){
         var id = this.dataset.id;
         pressTimer = setTimeout(function(){
-          requestDelete(id);
+          requestDeletePurchaseById(id);
         }, 650);
       });
       tr.addEventListener('pointerup', function(){ if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } });
@@ -175,13 +172,11 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
       td=document.createElement('td'); td.textContent=r.store||''; tr.appendChild(td);
       td=document.createElement('td'); td.textContent=r.name||''; tr.appendChild(td);
       td=document.createElement('td'); td.className='colNum'; td.textContent=yen(r.price); tr.appendChild(td);
-      td=document.createElement('td'); td.className='colNum'; td.textContent=String(r.qty??''); tr.appendChild(td);
+      td=document.createElement('td'); td.className='colNum'; td.textContent=String(r.qty||''); tr.appendChild(td);
       td=document.createElement('td'); td.textContent=r.note||''; tr.appendChild(td);
 
       frag.appendChild(tr);
     }
-    elTbody.appendChild(frag);
-  }
     elTbody.appendChild(frag);
   }
 
