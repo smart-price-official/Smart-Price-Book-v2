@@ -1,16 +1,16 @@
 <!doctype html>
 <!--
 APP: Smart Price
-VERSION: v0.6.1
-DATE(JST): 2026-02-27 10:47 JST
-TITLE: SAFE MODE 最小構成（G：店/商品マスター自動同期）
+VERSION: v0.6.2
+DATE(JST): 2026-02-27 12:10 JST
+TITLE: SAFE MODE 最小構成（H：分類別集計）
 AUTHOR: ChatGPT_Yui
 CHANGES:
-- 購入を追加/インポート/起動時に、店名・商品名をマスターへ自動同期（UI変更なし）
-- 既に登録済み（大文字小文字/前後空白違い含む）は重複登録しない
-- 商品マスターが空でも、購入履歴から自動で候補が増える
-- debug=1診断の STORE_COUNT / PRODUCT_COUNT が自然に増える
-BUILD_PARAM: ?b=2026-02-27_1047_safemode-g_autosync   (配布/キャッシュ回避)
+- 今月の「分類（カテゴリ）別」集計を追加（未分類も表示）
+- 商品マスターの「分類」を後から更新できる（同名で『商品を追加』→分類だけ更新、UI変更なし）
+- 購入/インポート/起動時の自動同期（店/商品）は v0.6.1 のまま維持
+- debug=1診断に CAT_ROWS（今月の分類行数）を追加
+BUILD_PARAM: ?b=2026-02-27_1210_safemode-h_catstats   (配布/キャッシュ回避)
 DEBUG_PARAM: &debug=1        (検証時のみ)
 POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
 -->
@@ -22,7 +22,7 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
   <title>Smart Price（SAFE MODE）</title>
-  <link rel="stylesheet" href="./app.css?b=2026-02-27_1047_safemode-g_autosync" />
+  <link rel="stylesheet" href="./app.css?b=2026-02-27_1210_safemode-h_catstats" />
 </head>
 <body>
   <header class="top">
@@ -30,7 +30,7 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
       <div class="badge">SAFE MODE</div>
       <div class="brand">
         <div class="brand__name">Smart Price</div>
-        <div class="brand__sub">最小構成（G：自動同期）</div>
+        <div class="brand__sub">最小構成（H：分類別集計）</div>
       </div>
     </div>
     <div class="top__right">
@@ -45,7 +45,7 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
       <p class="card__note">
         SAFE MODE：Service Worker（オフライン機能）・キャッシュ・外部APIは<strong>一切使いません</strong>。<br>
         端末内保存（localStorage）＋ JSONエクスポート/インポートで、データを守ります。<br>
-        ※この版は「購入に入れた店/商品」を<strong>自動でマスターへ同期</strong>します（UIはそのまま）。
+        ※この版は「分類（カテゴリ）別の今月集計」を追加しました。分類は商品マスターで管理します。
       </p>
 
       <div class="form">
@@ -82,7 +82,10 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
         <hr class="hr">
 
         <h3 class="subTitle">商品マスター（よく買う品）</h3>
-        <p class="subNote">登録した商品を、下の「商品」入力にワンタップで入れられます。</p>
+        <p class="subNote">
+          登録した商品を、下の「商品」入力にワンタップで入れられます。<br>
+          ※分類を後から入れたいときは、<strong>同じ商品名</strong>を入れて「商品を追加」を押すと、分類だけ更新されます。
+        </p>
 
         <div class="form__row form__row--master">
           <label class="field field--wide">
@@ -195,6 +198,15 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
         </table>
       </div>
 
+      <div style="height:10px"></div>
+
+      <div class="tableMiniWrap">
+        <table class="tableMini" aria-label="category totals">
+          <thead><tr><th>分類（今月）</th><th class="colNum">合計</th><th class="colNum">件数</th></tr></thead>
+          <tbody id="catTotalTbody"></tbody>
+        </table>
+      </div>
+
       <hr class="hr">
 
       <h3 class="subTitle">データ退避（JSON）</h3>
@@ -232,6 +244,7 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
         <div class="kv"><div class="kv__k">PURCHASE COUNT</div><div class="kv__v" id="vPurchaseCount">-</div></div>
         <div class="kv"><div class="kv__k">STORE COUNT</div><div class="kv__v" id="vStoreCount">-</div></div>
         <div class="kv"><div class="kv__k">PRODUCT COUNT</div><div class="kv__v" id="vProductCount">-</div></div>
+        <div class="kv"><div class="kv__k">CAT_ROWS</div><div class="kv__v" id="vCatRows">-</div></div>
         <div class="kv"><div class="kv__k">TODAY TOTAL</div><div class="kv__v" id="vTodayTotal">-</div></div>
         <div class="kv"><div class="kv__k">MONTH TOTAL</div><div class="kv__v" id="vMonthTotal">-</div></div>
         <div class="kv"><div class="kv__k">LAST EXPORT</div><div class="kv__v mono" id="vLastExport">-</div></div>
@@ -244,9 +257,9 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
       <pre class="debug__pre mono" id="diagText"></pre>
     </section>
 
-    <footer class="foot"><div class="foot__muted">SAFE MODE：次は「カテゴリ別集計」か「CSV出力」へ。</div></footer>
+    <footer class="foot"><div class="foot__muted">SAFE MODE：次は「CSV出力」へ。</div></footer>
   </main>
 
-  <script defer src="./app.js?b=2026-02-27_1047_safemode-g_autosync"></script>
+  <script defer src="./app.js?b=2026-02-27_1210_safemode-h_catstats"></script>
 </body>
 </html>

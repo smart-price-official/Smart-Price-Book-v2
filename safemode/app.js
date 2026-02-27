@@ -1,27 +1,25 @@
 'use strict';
 /*
 APP: Smart Price
-VERSION: v0.6.1
-DATE(JST): 2026-02-27 10:47 JST
-TITLE: SAFE MODE 最小構成（G：店/商品マスター自動同期）
+VERSION: v0.6.2
+DATE(JST): 2026-02-27 12:10 JST
+TITLE: SAFE MODE 最小構成（H：分類別集計）
 AUTHOR: ChatGPT_Yui
-BUILD_PARAM: ?b=2026-02-27_1047_safemode-g_autosync
+BUILD_PARAM: ?b=2026-02-27_1210_safemode-h_catstats
 DEBUG_PARAM: &debug=1
 POLICY: SAFE MODE / 最小構成 / 外部依存なし
 */
 (function(){
-  var APP={NAME:'Smart Price',VERSION:'v0.6.1',AUTHOR:'ChatGPT_Yui',TITLE:'SAFE MODE 最小構成（G：店/商品マスター自動同期）'};
+  var APP={NAME:'Smart Price',VERSION:'v0.6.2',AUTHOR:'ChatGPT_Yui',TITLE:'SAFE MODE 最小構成（H：分類別集計）'};
   var PURCHASE_KEY='sp_safemode_purchases_v1', STORE_KEY='sp_safemode_stores_v1', PRODUCT_KEY='sp_safemode_products_v1';
   var params=new URLSearchParams(location.search);
   var BUILD=(params.get('b')||'no-b').trim();
   var DEBUG=(params.get('debug')==='1');
   var FULL=APP.VERSION+' ['+BUILD+']';
 
-  // header
   document.getElementById('vAppVersion').textContent=APP.VERSION;
   document.getElementById('vBuild').textContent=BUILD;
 
-  // dom
   var elTbody=document.getElementById('purchaseTbody');
   var elEmpty=document.getElementById('emptyState');
   var elStatus=document.getElementById('statusText');
@@ -32,6 +30,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
   var statMonthCount=document.getElementById('statMonthCount');
   var statAllCount=document.getElementById('statAllCount');
   var storeTotalTbody=document.getElementById('storeTotalTbody');
+  var catTotalTbody=document.getElementById('catTotalTbody');
 
   var fNewStoreName=document.getElementById('fNewStoreName');
   var fNewStoreNote=document.getElementById('fNewStoreNote');
@@ -76,6 +75,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
   var vPurchaseCount=document.getElementById('vPurchaseCount');
   var vStoreCount=document.getElementById('vStoreCount');
   var vProductCount=document.getElementById('vProductCount');
+  var vCatRows=document.getElementById('vCatRows');
   var vTodayTotal=document.getElementById('vTodayTotal');
   var vMonthTotal=document.getElementById('vMonthTotal');
   var vLastExport=document.getElementById('vLastExport');
@@ -88,7 +88,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
 
   var purchases=[], stores=[], products=[];
   var lastExportAt='', lastImportAt='';
-  var cachedToday=0, cachedMonth=0;
+  var cachedToday=0, cachedMonth=0, cachedCatRows=0;
 
   function norm(s){return String(s||'').trim();}
   function key(s){return norm(s).toLowerCase();}
@@ -107,12 +107,13 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
   function loadList(k,validator){var raw=localStorage.getItem(k); if(!raw)return []; var p=safeParse(raw); if(!Array.isArray(p))return []; var out=[]; for(var i=0;i<p.length;i++){var v=validator(p[i]); if(v)out.push(v);} return out;}
   function saveAll(){localStorage.setItem(PURCHASE_KEY,JSON.stringify(purchases));localStorage.setItem(STORE_KEY,JSON.stringify(stores));localStorage.setItem(PRODUCT_KEY,JSON.stringify(products));}
 
-  // G: auto sync
+  // autosync
   function ensureStoreName(name){name=norm(name); if(!name)return false; var k=key(name); if(stores.some(function(s){return key(s.name)===k;}))return false;
     stores.push({id:'s-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6),name:name,note:''}); sortByName(stores); return true;}
   function ensureProductName(name){name=norm(name); if(!name)return false; var k=key(name); if(products.some(function(p){return key(p.name)===k;}))return false;
     products.push({id:'g-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6),name:name,cat:''}); sortByName(products); return true;}
   function syncMastersFromPurchases(){var changed=false; for(var i=0;i<purchases.length;i++){var r=purchases[i]; if(ensureStoreName(r.store))changed=true; if(ensureProductName(r.name))changed=true;} return changed;}
+  function findProductByName(name){var k=key(name); for(var i=0;i<products.length;i++){ if(key(products[i].name)===k) return products[i]; } return null; }
 
   function renderPurchases(){elTbody.innerHTML=''; if(!purchases.length){elEmpty.hidden=false;return;} elEmpty.hidden=true;
     var frag=document.createDocumentFragment();
@@ -131,29 +132,56 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
   function computeStats(){var today=todayISO(), month=today.slice(0,7);
     var tSum=0,tCnt=0,mSum=0,mCnt=0;
     var storeMap=Object.create(null);
+    var catMap=Object.create(null);
+
     for(var i=0;i<purchases.length;i++){var r=purchases[i]; var line=Number(r.price)*Number(r.qty||1); if(!Number.isFinite(line))line=0;
       if(r.date===today){tSum+=line; tCnt++;}
-      if(String(r.date||'').slice(0,7)===month){mSum+=line; mCnt++; var k=r.store||'(不明)'; if(!storeMap[k])storeMap[k]={total:0,count:0}; storeMap[k].total+=line; storeMap[k].count++;}
+      if(String(r.date||'').slice(0,7)===month){mSum+=line; mCnt++;
+        var s=r.store||'(不明)'; if(!storeMap[s])storeMap[s]={total:0,count:0}; storeMap[s].total+=line; storeMap[s].count++;
+        var p=findProductByName(r.name);
+        var c=(p && norm(p.cat)) ? norm(p.cat) : '(未分類)';
+        if(!catMap[c])catMap[c]={total:0,count:0}; catMap[c].total+=line; catMap[c].count++;
+      }
     }
+
     cachedToday=tSum; cachedMonth=mSum;
+
     statTodayTotal.textContent=yen(tSum); statTodayCount.textContent='件数：'+tCnt+'件';
     statMonthTotal.textContent=yen(mSum); statMonthCount.textContent='件数：'+mCnt+'件';
     statAllCount.textContent=String(purchases.length);
 
+    // store
     storeTotalTbody.innerHTML='';
-    var entries=Object.keys(storeMap).map(function(k){return {store:k,total:storeMap[k].total,count:storeMap[k].count};});
-    entries.sort(function(a,b){return b.total-a.total;});
+    var sEntries=Object.keys(storeMap).map(function(k){return {name:k,total:storeMap[k].total,count:storeMap[k].count};});
+    sEntries.sort(function(a,b){return b.total-a.total;});
     var frag=document.createDocumentFragment();
-    if(!entries.length){var tr=document.createElement('tr'); var td=document.createElement('td'); td.textContent='今月のデータがありません'; td.colSpan=3; tr.appendChild(td); frag.appendChild(tr);}
+    if(!sEntries.length){var tr=document.createElement('tr'); var td=document.createElement('td'); td.textContent='今月のデータがありません'; td.colSpan=3; tr.appendChild(td); frag.appendChild(tr);}
     else {
-      for(var j=0;j<entries.length;j++){var e=entries[j]; var tr=document.createElement('tr');
-        var td=document.createElement('td'); td.textContent=e.store; tr.appendChild(td);
+      for(var j=0;j<sEntries.length;j++){var e=sEntries[j]; var tr=document.createElement('tr');
+        var td=document.createElement('td'); td.textContent=e.name; tr.appendChild(td);
         td=document.createElement('td'); td.className='colNum'; td.textContent=yen(e.total); tr.appendChild(td);
         td=document.createElement('td'); td.className='colNum'; td.textContent=String(e.count); tr.appendChild(td);
         frag.appendChild(tr);
       }
     }
     storeTotalTbody.appendChild(frag);
+
+    // category
+    catTotalTbody.innerHTML='';
+    var cEntries=Object.keys(catMap).map(function(k){return {name:k,total:catMap[k].total,count:catMap[k].count};});
+    cEntries.sort(function(a,b){return b.total-a.total;});
+    cachedCatRows=cEntries.length;
+    var frag2=document.createDocumentFragment();
+    if(!cEntries.length){var tr2=document.createElement('tr'); var td2=document.createElement('td'); td2.textContent='今月のデータがありません'; td2.colSpan=3; tr2.appendChild(td2); frag2.appendChild(tr2);}
+    else {
+      for(var k=0;k<cEntries.length;k++){var e2=cEntries[k]; var tr3=document.createElement('tr');
+        var td3=document.createElement('td'); td3.textContent=e2.name; tr3.appendChild(td3);
+        td3=document.createElement('td'); td3.className='colNum'; td3.textContent=yen(e2.total); tr3.appendChild(td3);
+        td3=document.createElement('td'); td3.className='colNum'; td3.textContent=String(e2.count); tr3.appendChild(td3);
+        frag2.appendChild(tr3);
+      }
+    }
+    catTotalTbody.appendChild(frag2);
   }
 
   function rebuildStorePickers(){selStore.innerHTML='<option value="">（選ぶと「店」に入ります）</option>'; storeChips.innerHTML=''; storeTbody.innerHTML=''; storeDatalist.innerHTML='';
@@ -210,23 +238,42 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
 
   function addStore(){var name=norm(fNewStoreName.value), note=norm(fNewStoreNote.value);
     if(!name)return setStatus('店名が未入力です'); var k=key(name); if(stores.some(function(s){return key(s.name)===k;}))return setStatus('同じ店名がすでにあります');
-    stores.push({id:'s-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6),name:name,note:note}); sortByName(stores); saveAll(); rebuildStorePickers(); computeStats(); updateDebug();
+    stores.push({id:'s-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6),name:name,note:note});
+    sortByName(stores); saveAll(); rebuildStorePickers(); computeStats(); updateDebug();
     setStatus('店を追加しました（'+stores.length+'件）'); fNewStoreName.value=''; fNewStoreNote.value=''; fNewStoreName.focus();
   }
   function deleteStore(id){var s=stores.find(function(x){return x.id===id;}); if(!s)return;
     if(!confirm('店を削除します：'+s.name+'\nよろしいですか？'))return;
-    stores=stores.filter(function(x){return x.id!==id;}); saveAll(); rebuildStorePickers(); computeStats(); updateDebug();
+    stores=stores.filter(function(x){return x.id!==id;});
+    saveAll(); rebuildStorePickers(); computeStats(); updateDebug();
     setStatus('店を削除しました（'+stores.length+'件）');
   }
 
-  function addProduct(){var name=norm(fNewProductName.value), cat=norm(fNewProductCat.value);
-    if(!name)return setStatus('商品名が未入力です'); var k=key(name); if(products.some(function(p){return key(p.name)===k;}))return setStatus('同じ商品名がすでにあります');
-    products.push({id:'g-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6),name:name,cat:cat}); sortByName(products); saveAll(); rebuildProductPickers(); computeStats(); updateDebug();
+  function addOrUpdateProduct(){var name=norm(fNewProductName.value), cat=norm(fNewProductCat.value);
+    if(!name)return setStatus('商品名が未入力です');
+    var k=key(name);
+    var existing=products.find(function(p){return key(p.name)===k;});
+    if(existing){
+      if(cat && existing.cat!==cat) {
+        existing.cat=cat;
+        sortByName(products);
+        saveAll(); rebuildProductPickers(); computeStats(); updateDebug();
+        setStatus('分類を更新しました（'+existing.name+' → '+cat+'）');
+      } else {
+        setStatus('同じ商品名がすでにあります（分類が空なら入れて更新できます）');
+      }
+      fNewProductName.value=''; fNewProductCat.value=''; fNewProductName.focus();
+      return;
+    }
+    products.push({id:'g-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6),name:name,cat:cat});
+    sortByName(products); saveAll(); rebuildProductPickers(); computeStats(); updateDebug();
     setStatus('商品を追加しました（'+products.length+'件）'); fNewProductName.value=''; fNewProductCat.value=''; fNewProductName.focus();
   }
+
   function deleteProduct(id){var p=products.find(function(x){return x.id===id;}); if(!p)return;
     if(!confirm('商品を削除します：'+p.name+'\nよろしいですか？'))return;
-    products=products.filter(function(x){return x.id!==id;}); saveAll(); rebuildProductPickers(); computeStats(); updateDebug();
+    products=products.filter(function(x){return x.id!==id;});
+    saveAll(); rebuildProductPickers(); computeStats(); updateDebug();
     setStatus('商品を削除しました（'+products.length+'件）');
   }
 
@@ -317,7 +364,6 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     if(gList)products=gList;
     sortPurchases(); sortByName(stores); sortByName(products);
 
-    // G: if masters missing, sync from purchases
     var syncChanged=syncMastersFromPurchases();
     if(syncChanged){sortByName(stores); sortByName(products);}
 
@@ -347,6 +393,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     lines.push('PURCHASE_COUNT: '+purchases.length);
     lines.push('STORE_COUNT: '+stores.length);
     lines.push('PRODUCT_COUNT: '+products.length);
+    lines.push('CAT_ROWS: '+cachedCatRows);
     lines.push('TODAY_TOTAL: '+yen(cachedToday));
     lines.push('MONTH_TOTAL: '+yen(cachedMonth));
     lines.push('LAST_EXPORT: '+(lastExportAt||'-'));
@@ -366,6 +413,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     vPurchaseCount.textContent=String(purchases.length);
     vStoreCount.textContent=String(stores.length);
     vProductCount.textContent=String(products.length);
+    vCatRows.textContent=String(cachedCatRows);
     vTodayTotal.textContent=yen(cachedToday);
     vMonthTotal.textContent=yen(cachedMonth);
     vLastExport.textContent=lastExportAt||'-';
@@ -389,7 +437,6 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     products=loadList(PRODUCT_KEY,validateProduct);
     sortPurchases(); sortByName(stores); sortByName(products);
 
-    // G: startup sync
     var changed=syncMastersFromPurchases();
     if(changed){saveAll();}
 
@@ -401,7 +448,8 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
 
     btnAddStore.addEventListener('click',addStore);
     selStore.addEventListener('change',function(){var id=selStore.value; var found=stores.find(function(s){return s.id===id;}); if(found){fStore.value=found.name; setStatus('店を入力しました：'+found.name);} selStore.value='';});
-    btnAddProduct.addEventListener('click',addProduct);
+
+    btnAddProduct.addEventListener('click',addOrUpdateProduct);
     selProduct.addEventListener('change',function(){var id=selProduct.value; var found=products.find(function(p){return p.id===id;}); if(found){fName.value=found.name; setStatus('商品を入力しました：'+found.name);} selProduct.value='';});
 
     btnAdd.addEventListener('click',addPurchase);
