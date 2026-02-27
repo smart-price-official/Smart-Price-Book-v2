@@ -1,16 +1,16 @@
 <!doctype html>
 <!--
 APP: Smart Price
-VERSION: v0.5.0
-DATE(JST): 2026-02-27 01:10 JST
-TITLE: SAFE MODE 最小構成（E：商品マスター）
+VERSION: v0.6.0
+DATE(JST): 2026-02-27 10:00 JST
+TITLE: SAFE MODE 最小構成（F：集計）
 AUTHOR: ChatGPT_Yui
 CHANGES:
-- D（店マスター）をベースに「商品マスター（よく買う品）」を追加
-- 商品の追加/削除/一覧（チップ）＋ドロップダウン選択で商品入力を補助
-- JSONエクスポート/インポートに products を追加（無ければ既存products維持）
-- debug=1診断に PRODUCT_COUNT を追加
-BUILD_PARAM: ?b=2026-02-27_0110_safemode-e_products   (配布/キャッシュ回避)
+- E（店/商品マスター）を維持したまま「集計（今日/今月/店別）」を追加
+- 購入データに連動して自動更新（追加/削除/インポート/全消去で即反映）
+- 外部APIなし・巨大indexなし・localStorage + JSON退避の方針は維持
+- debug=1診断に TODAY_TOTAL / MONTH_TOTAL を追加
+BUILD_PARAM: ?b=2026-02-27_1000_safemode-f_stats   (配布/キャッシュ回避)
 DEBUG_PARAM: &debug=1        (検証時のみ)
 POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
 -->
@@ -22,38 +22,30 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
   <title>Smart Price（SAFE MODE）</title>
-  <link rel="stylesheet" href="./app.css?b=2026-02-27_0110_safemode-e_products" />
+  <link rel="stylesheet" href="./app.css?b=2026-02-27_1000_safemode-f_stats" />
 </head>
-
 <body>
   <header class="top">
     <div class="top__left">
       <div class="badge">SAFE MODE</div>
       <div class="brand">
         <div class="brand__name">Smart Price</div>
-        <div class="brand__sub">最小構成（E：商品マスター）</div>
+        <div class="brand__sub">最小構成（F：集計）</div>
       </div>
     </div>
-
     <div class="top__right">
-      <div class="kv">
-        <div class="kv__k">VERSION</div>
-        <div class="kv__v" id="vAppVersion">-</div>
-      </div>
-      <div class="kv">
-        <div class="kv__k">BUILD(b)</div>
-        <div class="kv__v" id="vBuild">-</div>
-      </div>
+      <div class="kv"><div class="kv__k">VERSION</div><div class="kv__v" id="vAppVersion">-</div></div>
+      <div class="kv"><div class="kv__k">BUILD(b)</div><div class="kv__v" id="vBuild">-</div></div>
     </div>
   </header>
 
   <main class="main">
     <section class="card">
-      <h2 class="card__title">購入履歴（保存＋JSON退避＋店/商品マスター）</h2>
+      <h2 class="card__title">購入履歴（保存＋JSON退避＋店/商品マスター＋集計）</h2>
       <p class="card__note">
         SAFE MODE：Service Worker（オフライン機能）・キャッシュ・外部APIは<strong>一切使いません</strong>。<br>
         端末内保存（localStorage）＋ JSONエクスポート/インポートで、データを守ります。<br>
-        「店/商品マスター」で入力を<strong>早く・ミスなく</strong>できます。
+        「店/商品マスター」で入力を早くし、「集計」で今の合計がすぐ見えます。
       </p>
 
       <div class="form">
@@ -65,14 +57,11 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
             <div class="field__k">店名（登録）</div>
             <input class="field__v" type="text" id="fNewStoreName" placeholder="例：カスミ / ベニマル / ヨーク / 業務スーパー">
           </label>
-
           <label class="field field--wide">
             <div class="field__k">メモ（任意）</div>
             <input class="field__v" type="text" id="fNewStoreNote" placeholder="例：家の近く / 駐車場広い">
           </label>
-
           <button class="btn btn--sub" type="button" id="btnAddStore">店を追加</button>
-
           <label class="field">
             <div class="field__k">登録店から選ぶ</div>
             <select class="field__v" id="selStore">
@@ -85,13 +74,7 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
 
         <div class="tableMiniWrap">
           <table class="tableMini" aria-label="store table">
-            <thead>
-              <tr>
-                <th>店名</th>
-                <th>メモ</th>
-                <th class="miniAct">操作</th>
-              </tr>
-            </thead>
+            <thead><tr><th>店名</th><th>メモ</th><th class="miniAct">操作</th></tr></thead>
             <tbody id="storeTbody"></tbody>
           </table>
         </div>
@@ -106,14 +89,11 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
             <div class="field__k">商品名（登録）</div>
             <input class="field__v" type="text" id="fNewProductName" placeholder="例：牛乳 1L / 食パン 6枚 / シャンプー 詰替">
           </label>
-
           <label class="field field--wide">
             <div class="field__k">分類（任意）</div>
             <input class="field__v" type="text" id="fNewProductCat" placeholder="例：食品 / 日用品 / 飲料">
           </label>
-
           <button class="btn btn--sub" type="button" id="btnAddProduct">商品を追加</button>
-
           <label class="field">
             <div class="field__k">登録商品から選ぶ</div>
             <select class="field__v" id="selProduct">
@@ -126,13 +106,7 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
 
         <div class="tableMiniWrap">
           <table class="tableMini" aria-label="product table">
-            <thead>
-              <tr>
-                <th>商品名</th>
-                <th>分類</th>
-                <th class="miniAct">操作</th>
-              </tr>
-            </thead>
+            <thead><tr><th>商品名</th><th>分類</th><th class="miniAct">操作</th></tr></thead>
             <tbody id="productTbody"></tbody>
           </table>
         </div>
@@ -146,13 +120,11 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
             <div class="field__k">日付</div>
             <input class="field__v" type="date" id="fDate">
           </label>
-
           <label class="field">
             <div class="field__k">店</div>
             <input class="field__v" type="text" id="fStore" placeholder="例：カスミ" list="storeDatalist">
             <datalist id="storeDatalist"></datalist>
           </label>
-
           <label class="field field--wide">
             <div class="field__k">商品</div>
             <input class="field__v" type="text" id="fName" placeholder="例：牛乳 1L" list="productDatalist">
@@ -165,12 +137,10 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
             <div class="field__k">価格</div>
             <input class="field__v" type="number" id="fPrice" inputmode="numeric" placeholder="例：238">
           </label>
-
           <label class="field">
             <div class="field__k">個数</div>
             <input class="field__v" type="number" id="fQty" inputmode="numeric" value="1" min="1">
           </label>
-
           <label class="field field--wide">
             <div class="field__k">メモ</div>
             <input class="field__v" type="text" id="fNote" placeholder="任意">
@@ -187,22 +157,42 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
 
       <div class="tableWrap">
         <table class="table" aria-label="purchase list">
-          <thead>
-            <tr>
-              <th class="colDate">日付</th>
-              <th class="colStore">店</th>
-              <th class="colName">商品</th>
-              <th class="colNum">価格</th>
-              <th class="colNum">個数</th>
-              <th class="colNote">メモ</th>
-            </tr>
-          </thead>
+          <thead><tr>
+            <th class="colDate">日付</th><th class="colStore">店</th><th class="colName">商品</th>
+            <th class="colNum">価格</th><th class="colNum">個数</th><th class="colNote">メモ</th>
+          </tr></thead>
           <tbody id="purchaseTbody"></tbody>
         </table>
       </div>
 
-      <div class="empty" id="emptyState" hidden>
-        まだデータがありません。上で追加してみてください。
+      <div class="empty" id="emptyState" hidden>まだデータがありません。上で追加してみてください。</div>
+
+      <hr class="hr">
+
+      <h3 class="subTitle">集計（自動更新）</h3>
+      <div class="stats">
+        <div class="stat">
+          <div class="stat__k">今日の合計</div>
+          <div class="stat__v" id="statTodayTotal">-</div>
+          <div class="stat__s" id="statTodayCount">-</div>
+        </div>
+        <div class="stat">
+          <div class="stat__k">今月の合計</div>
+          <div class="stat__v" id="statMonthTotal">-</div>
+          <div class="stat__s" id="statMonthCount">-</div>
+        </div>
+        <div class="stat">
+          <div class="stat__k">全件数</div>
+          <div class="stat__v" id="statAllCount">-</div>
+          <div class="stat__s">（購入レコード数）</div>
+        </div>
+      </div>
+
+      <div class="tableMiniWrap">
+        <table class="tableMini" aria-label="store totals">
+          <thead><tr><th>店（今月）</th><th class="colNum">合計</th><th class="colNum">件数</th></tr></thead>
+          <tbody id="storeTotalTbody"></tbody>
+        </table>
       </div>
 
       <hr class="hr">
@@ -215,18 +205,16 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
 
       <div class="toolbar">
         <button class="btn" type="button" id="btnExport">エクスポート（JSONを保存）</button>
-
         <label class="btn btn--sub fileBtn">
           インポート（JSONファイル）
           <input type="file" id="fileImport" accept="application/json,.json" hidden>
         </label>
-
         <button class="btn btn--sub" type="button" id="btnPasteToggle">貼り付けでインポート</button>
       </div>
 
       <div class="paste" id="pasteBox" hidden>
         <div class="paste__k">JSONをここに貼り付け → 「この内容でインポート」</div>
-        <textarea class="paste__v mono" id="pasteText" rows="6" placeholder='例：{{ "purchases": [ ... ], "stores": [ ... ], "products": [ ... ] }}'></textarea>
+        <textarea class="paste__v mono" id="pasteText" rows="6" placeholder='例：{ "purchases": [ ... ], "stores": [ ... ], "products": [ ... ] }'></textarea>
         <div class="toolbar">
           <button class="btn btn--sub" type="button" id="btnPasteImport">この内容でインポート</button>
           <button class="btn" type="button" id="btnPasteClear">消す</button>
@@ -241,31 +229,24 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
         <div class="kv"><div class="kv__k">PURCHASE KEY</div><div class="kv__v mono" id="vPurchaseKey">-</div></div>
         <div class="kv"><div class="kv__k">STORE KEY</div><div class="kv__v mono" id="vStoreKey">-</div></div>
         <div class="kv"><div class="kv__k">PRODUCT KEY</div><div class="kv__v mono" id="vProductKey">-</div></div>
-
         <div class="kv"><div class="kv__k">PURCHASE COUNT</div><div class="kv__v" id="vPurchaseCount">-</div></div>
         <div class="kv"><div class="kv__k">STORE COUNT</div><div class="kv__v" id="vStoreCount">-</div></div>
         <div class="kv"><div class="kv__k">PRODUCT COUNT</div><div class="kv__v" id="vProductCount">-</div></div>
-
+        <div class="kv"><div class="kv__k">TODAY TOTAL</div><div class="kv__v" id="vTodayTotal">-</div></div>
+        <div class="kv"><div class="kv__k">MONTH TOTAL</div><div class="kv__v" id="vMonthTotal">-</div></div>
         <div class="kv"><div class="kv__k">LAST EXPORT</div><div class="kv__v mono" id="vLastExport">-</div></div>
         <div class="kv"><div class="kv__k">LAST IMPORT</div><div class="kv__v mono" id="vLastImport">-</div></div>
-
         <div class="kv"><div class="kv__k">URL</div><div class="kv__v mono" id="vUrl">-</div></div>
         <div class="kv"><div class="kv__k">UA</div><div class="kv__v mono" id="vUa">-</div></div>
         <div class="kv"><div class="kv__k">NOW</div><div class="kv__v mono" id="vNow">-</div></div>
       </div>
-
-      <div class="toolbar">
-        <button class="btn btn--sub" type="button" id="btnCopyDiag">診断ログをコピー</button>
-      </div>
-
+      <div class="toolbar"><button class="btn btn--sub" type="button" id="btnCopyDiag">診断ログをコピー</button></div>
       <pre class="debug__pre mono" id="diagText"></pre>
     </section>
 
-    <footer class="foot">
-      <div class="foot__muted">次は「集計（当日/今月/店別）」へ。</div>
-    </footer>
+    <footer class="foot"><div class="foot__muted">SAFE MODE：次は「カテゴリ別集計」か「CSV出力」へ。</div></footer>
   </main>
 
-  <script defer src="./app.js?b=2026-02-27_0110_safemode-e_products"></script>
+  <script defer src="./app.js?b=2026-02-27_1000_safemode-f_stats"></script>
 </body>
 </html>
