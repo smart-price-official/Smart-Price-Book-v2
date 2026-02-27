@@ -1,16 +1,16 @@
 'use strict';
 /*
 APP: Smart Price
-VERSION: v0.7.2
+VERSION: v0.7.3
 DATE(JST): 2026-02-27 12:10 JST
 TITLE: SAFE MODE 最小構成（H：分類別集計）
 AUTHOR: ChatGPT_Yui
-BUILD_PARAM: ?b=2026-02-27_1702_safemode-j_click2edit_fix2
+BUILD_PARAM: ?b=2026-02-27_1733_safemode-j_modal_globalfix
 DEBUG_PARAM: &debug=1
 POLICY: SAFE MODE / 最小構成 / 外部依存なし
 */
 (function(){
-  var APP={NAME:'Smart Price',VERSION:'v0.7.2',AUTHOR:'ChatGPT_Yui',TITLE:'SAFE MODE 最小構成（H：分類別集計）'};
+  var APP={NAME:'Smart Price',VERSION:'v0.7.3',AUTHOR:'ChatGPT_Yui',TITLE:'SAFE MODE 最小構成（H：分類別集計）'};
   var META_KEY='sp_safemode_meta_v1';
   var PURCHASE_KEY='sp_safemode_purchases_v1', STORE_KEY='sp_safemode_stores_v1', PRODUCT_KEY='sp_safemode_products_v1';
   var params=new URLSearchParams(location.search);
@@ -283,6 +283,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
   }
 
   function openEditPurchase(id){
+    setStatus('編集を開きます…');
     if(!ensureModalExists()) return;
     var r = purchases.find(function(x){return x.id===id;});
     if(!r) return;
@@ -493,18 +494,18 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
 
       // v0.7.2: クリック2回で編集（dblclick不発の保険）
       tr.addEventListener('click', function(){
-        click2Edit('purchase', this.dataset.id, this, openEditPurchase);
+        click2Edit('purchase', this.dataset.id, this, window.openEditPurchase || openEditPurchase);
       });
 
       // PC: ダブルクリック
       tr.addEventListener('dblclick', function(){
-        openEditPurchase(this.dataset.id);
+        (window.openEditPurchase||openEditPurchase)(this.dataset.id);
       });
 
       // PC: 右クリック
       tr.addEventListener('contextmenu', function(e){
         e.preventDefault();
-        openEditPurchase(this.dataset.id);
+        (window.openEditPurchase||openEditPurchase)(this.dataset.id);
       });
 
       // モバイル: 長押し（約0.65秒）
@@ -512,7 +513,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
       tr.addEventListener('pointerdown', function(){
         var id = this.dataset.id;
         pressTimer = setTimeout(function(){
-          openEditPurchase(id);
+          (window.openEditPurchase||openEditPurchase)(id);
         }, 650);
       });
       tr.addEventListener('pointerup', function(){ if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } });
@@ -599,13 +600,13 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
 
       // 表：行操作で削除（誤操作防止）
       var tr=document.createElement('tr'); tr.dataset.id=s.id;
-      tr.addEventListener('click', function(){ click2Edit('store', this.dataset.id, this, openEditStore); });
+      tr.addEventListener('click', function(){ click2Edit('store', this.dataset.id, this, window.openEditStore || openEditStore); });
 
-      tr.addEventListener('dblclick', function(){ openEditStore(this.dataset.id); });
-      tr.addEventListener('contextmenu', function(e){ e.preventDefault(); openEditStore(this.dataset.id); });
+      tr.addEventListener('dblclick', function(){ (window.openEditStore||openEditStore)(this.dataset.id); });
+      tr.addEventListener('contextmenu', function(e){ e.preventDefault(); (window.openEditStore||openEditStore)(this.dataset.id); });
 
       var pressTimer=null;
-      tr.addEventListener('pointerdown', function(){ var el=this; var id=this.dataset.id; pressTimer=setTimeout(function(){ openEditStore(id); }, 650); });
+      tr.addEventListener('pointerdown', function(){ var el=this; var id=this.dataset.id; pressTimer=setTimeout(function(){ (window.openEditStore||openEditStore)(id); }, 650); });
       tr.addEventListener('pointerup', function(){ if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } });
       tr.addEventListener('pointercancel', function(){ if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } });
       tr.addEventListener('pointerleave', function(){ if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } });
@@ -634,13 +635,13 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
 
       // 表：行操作で削除（誤操作防止）
       var tr=document.createElement('tr'); tr.dataset.id=p.id;
-      tr.addEventListener('click', function(){ click2Edit('product', this.dataset.id, this, openEditProduct); });
+      tr.addEventListener('click', function(){ click2Edit('product', this.dataset.id, this, window.openEditProduct || openEditProduct); });
 
-      tr.addEventListener('dblclick', function(){ openEditProduct(this.dataset.id); });
-      tr.addEventListener('contextmenu', function(e){ e.preventDefault(); openEditProduct(this.dataset.id); });
+      tr.addEventListener('dblclick', function(){ (window.openEditProduct||openEditProduct)(this.dataset.id); });
+      tr.addEventListener('contextmenu', function(e){ e.preventDefault(); (window.openEditProduct||openEditProduct)(this.dataset.id); });
 
       var pressTimer=null;
-      tr.addEventListener('pointerdown', function(){ var el=this; var id=this.dataset.id; pressTimer=setTimeout(function(){ openEditProduct(id); }, 650); });
+      tr.addEventListener('pointerdown', function(){ var el=this; var id=this.dataset.id; pressTimer=setTimeout(function(){ (window.openEditProduct||openEditProduct)(id); }, 650); });
       tr.addEventListener('pointerup', function(){ if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } });
       tr.addEventListener('pointercancel', function(){ if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } });
       tr.addEventListener('pointerleave', function(){ if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } });
@@ -1072,4 +1073,13 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
 
 
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init); else init();
+
+  // v0.7.3: publish edit funcs (ReferenceError対策)
+  try{
+    window.openEditPurchase = openEditPurchase;
+    window.openEditStore = openEditStore;
+    window.openEditProduct = openEditProduct;
+    window.ensureModalExists = ensureModalExists;
+    window.openModal = openModal;
+  }catch(e){}
 })();
