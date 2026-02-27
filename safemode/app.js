@@ -1,22 +1,35 @@
 'use strict';
 /*
 APP: Smart Price
-VERSION: v0.7.4
+VERSION: v0.7.5
 DATE(JST): 2026-02-27 12:10 JST
 TITLE: SAFE MODE 最小構成（H：分類別集計）
 AUTHOR: ChatGPT_Yui
-BUILD_PARAM: ?b=2026-02-27_1800_safemode-j_modal_referrorfix
+BUILD_PARAM: ?b=2026-02-27_1909_safemode-j_fixupload_guard
 DEBUG_PARAM: &debug=1
 POLICY: SAFE MODE / 最小構成 / 外部依存なし
 */
 (function(){
-  var APP={NAME:'Smart Price',VERSION:'v0.7.4',AUTHOR:'ChatGPT_Yui',TITLE:'SAFE MODE 最小構成（H：分類別集計）'};
+  var APP={NAME:'Smart Price',VERSION:'v0.7.5',AUTHOR:'ChatGPT_Yui',TITLE:'SAFE MODE 最小構成（H：分類別集計）'};
   var META_KEY='sp_safemode_meta_v1';
   var PURCHASE_KEY='sp_safemode_purchases_v1', STORE_KEY='sp_safemode_stores_v1', PRODUCT_KEY='sp_safemode_products_v1';
   var params=new URLSearchParams(location.search);
   var BUILD=(params.get('b')||'no-b').trim();
   var DEBUG=(params.get('debug')==='1');
   var FULL=APP.VERSION+' ['+BUILD+']';
+
+  // v0.7.5: capture runtime errors for report (no DevTools needed)
+  var __lastError = '';
+  window.addEventListener('error', function(ev){
+    try{
+      var msg = (ev && ev.message) ? String(ev.message) : 'error';
+      var src = (ev && ev.filename) ? String(ev.filename).split('/').slice(-1)[0] : '';
+      var ln  = (ev && ev.lineno) ? String(ev.lineno) : '';
+      __lastError = msg + (src?(' @'+src+':'+ln):'');
+      setStatus('エラー検出：'+msg);
+      updateDebug();
+    }catch(e){}
+  });
 
   document.getElementById('vAppVersion').textContent=APP.VERSION;
   document.getElementById('vBuild').textContent=BUILD;
@@ -1032,7 +1045,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
   }
 
   function init(){
-    publishGlobals();fDate.value=todayISO();
+    try{ if(typeof publishGlobals==='function'){ publishGlobals(); } }catch(e){ setStatus('起動ガード：publishGlobalsで例外'); }fDate.value=todayISO();
     var meta = loadMeta(); lastExportAt = meta.lastExportAt||''; lastImportAt = meta.lastImportAt||'';
     purchases=loadList(PURCHASE_KEY,validatePurchase);
     stores=loadList(STORE_KEY,validateStore);
@@ -1093,3 +1106,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     window.openModal = openModal;
   }catch(e){}
 })();
+
+
+// v0.7.5: alias (typo protection)
+try{ if(typeof window.publishGlobals!=='function' && typeof publishGlobals==='function'){ window.publishGlobals = publishGlobals; } }catch(e){}
