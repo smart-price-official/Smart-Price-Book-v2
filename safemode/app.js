@@ -1,16 +1,16 @@
 'use strict';
 /*
 APP: Smart Price
-VERSION: v0.7.3
+VERSION: v0.7.4
 DATE(JST): 2026-02-27 12:10 JST
 TITLE: SAFE MODE 最小構成（H：分類別集計）
 AUTHOR: ChatGPT_Yui
-BUILD_PARAM: ?b=2026-02-27_1733_safemode-j_modal_globalfix
+BUILD_PARAM: ?b=2026-02-27_1800_safemode-j_modal_referrorfix
 DEBUG_PARAM: &debug=1
 POLICY: SAFE MODE / 最小構成 / 外部依存なし
 */
 (function(){
-  var APP={NAME:'Smart Price',VERSION:'v0.7.3',AUTHOR:'ChatGPT_Yui',TITLE:'SAFE MODE 最小構成（H：分類別集計）'};
+  var APP={NAME:'Smart Price',VERSION:'v0.7.4',AUTHOR:'ChatGPT_Yui',TITLE:'SAFE MODE 最小構成（H：分類別集計）'};
   var META_KEY='sp_safemode_meta_v1';
   var PURCHASE_KEY='sp_safemode_purchases_v1', STORE_KEY='sp_safemode_stores_v1', PRODUCT_KEY='sp_safemode_products_v1';
   var params=new URLSearchParams(location.search);
@@ -133,6 +133,15 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
       '</div>';
       document.body.appendChild(wrap.firstChild);
     }
+  function publishGlobals(){
+    try{
+      window.openEditPurchase = openEditPurchase;
+      window.openEditStore = openEditStore;
+      window.openEditProduct = openEditProduct;
+      window.ensureModalExists = ensureModalExists;
+    }catch(e){}
+  }
+
 
     // refs を取り直す（var で宣言済みなので代入のみ）
     editModal = document.getElementById('editModal');
@@ -227,7 +236,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     var now = Date.now();
     if(__rowClick.key === key && (now - __rowClick.t) <= 650){
       __rowClick.key=''; __rowClick.t=0;
-      openFn(id);
+      if(openFn){ try{ openFn(id); }catch(e){ setStatus('編集を開けません（openFn）'); } }
       return;
     }
     __rowClick.key = key;
@@ -1022,7 +1031,8 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     document.body.removeChild(ta);
   }
 
-  function init(){fDate.value=todayISO();
+  function init(){
+    publishGlobals();fDate.value=todayISO();
     var meta = loadMeta(); lastExportAt = meta.lastExportAt||''; lastImportAt = meta.lastImportAt||'';
     purchases=loadList(PURCHASE_KEY,validatePurchase);
     stores=loadList(STORE_KEY,validateStore);
