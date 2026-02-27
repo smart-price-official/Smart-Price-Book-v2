@@ -3,7 +3,7 @@
 APP: Smart Price
 VERSION: v0.6.2
 DATE(JST): 2026-02-27 12:10 JST
-TITLE: SAFE MODE 最小構成（J：インポート自動再表示＋マスタ行削除）
+TITLE: SAFE MODE 最小構成（J：編集モーダル＋安全な削除）
 AUTHOR: ChatGPT_Yui
 CHANGES:
 - 今月の「分類（カテゴリ）別」集計を追加（未分類も表示）
@@ -22,7 +22,7 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
   <title>Smart Price（SAFE MODE）</title>
-  <link rel="stylesheet" href="./app.css?b=2026-02-27_1517_safemode-j_importreload_rowdel" />
+  <link rel="stylesheet" href="./app.css?b=2026-02-27_1622_safemode-j_editmodal" />
 </head>
 <body>
   <header class="top">
@@ -30,7 +30,7 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
       <div class="badge">SAFE MODE</div>
       <div class="brand">
         <div class="brand__name">Smart Price</div>
-        <div class="brand__sub">最小構成（J：インポート自動再表示＋マスタ行削除）</div>
+        <div class="brand__sub">最小構成（J：編集モーダル＋安全な削除）</div>
       </div>
     </div>
     <div class="top__right">
@@ -260,6 +260,68 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
     <footer class="foot"><div class="foot__muted">SAFE MODE：次は「CSV出力」へ。</div></footer>
   </main>
 
-  <script defer src="./app.js?b=2026-02-27_1517_safemode-j_importreload_rowdel"></script>
+  <script defer src="./app.js?b=2026-02-27_1622_safemode-j_editmodal"></script>
+
+  <!-- Edit Modal (hidden) -->
+  <div class="modal" id="editModal" hidden aria-hidden="true">
+    <div class="modal__backdrop" id="editBackdrop"></div>
+    <div class="modal__panel" role="dialog" aria-modal="true" aria-label="edit panel">
+      <div class="modal__head">
+        <div class="modal__title" id="editTitle">編集</div>
+        <button class="btn btn--sub modal__close" type="button" id="btnEditClose">閉じる</button>
+      </div>
+
+      <div class="modal__body">
+        <div class="modal__note" id="editHint">-</div>
+
+        <div class="form__row" id="editRowDate">
+          <label class="field">
+            <div class="field__k">日付</div>
+            <input class="field__v" type="date" id="eDate">
+          </label>
+          <label class="field">
+            <div class="field__k">店</div>
+            <input class="field__v" type="text" id="eStore" list="storeDatalist">
+          </label>
+          <label class="field field--wide">
+            <div class="field__k">商品</div>
+            <input class="field__v" type="text" id="eName" list="productDatalist">
+          </label>
+        </div>
+
+        <div class="form__row" id="editRowNums">
+          <label class="field">
+            <div class="field__k">価格</div>
+            <input class="field__v" type="number" id="ePrice" inputmode="numeric">
+          </label>
+          <label class="field">
+            <div class="field__k">個数</div>
+            <input class="field__v" type="number" id="eQty" inputmode="numeric" min="1">
+          </label>
+          <label class="field field--wide">
+            <div class="field__k">メモ</div>
+            <input class="field__v" type="text" id="eNote">
+          </label>
+        </div>
+
+        <div class="form__row" id="editRowMaster">
+          <label class="field field--wide">
+            <div class="field__k">名前</div>
+            <input class="field__v" type="text" id="eMasterName">
+          </label>
+          <label class="field field--wide">
+            <div class="field__k">分類/メモ</div>
+            <input class="field__v" type="text" id="eMasterMeta">
+          </label>
+        </div>
+      </div>
+
+      <div class="modal__foot">
+        <button class="btn" type="button" id="btnEditSave">保存</button>
+        <button class="btn btn--danger" type="button" id="btnEditDelete">削除</button>
+      </div>
+    </div>
+  </div>
+
 </body>
 </html>

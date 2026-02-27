@@ -1,16 +1,16 @@
 'use strict';
 /*
 APP: Smart Price
-VERSION: v0.6.9
+VERSION: v0.7.0
 DATE(JST): 2026-02-27 12:10 JST
 TITLE: SAFE MODE 最小構成（H：分類別集計）
 AUTHOR: ChatGPT_Yui
-BUILD_PARAM: ?b=2026-02-27_1517_safemode-j_importreload_rowdel
+BUILD_PARAM: ?b=2026-02-27_1622_safemode-j_editmodal
 DEBUG_PARAM: &debug=1
 POLICY: SAFE MODE / 最小構成 / 外部依存なし
 */
 (function(){
-  var APP={NAME:'Smart Price',VERSION:'v0.6.9',AUTHOR:'ChatGPT_Yui',TITLE:'SAFE MODE 最小構成（H：分類別集計）'};
+  var APP={NAME:'Smart Price',VERSION:'v0.7.0',AUTHOR:'ChatGPT_Yui',TITLE:'SAFE MODE 最小構成（H：分類別集計）'};
   var META_KEY='sp_safemode_meta_v1';
   var PURCHASE_KEY='sp_safemode_purchases_v1', STORE_KEY='sp_safemode_stores_v1', PRODUCT_KEY='sp_safemode_products_v1';
   var params=new URLSearchParams(location.search);
@@ -67,6 +67,33 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
   var pasteText=document.getElementById('pasteText');
   var btnPasteImport=document.getElementById('btnPasteImport');
   var btnPasteClear=document.getElementById('btnPasteClear');
+
+  // v0.7.0: edit modal (安全な削除)
+  var editModal = document.getElementById('editModal');
+  var editBackdrop = document.getElementById('editBackdrop');
+  var btnEditClose = document.getElementById('btnEditClose');
+  var editTitle = document.getElementById('editTitle');
+  var editHint = document.getElementById('editHint');
+
+  var eDate = document.getElementById('eDate');
+  var eStore = document.getElementById('eStore');
+  var eName = document.getElementById('eName');
+  var ePrice = document.getElementById('ePrice');
+  var eQty = document.getElementById('eQty');
+  var eNote = document.getElementById('eNote');
+
+  var eMasterName = document.getElementById('eMasterName');
+  var eMasterMeta = document.getElementById('eMasterMeta');
+
+  var editRowDate = document.getElementById('editRowDate');
+  var editRowNums = document.getElementById('editRowNums');
+  var editRowMaster = document.getElementById('editRowMaster');
+
+  var btnEditSave = document.getElementById('btnEditSave');
+  var btnEditDelete = document.getElementById('btnEditDelete');
+
+  var __edit = {type:'', id:''};
+
 
   var dbgPanel=document.getElementById('debugPanel');
   var vFull=document.getElementById('vFullVersion');
@@ -128,6 +155,167 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
       __confirmUntil = 0;
       return true;
     }
+  function openModal(){
+    editModal.hidden=false;
+    editModal.setAttribute('aria-hidden','false');
+    try{ document.body.style.overflow='hidden'; }catch(e){}
+    // focus close button
+    setTimeout(function(){ try{ btnEditClose.focus(); }catch(e){} }, 0);
+  }
+  function closeModal(){
+    editModal.hidden=true;
+    editModal.setAttribute('aria-hidden','true');
+    __edit={type:'',id:''};
+    __confirmKey=''; __confirmUntil=0;
+    try{ document.body.style.overflow=''; }catch(e){}
+  }
+
+  function setEditMode(mode){
+    // mode: purchase / store / product
+    editRowDate.hidden = (mode!=='purchase');
+    editRowNums.hidden = (mode!=='purchase');
+    editRowMaster.hidden = (mode==='purchase');
+  }
+
+  function fillPurchase(r){
+    eDate.value = (r.date||todayISO());
+    eStore.value = (r.store||'');
+    eName.value  = (r.name||'');
+    ePrice.value = (r.price==null? '' : String(r.price));
+    eQty.value   = (r.qty==null? '1' : String(r.qty));
+    eNote.value  = (r.note||'');
+  }
+
+  function openEditPurchase(id){
+    var r = purchases.find(function(x){return x.id===id;});
+    if(!r) return;
+    __edit={type:'purchase', id:id};
+    setEditMode('purchase');
+    editTitle.textContent = '購入の編集';
+    editHint.textContent = '保存で更新／削除は「削除」ボタンを2回で確定（ブラウザダイアログ無し）';
+    fillPurchase(r);
+    openModal();
+  }
+
+  function openEditStore(id){
+    var s = stores.find(function(x){return x.id===id;});
+    if(!s) return;
+    __edit={type:'store', id:id};
+    setEditMode('store');
+    editTitle.textContent = '店の編集';
+    editHint.textContent = '保存で更新／削除は「削除」ボタンを2回で確定';
+    eMasterName.value = s.name||'';
+    eMasterMeta.value = s.note||'';
+    openModal();
+  }
+
+  function openEditProduct(id){
+    var p = products.find(function(x){return x.id===id;});
+    if(!p) return;
+    __edit={type:'product', id:id};
+    setEditMode('product');
+    editTitle.textContent = '商品の編集';
+    editHint.textContent = '保存で更新／削除は「削除」ボタンを2回で確定';
+    eMasterName.value = p.name||'';
+    eMasterMeta.value = p.cat||'';
+    openModal();
+  }
+
+  function saveEdit(){
+    if(!__edit.type) return;
+    if(__edit.type==='purchase'){
+      var id=__edit.id;
+      var r = purchases.find(function(x){return x.id===id;});
+      if(!r) return;
+      var obj = validatePurchase({
+        id: id,
+        date: eDate.value || todayISO(),
+        store: (eStore.value||'').trim(),
+        name: (eName.value||'').trim(),
+        price: Number(ePrice.value||0),
+        qty: Number(eQty.value||1),
+        note: (eNote.value||'').trim()
+      });
+      if(!obj){ setStatus('保存できません：必須項目（店/商品/価格）を確認'); return; }
+      // update
+      r.date=obj.date; r.store=obj.store; r.name=obj.name; r.price=obj.price; r.qty=obj.qty; r.note=obj.note;
+      sortPurchases();
+      var syncChanged = syncMastersFromPurchases();
+      if(syncChanged){ sortByName(stores); sortByName(products); }
+      saveAll();
+      renderPurchases(); rebuildStorePickers(); rebuildProductPickers(); computeStats(); updateDebug();
+      setStatus('更新しました（購入）');
+      closeModal();
+      return;
+    }
+    if(__edit.type==='store'){
+      var id=__edit.id;
+      var s=stores.find(function(x){return x.id===id;});
+      if(!s) return;
+      var name=(eMasterName.value||'').trim();
+      if(!name){ setStatus('保存できません：店名が空です'); return; }
+      s.name=name;
+      s.note=(eMasterMeta.value||'').trim();
+      sortByName(stores);
+      saveAll(); rebuildStorePickers(); computeStats(); updateDebug();
+      setStatus('更新しました（店）');
+      closeModal();
+      return;
+    }
+    if(__edit.type==='product'){
+      var id=__edit.id;
+      var p=products.find(function(x){return x.id===id;});
+      if(!p) return;
+      var name=(eMasterName.value||'').trim();
+      if(!name){ setStatus('保存できません：商品名が空です'); return; }
+      p.name=name;
+      p.cat=(eMasterMeta.value||'').trim();
+      sortByName(products);
+      saveAll(); rebuildProductPickers(); computeStats(); updateDebug();
+      setStatus('更新しました（商品）');
+      closeModal();
+      return;
+    }
+  }
+
+  function deleteEdit(){
+    if(!__edit.type) return;
+    var id=__edit.id;
+    if(__edit.type==='purchase'){
+      var r=purchases.find(function(x){return x.id===id;});
+      if(!r) return;
+      var summary='削除（購入）：'+(r.date||'')+' '+(r.store||'')+' '+(r.name||'');
+      if(!requireConfirm('delPurchaseModal:'+id, summary, btnEditDelete)) return;
+      purchases=purchases.filter(function(x){return x.id!==id;});
+      saveAll(); renderPurchases(); computeStats(); updateDebug();
+      setStatus('削除しました（購入）');
+      closeModal();
+      return;
+    }
+    if(__edit.type==='store'){
+      var s=stores.find(function(x){return x.id===id;});
+      if(!s) return;
+      var summary='削除（店）：'+(s.name||'');
+      if(!requireConfirm('delStoreModal:'+id, summary, btnEditDelete)) return;
+      stores=stores.filter(function(x){return x.id!==id;});
+      saveAll(); rebuildStorePickers(); computeStats(); updateDebug();
+      setStatus('削除しました（店）');
+      closeModal();
+      return;
+    }
+    if(__edit.type==='product'){
+      var p=products.find(function(x){return x.id===id;});
+      if(!p) return;
+      var summary='削除（商品）：'+(p.name||'');
+      if(!requireConfirm('delProductModal:'+id, summary, btnEditDelete)) return;
+      products=products.filter(function(x){return x.id!==id;});
+      saveAll(); rebuildProductPickers(); computeStats(); updateDebug();
+      setStatus('削除しました（商品）');
+      closeModal();
+      return;
+    }
+  }
+
     __confirmKey = key;
     __confirmUntil = now + 4500;
     setStatus(message + '（もう一度で確定）');
@@ -206,13 +394,13 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
 
       // PC: ダブルクリック
       tr.addEventListener('dblclick', function(){
-        requestDeletePurchaseById(this.dataset.id, this);
+        openEditPurchase(this.dataset.id);
       });
 
       // PC: 右クリック
       tr.addEventListener('contextmenu', function(e){
         e.preventDefault();
-        requestDeletePurchaseById(this.dataset.id, this);
+        openEditPurchase(this.dataset.id);
       });
 
       // モバイル: 長押し（約0.65秒）
@@ -308,11 +496,11 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
       // 表：行操作で削除（誤操作防止）
       var tr=document.createElement('tr'); tr.dataset.id=s.id;
 
-      tr.addEventListener('dblclick', function(){ deleteStore(this.dataset.id, this); });
-      tr.addEventListener('contextmenu', function(e){ e.preventDefault(); deleteStore(this.dataset.id, this); });
+      tr.addEventListener('dblclick', function(){ openEditStore(this.dataset.id); });
+      tr.addEventListener('contextmenu', function(e){ e.preventDefault(); openEditStore(this.dataset.id); });
 
       var pressTimer=null;
-      tr.addEventListener('pointerdown', function(){ var el=this; var id=this.dataset.id; pressTimer=setTimeout(function(){ deleteStore(id, el); }, 650); });
+      tr.addEventListener('pointerdown', function(){ var el=this; var id=this.dataset.id; pressTimer=setTimeout(function(){ openEditStore(id); }, 650); });
       tr.addEventListener('pointerup', function(){ if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } });
       tr.addEventListener('pointercancel', function(){ if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } });
       tr.addEventListener('pointerleave', function(){ if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } });
@@ -342,11 +530,11 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
       // 表：行操作で削除（誤操作防止）
       var tr=document.createElement('tr'); tr.dataset.id=p.id;
 
-      tr.addEventListener('dblclick', function(){ deleteProduct(this.dataset.id, this); });
-      tr.addEventListener('contextmenu', function(e){ e.preventDefault(); deleteProduct(this.dataset.id, this); });
+      tr.addEventListener('dblclick', function(){ openEditProduct(this.dataset.id); });
+      tr.addEventListener('contextmenu', function(e){ e.preventDefault(); openEditProduct(this.dataset.id); });
 
       var pressTimer=null;
-      tr.addEventListener('pointerdown', function(){ var el=this; var id=this.dataset.id; pressTimer=setTimeout(function(){ deleteProduct(id, el); }, 650); });
+      tr.addEventListener('pointerdown', function(){ var el=this; var id=this.dataset.id; pressTimer=setTimeout(function(){ openEditProduct(id); }, 650); });
       tr.addEventListener('pointerup', function(){ if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } });
       tr.addEventListener('pointercancel', function(){ if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } });
       tr.addEventListener('pointerleave', function(){ if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } });
@@ -761,7 +949,19 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     btnPasteClear.addEventListener('click',pasteClear);
 
     [fName,fPrice,fNote].forEach(function(el){el.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault(); addPurchase();}});});
+ 
+    // edit modal events
+    btnEditClose.addEventListener('click', closeModal);
+    editBackdrop.addEventListener('click', closeModal);
+    btnEditSave.addEventListener('click', saveEdit);
+    btnEditDelete.addEventListener('click', deleteEdit);
+
+    document.addEventListener('keydown', function(e){
+      if(!editModal.hidden && e && e.key==='Escape'){ closeModal(); }
+    });
+
   }
+
 
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init); else init();
 })();

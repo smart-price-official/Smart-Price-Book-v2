@@ -120,3 +120,20 @@ select:hover,select:focus-visible{
 /* v0.6.9: row hover highlight (no UI change) */
 table tbody tr{transition:background-color .12s ease, transform .12s ease}
 table tbody tr:hover{background:rgba(255,255,255,.03)}
+
+
+/* v0.7.0: edit modal (no browser dialog) */
+.modal{position:fixed; inset:0; z-index:9999; display:flex; align-items:center; justify-content:center}
+.modal[hidden]{display:none}
+.modal__backdrop{position:absolute; inset:0; background:rgba(0,0,0,.55)}
+.modal__panel{position:relative; width:min(920px, calc(100vw - 24px)); max-height:calc(100vh - 24px);
+  border:1px solid rgba(170,179,189,.18); border-radius:16px; background:rgba(23,26,33,.96);
+  box-shadow:0 20px 60px rgba(0,0,0,.35); overflow:auto; padding:14px}
+.modal__head{display:flex; align-items:center; justify-content:space-between; gap:12px; padding-bottom:10px; border-bottom:1px solid rgba(170,179,189,.14)}
+.modal__title{font-weight:900; letter-spacing:.02em}
+.modal__close{white-space:nowrap}
+.modal__body{padding-top:12px}
+.modal__note{color:var(--muted); font-size:12px; margin:0 0 10px 0}
+.modal__foot{display:flex; justify-content:flex-end; gap:10px; padding-top:12px; border-top:1px solid rgba(170,179,189,.14)}
+.modal__panel .form__row{margin:8px 0}
+.modal__panel .field__v{background:rgba(23,26,33,.85)}
