@@ -115,3 +115,8 @@ select:hover,select:focus-visible{
   box-shadow:0 10px 22px rgba(0,0,0,.18);
   outline:1px solid rgba(255,204,0,.18);
 }
+
+
+/* v0.6.9: row hover highlight (no UI change) */
+table tbody tr{transition:background-color .12s ease, transform .12s ease}
+table tbody tr:hover{background:rgba(255,255,255,.03)}

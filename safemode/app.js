@@ -1,16 +1,17 @@
 'use strict';
 /*
 APP: Smart Price
-VERSION: v0.6.8
+VERSION: v0.6.9
 DATE(JST): 2026-02-27 12:10 JST
 TITLE: SAFE MODE 最小構成（H：分類別集計）
 AUTHOR: ChatGPT_Yui
-BUILD_PARAM: ?b=2026-02-27_1457_safemode-j_hoverall_importux
+BUILD_PARAM: ?b=2026-02-27_1517_safemode-j_importreload_rowdel
 DEBUG_PARAM: &debug=1
 POLICY: SAFE MODE / 最小構成 / 外部依存なし
 */
 (function(){
-  var APP={NAME:'Smart Price',VERSION:'v0.6.8',AUTHOR:'ChatGPT_Yui',TITLE:'SAFE MODE 最小構成（H：分類別集計）'};
+  var APP={NAME:'Smart Price',VERSION:'v0.6.9',AUTHOR:'ChatGPT_Yui',TITLE:'SAFE MODE 最小構成（H：分類別集計）'};
+  var META_KEY='sp_safemode_meta_v1';
   var PURCHASE_KEY='sp_safemode_purchases_v1', STORE_KEY='sp_safemode_stores_v1', PRODUCT_KEY='sp_safemode_products_v1';
   var params=new URLSearchParams(location.search);
   var BUILD=(params.get('b')||'no-b').trim();
@@ -155,7 +156,19 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
   function sortPurchases(){purchases.sort(function(a,b){if(a.date!==b.date)return a.date<b.date?1:-1; return a.id<b.id?1:-1;});}
   function sortByName(list){list.sort(function(a,b){var A=key(a.name),B=key(b.name);if(A<B)return-1;if(A>B)return 1;return 0;});}
   function loadList(k,validator){var raw=localStorage.getItem(k); if(!raw)return []; var p=safeParse(raw); if(!Array.isArray(p))return []; var out=[]; for(var i=0;i<p.length;i++){var v=validator(p[i]); if(v)out.push(v);} return out;}
-  function saveAll(){localStorage.setItem(PURCHASE_KEY,JSON.stringify(purchases));localStorage.setItem(STORE_KEY,JSON.stringify(stores));localStorage.setItem(PRODUCT_KEY,JSON.stringify(products));}
+  function loadMeta(){
+    var raw = localStorage.getItem(META_KEY);
+    if(!raw) return {lastExportAt:'', lastImportAt:''};
+    var p = safeParse(raw);
+    if(!p || typeof p!=='object') return {lastExportAt:'', lastImportAt:''};
+    return {lastExportAt: String(p.lastExportAt||''), lastImportAt: String(p.lastImportAt||'')};
+  }
+  function saveMeta(){
+    localStorage.setItem(META_KEY, JSON.stringify({lastExportAt:lastExportAt||'', lastImportAt:lastImportAt||''}));
+  }
+
+
+  function saveAll(){localStorage.setItem(PURCHASE_KEY,JSON.stringify(purchases));localStorage.setItem(STORE_KEY,JSON.stringify(stores));localStorage.setItem(PRODUCT_KEY,JSON.stringify(products)); saveMeta();}
 
   // autosync
   function ensureStoreName(name){name=norm(name); if(!name)return false; var k=key(name); if(stores.some(function(s){return key(s.name)===k;}))return false;
@@ -286,20 +299,28 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     var fragChip=document.createDocumentFragment(), fragTable=document.createDocumentFragment(), fragDl=document.createDocumentFragment();
     for(var i=0;i<stores.length;i++){var s=stores[i];
       var opt=document.createElement('option'); opt.value=s.id; opt.textContent=s.name; selStore.appendChild(opt);
+
+      // チップ：選択のみ（削除ボタンなし）
       var chip=document.createElement('div'); chip.className='chip'; chip.dataset.id=s.id; chip.appendChild(document.createTextNode(s.name));
-      var x=document.createElement('button'); x.className='chip__x'; x.type='button'; x.textContent='×'; x.dataset.id=s.id; chip.appendChild(x);
-      chip.addEventListener('click',function(e){if(e.target&&e.target.classList&&e.target.classList.contains('chip__x'))return;
-        var id=this.dataset.id; var found=stores.find(function(t){return t.id===id;}); if(found){fStore.value=found.name; flash(fStore); setStatus('店を入力しました：'+found.name);}});
-      x.addEventListener('click',function(e){e.stopPropagation(); deleteStore(this.dataset.id, this);});
+      chip.addEventListener('click',function(){var id=this.dataset.id; var found=stores.find(function(t){return t.id===id;}); if(found){fStore.value=found.name; flash(fStore); setStatus('店を入力しました：'+found.name);}});
       fragChip.appendChild(chip);
 
-      var tr=document.createElement('tr');
+      // 表：行操作で削除（誤操作防止）
+      var tr=document.createElement('tr'); tr.dataset.id=s.id;
+
+      tr.addEventListener('dblclick', function(){ deleteStore(this.dataset.id, this); });
+      tr.addEventListener('contextmenu', function(e){ e.preventDefault(); deleteStore(this.dataset.id, this); });
+
+      var pressTimer=null;
+      tr.addEventListener('pointerdown', function(){ var el=this; var id=this.dataset.id; pressTimer=setTimeout(function(){ deleteStore(id, el); }, 650); });
+      tr.addEventListener('pointerup', function(){ if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } });
+      tr.addEventListener('pointercancel', function(){ if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } });
+      tr.addEventListener('pointerleave', function(){ if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } });
+
       var td=document.createElement('td'); td.textContent=s.name; tr.appendChild(td);
       td=document.createElement('td'); td.textContent=s.note||''; tr.appendChild(td);
-      td=document.createElement('td'); td.className='miniAct';
-      var btn=document.createElement('button'); btn.className='miniBtn'; btn.type='button'; btn.textContent='削除'; btn.dataset.id=s.id;
-      btn.addEventListener('click',function(){deleteStore(this.dataset.id, this);});
-      td.appendChild(btn); tr.appendChild(td);
+      td=document.createElement('td'); td.className='miniAct'; td.textContent=''; tr.appendChild(td);
+
       fragTable.appendChild(tr);
 
       var o=document.createElement('option'); o.value=s.name; fragDl.appendChild(o);
@@ -312,20 +333,28 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     var fragChip=document.createDocumentFragment(), fragTable=document.createDocumentFragment(), fragDl=document.createDocumentFragment();
     for(var i=0;i<products.length;i++){var p=products[i];
       var opt=document.createElement('option'); opt.value=p.id; opt.textContent=p.name; selProduct.appendChild(opt);
+
+      // チップ：選択のみ（削除ボタンなし）
       var chip=document.createElement('div'); chip.className='chip'; chip.dataset.id=p.id; chip.appendChild(document.createTextNode(p.name));
-      var x=document.createElement('button'); x.className='chip__x'; x.type='button'; x.textContent='×'; x.dataset.id=p.id; chip.appendChild(x);
-      chip.addEventListener('click',function(e){if(e.target&&e.target.classList&&e.target.classList.contains('chip__x'))return;
-        var id=this.dataset.id; var found=products.find(function(t){return t.id===id;}); if(found){fName.value=found.name; flash(fName); setStatus('商品を入力しました：'+found.name);}});
-      x.addEventListener('click',function(e){e.stopPropagation(); deleteProduct(this.dataset.id, this);});
+      chip.addEventListener('click',function(){var id=this.dataset.id; var found=products.find(function(t){return t.id===id;}); if(found){fName.value=found.name; flash(fName); setStatus('商品を入力しました：'+found.name);}});
       fragChip.appendChild(chip);
 
-      var tr=document.createElement('tr');
+      // 表：行操作で削除（誤操作防止）
+      var tr=document.createElement('tr'); tr.dataset.id=p.id;
+
+      tr.addEventListener('dblclick', function(){ deleteProduct(this.dataset.id, this); });
+      tr.addEventListener('contextmenu', function(e){ e.preventDefault(); deleteProduct(this.dataset.id, this); });
+
+      var pressTimer=null;
+      tr.addEventListener('pointerdown', function(){ var el=this; var id=this.dataset.id; pressTimer=setTimeout(function(){ deleteProduct(id, el); }, 650); });
+      tr.addEventListener('pointerup', function(){ if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } });
+      tr.addEventListener('pointercancel', function(){ if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } });
+      tr.addEventListener('pointerleave', function(){ if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } });
+
       var td=document.createElement('td'); td.textContent=p.name; tr.appendChild(td);
       td=document.createElement('td'); td.textContent=p.cat||''; tr.appendChild(td);
-      td=document.createElement('td'); td.className='miniAct';
-      var btn=document.createElement('button'); btn.className='miniBtn'; btn.type='button'; btn.textContent='削除'; btn.dataset.id=p.id;
-      btn.addEventListener('click',function(){deleteProduct(this.dataset.id, this);});
-      td.appendChild(btn); tr.appendChild(td);
+      td=document.createElement('td'); td.className='miniAct'; td.textContent=''; tr.appendChild(td);
+
       fragTable.appendChild(tr);
 
       var o=document.createElement('option'); o.value=p.name; fragDl.appendChild(o);
@@ -494,7 +523,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     var bom = '\ufeff';
     downloadBlob(new Blob([bom + csv], {type:'text/csv'}), base + '_purchases.csv');
 
-    lastExportAt = payload.exportedAt;
+    lastExportAt = payload.exportedAt; saveMeta();
     setStatus('エクスポートしました（JSON＋CSV）購入 '+purchases.length+'／店 '+stores.length+'／商品 '+products.length);
     updateDebug();
   }
@@ -503,23 +532,74 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
   function confirmReplace(){ return true; }
 
   function importFromObject(obj){
-    var purchaseArr = Array.isArray(obj)? obj : (Array.isArray(obj.purchases)? obj.purchases : null);
-    if(!purchaseArr){ setStatus('インポート失敗：purchases が見つかりません'); return false; }
+    // 受け付け形式：
+    // A) {purchases:[], stores:[], products:[]}（完全）
+    // B) purchases配列（購入だけ）
+    // C) products配列（商品マスタだけ）
+    // D) stores配列（店マスタだけ）
+    var type = '';
+    var pList=null, sList=null, gList=null;
 
-    var storeArr = Array.isArray(obj)? null : normalizeArray(obj,'stores');
-    var prodArr  = Array.isArray(obj)? null : normalizeArray(obj,'products');
+    if(Array.isArray(obj)){
+      var first = obj[0] || {};
+      if(first && (first.date || first.store || first.price!=null)){
+        type='purchases';
+        pList = obj.map(validatePurchase).filter(Boolean);
+      }else if(first && (first.cat!=null) && (first.name!=null)){
+        type='products';
+        gList = obj.map(validateProduct).filter(Boolean);
+      }else if(first && (first.name!=null)){
+        type='stores';
+        sList = obj.map(validateStore).filter(Boolean);
+      }else{
+        setStatus('インポート失敗：配列の種類が判定できません（購入/店/商品）');
+        return false;
+      }
+    }else{
+      var purchaseArr = (Array.isArray(obj.purchases)? obj.purchases : null);
+      var storeArr = normalizeArray(obj,'stores');
+      var prodArr  = normalizeArray(obj,'products');
+      if(purchaseArr){ type='all'; pList = purchaseArr.map(validatePurchase).filter(Boolean); }
+      if(storeArr){ sList = storeArr.map(validateStore).filter(Boolean); }
+      if(prodArr){ gList = prodArr.map(validateProduct).filter(Boolean); }
 
-    var pList = purchaseArr.map(validatePurchase).filter(Boolean);
-    var sList = storeArr ? storeArr.map(validateStore).filter(Boolean) : null;
-    var gList = prodArr  ? prodArr.map(validateProduct).filter(Boolean) : null;
+      if(!pList && (sList || gList)){ type='masters'; }
+      if(!pList && !sList && !gList){
+        setStatus('インポート失敗：purchases/stores/products が見つかりません');
+        return false;
+      }
+    }
 
-    var msg = 'インポート確認（5秒以内にもう一度）：購入 ' + pList.length + '／店 ' + (sList? sList.length : stores.length) + '／商品 ' + (gList? gList.length : products.length);
-    var key = 'import:' + pList.length + ':' + (sList? sList.length : '-') + ':' + (gList? gList.length : '-');
-    if(!requireConfirm(key, msg, btnPasteImport)) return false;
+    var msg = '';
+    var key = '';
 
-    purchases = pList;
-    if(sList) stores = sList;
-    if(gList) products = gList;
+    if(type==='purchases'){
+      msg = 'インポート（購入のみ）' + pList.length + '件';
+      key = 'import:purchases:' + pList.length;
+      if(!requireConfirm(key, msg, btnPasteImport)) return false;
+      purchases = pList;
+    }else if(type==='products'){
+      msg = 'インポート（商品マスタ）' + gList.length + '件';
+      key = 'import:products:' + gList.length;
+      if(!requireConfirm(key, msg, btnPasteImport)) return false;
+      products = gList;
+    }else if(type==='stores'){
+      msg = 'インポート（店マスタ）' + sList.length + '件';
+      key = 'import:stores:' + sList.length;
+      if(!requireConfirm(key, msg, btnPasteImport)) return false;
+      stores = sList;
+    }else{
+      var pc = pList ? pList.length : purchases.length;
+      var sc = sList ? sList.length : stores.length;
+      var gc = gList ? gList.length : products.length;
+      msg = 'インポート（置換）購入 ' + pc + '／店 ' + sc + '／商品 ' + gc;
+      key = 'import:all:' + pc + ':' + sc + ':' + gc;
+      if(!requireConfirm(key, msg, btnPasteImport)) return false;
+
+      if(pList) purchases = pList;
+      if(sList) stores = sList;
+      if(gList) products = gList;
+    }
 
     sortPurchases(); sortByName(stores); sortByName(products);
 
@@ -528,9 +608,12 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
 
     saveAll();
     renderPurchases(); rebuildStorePickers(); rebuildProductPickers(); computeStats();
-    lastImportAt = new Date().toISOString();
-    setStatus('インポートしました（購入 '+purchases.length+'／店 '+stores.length+'／商品 '+products.length+'）');
+
+    lastImportAt = new Date().toISOString(); saveMeta();
+    setStatus('インポート完了。再表示します…');
     updateDebug();
+
+    setTimeout(function(){ try{ location.reload(); }catch(e){} }, 350);
     return true;
   }
   function importJsonText(text){
@@ -645,6 +728,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
   }
 
   function init(){fDate.value=todayISO();
+    var meta = loadMeta(); lastExportAt = meta.lastExportAt||''; lastImportAt = meta.lastImportAt||'';
     purchases=loadList(PURCHASE_KEY,validatePurchase);
     stores=loadList(STORE_KEY,validateStore);
     products=loadList(PRODUCT_KEY,validateProduct);
