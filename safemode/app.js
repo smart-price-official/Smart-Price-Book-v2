@@ -1,16 +1,16 @@
 'use strict';
 /*
 APP: Smart Price
-VERSION: v0.7.0
+VERSION: v0.7.1
 DATE(JST): 2026-02-27 12:10 JST
 TITLE: SAFE MODE 最小構成（H：分類別集計）
 AUTHOR: ChatGPT_Yui
-BUILD_PARAM: ?b=2026-02-27_1622_safemode-j_editmodal
+BUILD_PARAM: ?b=2026-02-27_1646_safemode-j_editmodal_fix
 DEBUG_PARAM: &debug=1
 POLICY: SAFE MODE / 最小構成 / 外部依存なし
 */
 (function(){
-  var APP={NAME:'Smart Price',VERSION:'v0.7.0',AUTHOR:'ChatGPT_Yui',TITLE:'SAFE MODE 最小構成（H：分類別集計）'};
+  var APP={NAME:'Smart Price',VERSION:'v0.7.1',AUTHOR:'ChatGPT_Yui',TITLE:'SAFE MODE 最小構成（H：分類別集計）'};
   var META_KEY='sp_safemode_meta_v1';
   var PURCHASE_KEY='sp_safemode_purchases_v1', STORE_KEY='sp_safemode_stores_v1', PRODUCT_KEY='sp_safemode_products_v1';
   var params=new URLSearchParams(location.search);
@@ -93,6 +93,79 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
   var btnEditDelete = document.getElementById('btnEditDelete');
 
   var __edit = {type:'', id:''};
+
+  function ensureModalExists(){
+    // もし index.html 側が更新されていない等でモーダル要素が無い場合でも、JS側で生成して復旧する
+    if(editModal && btnEditClose && btnEditSave && btnEditDelete) return true;
+
+    var existing = document.getElementById('editModal');
+    if(!existing){
+      var wrap = document.createElement('div');
+      wrap.innerHTML = '<div class="modal" id="editModal" hidden aria-hidden="true">'+
+        '<div class="modal__backdrop" id="editBackdrop"></div>'+
+        '<div class="modal__panel" role="dialog" aria-modal="true" aria-label="edit panel">'+
+          '<div class="modal__head">'+
+            '<div class="modal__title" id="editTitle">編集</div>'+
+            '<button class="btn btn--sub modal__close" type="button" id="btnEditClose">閉じる</button>'+
+          '</div>'+
+          '<div class="modal__body">'+
+            '<div class="modal__note" id="editHint">-</div>'+
+            '<div class="form__row" id="editRowDate">'+
+              '<label class="field"><div class="field__k">日付</div><input class="field__v" type="date" id="eDate"></label>'+
+              '<label class="field"><div class="field__k">店</div><input class="field__v" type="text" id="eStore" list="storeDatalist"></label>'+
+              '<label class="field field--wide"><div class="field__k">商品</div><input class="field__v" type="text" id="eName" list="productDatalist"></label>'+
+            '</div>'+
+            '<div class="form__row" id="editRowNums">'+
+              '<label class="field"><div class="field__k">価格</div><input class="field__v" type="number" id="ePrice" inputmode="numeric"></label>'+
+              '<label class="field"><div class="field__k">個数</div><input class="field__v" type="number" id="eQty" inputmode="numeric" min="1"></label>'+
+              '<label class="field field--wide"><div class="field__k">メモ</div><input class="field__v" type="text" id="eNote"></label>'+
+            '</div>'+
+            '<div class="form__row" id="editRowMaster">'+
+              '<label class="field field--wide"><div class="field__k">名前</div><input class="field__v" type="text" id="eMasterName"></label>'+
+              '<label class="field field--wide"><div class="field__k">分類/メモ</div><input class="field__v" type="text" id="eMasterMeta"></label>'+
+            '</div>'+
+          '</div>'+
+          '<div class="modal__foot">'+
+            '<button class="btn" type="button" id="btnEditSave">保存</button>'+
+            '<button class="btn btn--danger" type="button" id="btnEditDelete">削除</button>'+
+          '</div>'+
+        '</div>'+
+      '</div>';
+      document.body.appendChild(wrap.firstChild);
+    }
+
+    // refs を取り直す（var で宣言済みなので代入のみ）
+    editModal = document.getElementById('editModal');
+    editBackdrop = document.getElementById('editBackdrop');
+    btnEditClose = document.getElementById('btnEditClose');
+    editTitle = document.getElementById('editTitle');
+    editHint = document.getElementById('editHint');
+
+    eDate = document.getElementById('eDate');
+    eStore = document.getElementById('eStore');
+    eName = document.getElementById('eName');
+    ePrice = document.getElementById('ePrice');
+    eQty = document.getElementById('eQty');
+    eNote = document.getElementById('eNote');
+
+    eMasterName = document.getElementById('eMasterName');
+    eMasterMeta = document.getElementById('eMasterMeta');
+
+    editRowDate = document.getElementById('editRowDate');
+    editRowNums = document.getElementById('editRowNums');
+    editRowMaster = document.getElementById('editRowMaster');
+
+    btnEditSave = document.getElementById('btnEditSave');
+    btnEditDelete = document.getElementById('btnEditDelete');
+
+    if(!editModal || !btnEditClose || !btnEditSave || !btnEditDelete){
+      setStatus('編集画面の初期化に失敗しました（ファイル差し替えを確認してください）');
+      return false;
+    }
+    return true;
+  }
+
+
 
 
   var dbgPanel=document.getElementById('debugPanel');
@@ -187,6 +260,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
   }
 
   function openEditPurchase(id){
+    if(!ensureModalExists()) return;
     var r = purchases.find(function(x){return x.id===id;});
     if(!r) return;
     __edit={type:'purchase', id:id};
@@ -198,6 +272,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
   }
 
   function openEditStore(id){
+    if(!ensureModalExists()) return;
     var s = stores.find(function(x){return x.id===id;});
     if(!s) return;
     __edit={type:'store', id:id};
@@ -210,6 +285,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
   }
 
   function openEditProduct(id){
+    if(!ensureModalExists()) return;
     var p = products.find(function(x){return x.id===id;});
     if(!p) return;
     __edit={type:'product', id:id};
@@ -408,7 +484,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
       tr.addEventListener('pointerdown', function(){
         var id = this.dataset.id;
         pressTimer = setTimeout(function(){
-          requestDeletePurchaseById(id);
+          openEditPurchase(id);
         }, 650);
       });
       tr.addEventListener('pointerup', function(){ if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } });
@@ -950,15 +1026,17 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
 
     [fName,fPrice,fNote].forEach(function(el){el.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault(); addPurchase();}});});
  
-    // edit modal events
-    btnEditClose.addEventListener('click', closeModal);
-    editBackdrop.addEventListener('click', closeModal);
-    btnEditSave.addEventListener('click', saveEdit);
-    btnEditDelete.addEventListener('click', deleteEdit);
+    // edit modal events (v0.7.1: guard)
+    if(ensureModalExists()){
+      btnEditClose.addEventListener('click', closeModal);
+      editBackdrop.addEventListener('click', closeModal);
+      btnEditSave.addEventListener('click', saveEdit);
+      btnEditDelete.addEventListener('click', deleteEdit);
 
-    document.addEventListener('keydown', function(e){
-      if(!editModal.hidden && e && e.key==='Escape'){ closeModal(); }
-    });
+      document.addEventListener('keydown', function(e){
+        if(!editModal.hidden && e && e.key==='Escape'){ closeModal(); }
+      });
+    }
 
   }
 
