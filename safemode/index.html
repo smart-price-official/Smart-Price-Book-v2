@@ -1,16 +1,16 @@
 <!doctype html>
 <!--
 APP: Smart Price
-VERSION: v0.6.0
-DATE(JST): 2026-02-27 10:00 JST
-TITLE: SAFE MODE 最小構成（F：集計）
+VERSION: v0.6.1
+DATE(JST): 2026-02-27 10:47 JST
+TITLE: SAFE MODE 最小構成（G：店/商品マスター自動同期）
 AUTHOR: ChatGPT_Yui
 CHANGES:
-- E（店/商品マスター）を維持したまま「集計（今日/今月/店別）」を追加
-- 購入データに連動して自動更新（追加/削除/インポート/全消去で即反映）
-- 外部APIなし・巨大indexなし・localStorage + JSON退避の方針は維持
-- debug=1診断に TODAY_TOTAL / MONTH_TOTAL を追加
-BUILD_PARAM: ?b=2026-02-27_1000_safemode-f_stats   (配布/キャッシュ回避)
+- 購入を追加/インポート/起動時に、店名・商品名をマスターへ自動同期（UI変更なし）
+- 既に登録済み（大文字小文字/前後空白違い含む）は重複登録しない
+- 商品マスターが空でも、購入履歴から自動で候補が増える
+- debug=1診断の STORE_COUNT / PRODUCT_COUNT が自然に増える
+BUILD_PARAM: ?b=2026-02-27_1047_safemode-g_autosync   (配布/キャッシュ回避)
 DEBUG_PARAM: &debug=1        (検証時のみ)
 POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
 -->
@@ -22,7 +22,7 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
   <title>Smart Price（SAFE MODE）</title>
-  <link rel="stylesheet" href="./app.css?b=2026-02-27_1000_safemode-f_stats" />
+  <link rel="stylesheet" href="./app.css?b=2026-02-27_1047_safemode-g_autosync" />
 </head>
 <body>
   <header class="top">
@@ -30,7 +30,7 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
       <div class="badge">SAFE MODE</div>
       <div class="brand">
         <div class="brand__name">Smart Price</div>
-        <div class="brand__sub">最小構成（F：集計）</div>
+        <div class="brand__sub">最小構成（G：自動同期）</div>
       </div>
     </div>
     <div class="top__right">
@@ -45,7 +45,7 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
       <p class="card__note">
         SAFE MODE：Service Worker（オフライン機能）・キャッシュ・外部APIは<strong>一切使いません</strong>。<br>
         端末内保存（localStorage）＋ JSONエクスポート/インポートで、データを守ります。<br>
-        「店/商品マスター」で入力を早くし、「集計」で今の合計がすぐ見えます。
+        ※この版は「購入に入れた店/商品」を<strong>自動でマスターへ同期</strong>します（UIはそのまま）。
       </p>
 
       <div class="form">
@@ -247,6 +247,6 @@ POLICY: SAFE MODE / 最小構成 / 巨大index禁止 / 外部依存なし
     <footer class="foot"><div class="foot__muted">SAFE MODE：次は「カテゴリ別集計」か「CSV出力」へ。</div></footer>
   </main>
 
-  <script defer src="./app.js?b=2026-02-27_1000_safemode-f_stats"></script>
+  <script defer src="./app.js?b=2026-02-27_1047_safemode-g_autosync"></script>
 </body>
 </html>
