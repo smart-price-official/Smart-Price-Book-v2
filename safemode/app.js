@@ -1,22 +1,23 @@
 'use strict';
 /*
 APP: Smart Price
-VERSION: v0.7.5
+VERSION: v0.7.6
 DATE(JST): 2026-02-27 12:10 JST
 TITLE: SAFE MODE 最小構成（H：分類別集計）
 AUTHOR: ChatGPT_Yui
-BUILD_PARAM: ?b=2026-02-27_1909_safemode-j_fixupload_guard
+BUILD_PARAM: ?b=2026-02-27_1939_safemode-j_cssjs_stamp_openfn2
 DEBUG_PARAM: &debug=1
 POLICY: SAFE MODE / 最小構成 / 外部依存なし
 */
 (function(){
-  var APP={NAME:'Smart Price',VERSION:'v0.7.5',AUTHOR:'ChatGPT_Yui',TITLE:'SAFE MODE 最小構成（H：分類別集計）'};
+  var APP={NAME:'Smart Price',VERSION:'v0.7.6',AUTHOR:'ChatGPT_Yui',TITLE:'SAFE MODE 最小構成（H：分類別集計）'};
   var META_KEY='sp_safemode_meta_v1';
   var PURCHASE_KEY='sp_safemode_purchases_v1', STORE_KEY='sp_safemode_stores_v1', PRODUCT_KEY='sp_safemode_products_v1';
   var params=new URLSearchParams(location.search);
   var BUILD=(params.get('b')||'no-b').trim();
   var DEBUG=(params.get('debug')==='1');
   var FULL=APP.VERSION+' ['+BUILD+']';
+  var JS_BUILD='2026-02-27_1939_safemode-j_cssjs_stamp_openfn2';
 
   // v0.7.5: capture runtime errors for report (no DevTools needed)
   var __lastError = '';
@@ -148,10 +149,16 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     }
   function publishGlobals(){
     try{
-      window.openEditPurchase = openEditPurchase;
-      window.openEditStore = openEditStore;
-      window.openEditProduct = openEditProduct;
-      window.ensureModalExists = ensureModalExists;
+      // placeholders to avoid ReferenceError even if JS/CSS were not replaced correctly
+      if(typeof window.openEditPurchase!=='function') window.openEditPurchase=function(){ setStatus('編集（購入）未初期化'); };
+      if(typeof window.openEditStore!=='function') window.openEditStore=function(){ setStatus('編集（店）未初期化'); };
+      if(typeof window.openEditProduct!=='function') window.openEditProduct=function(){ setStatus('編集（商品）未初期化'); };
+      if(typeof window.ensureModalExists!=='function') window.ensureModalExists=function(){ return false; };
+      // upgrade to real functions if present
+      if(typeof openEditPurchase==='function') window.openEditPurchase=openEditPurchase;
+      if(typeof openEditStore==='function') window.openEditStore=openEditStore;
+      if(typeof openEditProduct==='function') window.openEditProduct=openEditProduct;
+      if(typeof ensureModalExists==='function') window.ensureModalExists=ensureModalExists;
     }catch(e){}
   }
 
@@ -521,13 +528,13 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
 
       // PC: ダブルクリック
       tr.addEventListener('dblclick', function(){
-        (window.openEditPurchase||openEditPurchase)(this.dataset.id);
+        window.openEditPurchase(this.dataset.id);
       });
 
       // PC: 右クリック
       tr.addEventListener('contextmenu', function(e){
         e.preventDefault();
-        (window.openEditPurchase||openEditPurchase)(this.dataset.id);
+        window.openEditPurchase(this.dataset.id);
       });
 
       // モバイル: 長押し（約0.65秒）
@@ -535,7 +542,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
       tr.addEventListener('pointerdown', function(){
         var id = this.dataset.id;
         pressTimer = setTimeout(function(){
-          (window.openEditPurchase||openEditPurchase)(id);
+          window.openEditPurchase(id);
         }, 650);
       });
       tr.addEventListener('pointerup', function(){ if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } });
@@ -624,11 +631,11 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
       var tr=document.createElement('tr'); tr.dataset.id=s.id;
       tr.addEventListener('click', function(){ click2Edit('store', this.dataset.id, this, window.openEditStore || openEditStore); });
 
-      tr.addEventListener('dblclick', function(){ (window.openEditStore||openEditStore)(this.dataset.id); });
-      tr.addEventListener('contextmenu', function(e){ e.preventDefault(); (window.openEditStore||openEditStore)(this.dataset.id); });
+      tr.addEventListener('dblclick', function(){ window.openEditStore(this.dataset.id); });
+      tr.addEventListener('contextmenu', function(e){ e.preventDefault(); window.openEditStore(this.dataset.id); });
 
       var pressTimer=null;
-      tr.addEventListener('pointerdown', function(){ var el=this; var id=this.dataset.id; pressTimer=setTimeout(function(){ (window.openEditStore||openEditStore)(id); }, 650); });
+      tr.addEventListener('pointerdown', function(){ var el=this; var id=this.dataset.id; pressTimer=setTimeout(function(){ window.openEditStore(id); }, 650); });
       tr.addEventListener('pointerup', function(){ if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } });
       tr.addEventListener('pointercancel', function(){ if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } });
       tr.addEventListener('pointerleave', function(){ if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } });
@@ -659,11 +666,11 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
       var tr=document.createElement('tr'); tr.dataset.id=p.id;
       tr.addEventListener('click', function(){ click2Edit('product', this.dataset.id, this, window.openEditProduct || openEditProduct); });
 
-      tr.addEventListener('dblclick', function(){ (window.openEditProduct||openEditProduct)(this.dataset.id); });
-      tr.addEventListener('contextmenu', function(e){ e.preventDefault(); (window.openEditProduct||openEditProduct)(this.dataset.id); });
+      tr.addEventListener('dblclick', function(){ window.openEditProduct(this.dataset.id); });
+      tr.addEventListener('contextmenu', function(e){ e.preventDefault(); window.openEditProduct(this.dataset.id); });
 
       var pressTimer=null;
-      tr.addEventListener('pointerdown', function(){ var el=this; var id=this.dataset.id; pressTimer=setTimeout(function(){ (window.openEditProduct||openEditProduct)(id); }, 650); });
+      tr.addEventListener('pointerdown', function(){ var el=this; var id=this.dataset.id; pressTimer=setTimeout(function(){ window.openEditProduct(id); }, 650); });
       tr.addEventListener('pointerup', function(){ if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } });
       tr.addEventListener('pointercancel', function(){ if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } });
       tr.addEventListener('pointerleave', function(){ if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } });
