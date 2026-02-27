@@ -99,3 +99,19 @@ tr.sp-armed{background:rgba(255,204,0,.06); outline:1px solid rgba(255,204,0,.25
   animation:spPulse .42s ease-out;
 }
 .chip:active{transform:translateY(0)}
+
+
+/* v0.6.8: hover all clickable (no UI change) */
+.btn, select, .field input, .field textarea{
+  transition:transform .12s ease, box-shadow .12s ease, outline-color .12s ease, background-color .12s ease;
+}
+.btn:hover,.btn:focus-visible{
+  transform:translateY(-1px);
+  box-shadow:0 10px 22px rgba(0,0,0,.24);
+  outline:1px solid rgba(255,204,0,.22);
+}
+.btn:active{transform:translateY(0)}
+select:hover,select:focus-visible{
+  box-shadow:0 10px 22px rgba(0,0,0,.18);
+  outline:1px solid rgba(255,204,0,.18);
+}
