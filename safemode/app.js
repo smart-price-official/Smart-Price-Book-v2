@@ -1,16 +1,16 @@
 'use strict';
 /*
 APP: Smart Price
-VERSION: v0.6.5
+VERSION: v0.6.6
 DATE(JST): 2026-02-27 12:10 JST
 TITLE: SAFE MODE 最小構成（H：分類別集計）
 AUTHOR: ChatGPT_Yui
-BUILD_PARAM: ?b=2026-02-27_1356_safemode-j_rowdeletefix2
+BUILD_PARAM: ?b=2026-02-27_1415_safemode-j_nodialog_anim
 DEBUG_PARAM: &debug=1
 POLICY: SAFE MODE / 最小構成 / 外部依存なし
 */
 (function(){
-  var APP={NAME:'Smart Price',VERSION:'v0.6.5',AUTHOR:'ChatGPT_Yui',TITLE:'SAFE MODE 最小構成（H：分類別集計）'};
+  var APP={NAME:'Smart Price',VERSION:'v0.6.6',AUTHOR:'ChatGPT_Yui',TITLE:'SAFE MODE 最小構成（H：分類別集計）'};
   var PURCHASE_KEY='sp_safemode_purchases_v1', STORE_KEY='sp_safemode_stores_v1', PRODUCT_KEY='sp_safemode_products_v1';
   var params=new URLSearchParams(location.search);
   var BUILD=(params.get('b')||'no-b').trim();
@@ -93,6 +93,56 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
   function norm(s){return String(s||'').trim();}
   function key(s){return norm(s).toLowerCase();}
   function setStatus(s){elStatus.textContent=s||'';}
+  // v0.6.6: ブラウザの alert/confirm を使わない（2回操作で確定）
+  var __confirmKey = '';
+  var __confirmUntil = 0;
+  var __armedEl = null;
+
+  function armVisual(el){
+    try{
+      if(__armedEl && __armedEl !== el){
+        __armedEl.classList.remove('sp-armed');
+      }
+      __armedEl = el || null;
+      if(el){
+        el.classList.add('sp-armed');
+        setTimeout(function(){ try{ el.classList.remove('sp-armed'); }catch(e){} }, 900);
+      }
+    }catch(e){}
+  }
+
+  function flash(el){
+    try{
+      el.classList.remove('sp-flash');
+      void el.offsetWidth;
+      el.classList.add('sp-flash');
+      setTimeout(function(){ try{ el.classList.remove('sp-flash'); }catch(e){} }, 320);
+    }catch(e){}
+  }
+
+  function requireConfirm(key, message, el){
+    var now = Date.now();
+    if(__confirmKey === key && now < __confirmUntil){
+      __confirmKey = '';
+      __confirmUntil = 0;
+      return true;
+    }
+    __confirmKey = key;
+    __confirmUntil = now + 4500;
+    setStatus(message + '（もう一度で確定）');
+    if(el) armVisual(el);
+    return false;
+  }
+
+  document.addEventListener('keydown', function(e){
+    if(e && e.key === 'Escape'){
+      __confirmKey = '';
+      __confirmUntil = 0;
+      setStatus('キャンセルしました');
+      if(__armedEl){ try{ __armedEl.classList.remove('sp-armed'); }catch(_){} }
+    }
+  });
+
   function safeParse(s){try{return JSON.parse(s);}catch(e){return null;}}
   function todayISO(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
   function yen(n){var x=Number(n);if(!Number.isFinite(x))x=0;return x.toLocaleString('ja-JP')+'円';}
@@ -115,17 +165,13 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
   function syncMastersFromPurchases(){var changed=false; for(var i=0;i<purchases.length;i++){var r=purchases[i]; if(ensureStoreName(r.store))changed=true; if(ensureProductName(r.name))changed=true;} return changed;}
   function findProductByName(name){var k=key(name); for(var i=0;i<products.length;i++){ if(key(products[i].name)===k) return products[i]; } return null; }
 
-  function requestDeletePurchaseById(id){
+  function requestDeletePurchaseById(id, rowEl){
     var r = purchases.find(function(x){ return x.id===id; });
     if(!r) return;
-    var msg = 'この購入を削除します。\n\n' +
-      '日付: ' + (r.date||'') + '\n' +
-      '店: ' + (r.store||'') + '\n' +
-      '商品: ' + (r.name||'') + '\n' +
-      '価格: ' + (Number(r.price)||0) + '円\n' +
-      '個数: ' + (Number(r.qty)||1) + '\n\n' +
-      'よろしいですか？';
-    if(!confirm(msg)) return;
+
+    var summary = '削除：' + (r.date||'') + ' ' + (r.store||'') + ' ' + (r.name||'');
+    if(!requireConfirm('delPurchase:'+id, summary, rowEl)) return;
+
     purchases = purchases.filter(function(x){ return x.id!==id; });
     saveAll();
     renderPurchases();
@@ -147,13 +193,13 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
 
       // PC: ダブルクリック
       tr.addEventListener('dblclick', function(){
-        requestDeletePurchaseById(this.dataset.id);
+        requestDeletePurchaseById(this.dataset.id, this);
       });
 
       // PC: 右クリック
       tr.addEventListener('contextmenu', function(e){
         e.preventDefault();
-        requestDeletePurchaseById(this.dataset.id);
+        requestDeletePurchaseById(this.dataset.id, this);
       });
 
       // モバイル: 長押し（約0.65秒）
@@ -243,8 +289,8 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
       var chip=document.createElement('div'); chip.className='chip'; chip.dataset.id=s.id; chip.appendChild(document.createTextNode(s.name));
       var x=document.createElement('button'); x.className='chip__x'; x.type='button'; x.textContent='×'; x.dataset.id=s.id; chip.appendChild(x);
       chip.addEventListener('click',function(e){if(e.target&&e.target.classList&&e.target.classList.contains('chip__x'))return;
-        var id=this.dataset.id; var found=stores.find(function(t){return t.id===id;}); if(found){fStore.value=found.name; setStatus('店を入力しました：'+found.name);}});
-      x.addEventListener('click',function(e){e.stopPropagation(); deleteStore(this.dataset.id);});
+        var id=this.dataset.id; var found=stores.find(function(t){return t.id===id;}); if(found){fStore.value=found.name; flash(fStore); setStatus('店を入力しました：'+found.name);}});
+      x.addEventListener('click',function(e){e.stopPropagation(); deleteStore(this.dataset.id, this);});
       fragChip.appendChild(chip);
 
       var tr=document.createElement('tr');
@@ -252,7 +298,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
       td=document.createElement('td'); td.textContent=s.note||''; tr.appendChild(td);
       td=document.createElement('td'); td.className='miniAct';
       var btn=document.createElement('button'); btn.className='miniBtn'; btn.type='button'; btn.textContent='削除'; btn.dataset.id=s.id;
-      btn.addEventListener('click',function(){deleteStore(this.dataset.id);});
+      btn.addEventListener('click',function(){deleteStore(this.dataset.id, this);});
       td.appendChild(btn); tr.appendChild(td);
       fragTable.appendChild(tr);
 
@@ -269,8 +315,8 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
       var chip=document.createElement('div'); chip.className='chip'; chip.dataset.id=p.id; chip.appendChild(document.createTextNode(p.name));
       var x=document.createElement('button'); x.className='chip__x'; x.type='button'; x.textContent='×'; x.dataset.id=p.id; chip.appendChild(x);
       chip.addEventListener('click',function(e){if(e.target&&e.target.classList&&e.target.classList.contains('chip__x'))return;
-        var id=this.dataset.id; var found=products.find(function(t){return t.id===id;}); if(found){fName.value=found.name; setStatus('商品を入力しました：'+found.name);}});
-      x.addEventListener('click',function(e){e.stopPropagation(); deleteProduct(this.dataset.id);});
+        var id=this.dataset.id; var found=products.find(function(t){return t.id===id;}); if(found){fName.value=found.name; flash(fName); setStatus('商品を入力しました：'+found.name);}});
+      x.addEventListener('click',function(e){e.stopPropagation(); deleteProduct(this.dataset.id, this);});
       fragChip.appendChild(chip);
 
       var tr=document.createElement('tr');
@@ -278,7 +324,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
       td=document.createElement('td'); td.textContent=p.cat||''; tr.appendChild(td);
       td=document.createElement('td'); td.className='miniAct';
       var btn=document.createElement('button'); btn.className='miniBtn'; btn.type='button'; btn.textContent='削除'; btn.dataset.id=p.id;
-      btn.addEventListener('click',function(){deleteProduct(this.dataset.id);});
+      btn.addEventListener('click',function(){deleteProduct(this.dataset.id, this);});
       td.appendChild(btn); tr.appendChild(td);
       fragTable.appendChild(tr);
 
@@ -293,9 +339,10 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     sortByName(stores); saveAll(); rebuildStorePickers(); computeStats(); updateDebug();
     setStatus('店を追加しました（'+stores.length+'件）'); fNewStoreName.value=''; fNewStoreNote.value=''; fNewStoreName.focus();
   }
-  function deleteStore(id){var s=stores.find(function(x){return x.id===id;}); if(!s)return;
-    if(!confirm('店を削除します：'+s.name+'\nよろしいですか？'))return;
-    stores=stores.filter(function(x){return x.id!==id;});
+  function deleteStore(id, btnEl){
+    var s = stores.find(function(x){return x.id===id;}); if(!s) return;
+    if(!requireConfirm('delStore:'+id, '店を削除：'+s.name, btnEl)) return;
+    stores = stores.filter(function(x){return x.id!==id;});
     saveAll(); rebuildStorePickers(); computeStats(); updateDebug();
     setStatus('店を削除しました（'+stores.length+'件）');
   }
@@ -321,9 +368,10 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     setStatus('商品を追加しました（'+products.length+'件）'); fNewProductName.value=''; fNewProductCat.value=''; fNewProductName.focus();
   }
 
-  function deleteProduct(id){var p=products.find(function(x){return x.id===id;}); if(!p)return;
-    if(!confirm('商品を削除します：'+p.name+'\nよろしいですか？'))return;
-    products=products.filter(function(x){return x.id!==id;});
+  function deleteProduct(id, btnEl){
+    var p = products.find(function(x){return x.id===id;}); if(!p) return;
+    if(!requireConfirm('delProduct:'+id, '商品を削除：'+p.name, btnEl)) return;
+    products = products.filter(function(x){return x.id!==id;});
     saveAll(); rebuildProductPickers(); computeStats(); updateDebug();
     setStatus('商品を削除しました（'+products.length+'件）');
   }
@@ -349,7 +397,8 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     setStatus('保存しました（購入 '+purchases.length+'件）');
   }
 
-  function seedAll(){if(!confirm('ダミーデータを投入して保存します。\n購入＋店＋商品 を入れます。よろしいですか？'))return;
+  function seedAll(){
+    if(!requireConfirm('seedAll', '確認：ダミーデータ投入', btnSeed)) return;
     var t=todayISO();
     purchases=[
       {id:'r-001',date:t,store:'カスミ',name:'牛乳 1L',price:238,qty:1,note:'SAFE MODE ダミー'},
@@ -371,7 +420,8 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     setStatus('ダミー投入完了（購入 '+purchases.length+'／店 '+stores.length+'／商品 '+products.length+'）');
   }
 
-  function clearAll(){if(!confirm('全消去します。\n購入・店・商品 の保存も消えます。\nよろしいですか？'))return;
+  function clearAll(){
+    if(!requireConfirm('clearAll', '確認：全消去（購入・店・商品）', btnClear)) return;
     purchases=[]; stores=[]; products=[];
     localStorage.removeItem(PURCHASE_KEY); localStorage.removeItem(STORE_KEY); localStorage.removeItem(PRODUCT_KEY);
     renderPurchases(); rebuildStorePickers(); rebuildProductPickers(); computeStats(); updateDebug();
@@ -450,37 +500,52 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
   }
 
   function normalizeArray(obj, field){if(!obj||typeof obj!=='object')return null; return Array.isArray(obj[field])?obj[field]:null;}
-  function confirmReplace(pc, sc, gc, hasS, hasP){var msg='インポートすると現在のデータを置き換えます。\n';
-    msg+='購入：'+pc+'件\n'; msg+='店：'+(hasS?(sc+'件（置換）'):'（このJSONに無い → そのまま）')+'\n';
-    msg+='商品：'+(hasP?(gc+'件（置換）'):'（このJSONに無い → そのまま）')+'\n'; msg+='よろしいですか？'; return confirm(msg);
-  }
-  function importFromObject(obj){var purchaseArr=Array.isArray(obj)?obj:(Array.isArray(obj.purchases)?obj.purchases:null);
-    if(!purchaseArr){setStatus('インポート失敗：purchases が見つかりません'); return false;}
-    var storeArr=Array.isArray(obj)?null:normalizeArray(obj,'stores');
-    var prodArr=Array.isArray(obj)?null:normalizeArray(obj,'products');
-    var pList=purchaseArr.map(validatePurchase).filter(Boolean);
-    var sList=storeArr?storeArr.map(validateStore).filter(Boolean):null;
-    var gList=prodArr?prodArr.map(validateProduct).filter(Boolean):null;
+  function confirmReplace(){ return true; }
 
-    if(!confirmReplace(pList.length,(sList?sList.length:stores.length),(gList?gList.length:products.length),!!sList,!!gList))return false;
+  function importFromObject(obj){
+    var purchaseArr = Array.isArray(obj)? obj : (Array.isArray(obj.purchases)? obj.purchases : null);
+    if(!purchaseArr){ setStatus('インポート失敗：purchases が見つかりません'); return false; }
 
-    purchases=pList;
-    if(sList)stores=sList;
-    if(gList)products=gList;
+    var storeArr = Array.isArray(obj)? null : normalizeArray(obj,'stores');
+    var prodArr  = Array.isArray(obj)? null : normalizeArray(obj,'products');
+
+    var pList = purchaseArr.map(validatePurchase).filter(Boolean);
+    var sList = storeArr ? storeArr.map(validateStore).filter(Boolean) : null;
+    var gList = prodArr  ? prodArr.map(validateProduct).filter(Boolean) : null;
+
+    var msg = 'インポート確認：購入 ' + pList.length + '／店 ' + (sList? sList.length : stores.length) + '／商品 ' + (gList? gList.length : products.length);
+    var key = 'import:' + pList.length + ':' + (sList? sList.length : '-') + ':' + (gList? gList.length : '-');
+    if(!requireConfirm(key, msg, btnPasteImport)) return false;
+
+    purchases = pList;
+    if(sList) stores = sList;
+    if(gList) products = gList;
+
     sortPurchases(); sortByName(stores); sortByName(products);
 
-    var syncChanged=syncMastersFromPurchases();
-    if(syncChanged){sortByName(stores); sortByName(products);}
+    var syncChanged = syncMastersFromPurchases();
+    if(syncChanged){ sortByName(stores); sortByName(products); }
 
     saveAll();
     renderPurchases(); rebuildStorePickers(); rebuildProductPickers(); computeStats();
-    lastImportAt=new Date().toISOString();
-    setStatus('インポートしました（購入 '+purchases.length+'／店 '+stores.length+'／商品 '+products.length+'）'); updateDebug();
+    lastImportAt = new Date().toISOString();
+    setStatus('インポートしました（購入 '+purchases.length+'／店 '+stores.length+'／商品 '+products.length+'）');
+    updateDebug();
     return true;
   }
   function importJsonText(text){var obj=safeParse(text); if(!obj)return setStatus('インポート失敗：JSONが壊れています'); importFromObject(obj);}
-  function handleImportFile(file){if(!file)return; var reader=new FileReader();
-    reader.onload=function(){importJsonText(String(reader.result||''));}; reader.onerror=function(){setStatus('インポート失敗：ファイル読込に失敗しました');}; reader.readAsText(file);
+  function handleImportFile(file){
+    if(!file) return;
+    var reader=new FileReader();
+    reader.onload=function(){
+      var t = String(reader.result||'');
+      pasteBox.hidden = false;
+      pasteText.value = t;
+      setStatus('JSONを読み込みました。貼り付け欄の「この内容でインポート」を2回押すと実行（確認）');
+      try{ pasteText.focus(); }catch(e){}
+    };
+    reader.onerror=function(){ setStatus('インポート失敗：ファイル読込に失敗しました'); };
+    reader.readAsText(file);
   }
 
   function togglePaste(){pasteBox.hidden=!pasteBox.hidden; if(!pasteBox.hidden)pasteText.focus();}
@@ -528,12 +593,32 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     vNow.textContent=new Date().toISOString();
     diagText.textContent=buildDiagText();
   }
-  function copyDiag(){var text=buildDiagText();
-    if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).then(function(){alert('コピーしました');}).catch(function(){fallbackCopy(text);});
-    else fallbackCopy(text);
+  function copyDiag(){
+    var text = buildDiagText();
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(function(){
+        setStatus('診断ログをコピーしました');
+      }).catch(function(){
+        fallbackCopy(text);
+      });
+    } else {
+      fallbackCopy(text);
+    }
   }
-  function fallbackCopy(text){var ta=document.createElement('textarea'); ta.value=text; ta.style.position='fixed'; ta.style.left='-9999px'; document.body.appendChild(ta); ta.select();
-    try{document.execCommand('copy'); alert('コピーしました');}catch(e){alert('コピーできませんでした。\n手動で選択してコピーしてください。');} document.body.removeChild(ta);
+  function fallbackCopy(text){
+    var ta=document.createElement('textarea');
+    ta.value=text;
+    ta.style.position='fixed';
+    ta.style.left='-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    try{
+      document.execCommand('copy');
+      setStatus('診断ログをコピーしました');
+    }catch(e){
+      setStatus('コピーできませんでした（手動でコピーしてください）');
+    }
+    document.body.removeChild(ta);
   }
 
   function init(){fDate.value=todayISO();
@@ -552,10 +637,10 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     setStatus('読込完了（購入 '+purchases.length+'／店 '+stores.length+'／商品 '+products.length+'）');
 
     btnAddStore.addEventListener('click',addStore);
-    selStore.addEventListener('change',function(){var id=selStore.value; var found=stores.find(function(s){return s.id===id;}); if(found){fStore.value=found.name; setStatus('店を入力しました：'+found.name);} selStore.value='';});
+    selStore.addEventListener('change',function(){var id=selStore.value; var found=stores.find(function(s){return s.id===id;}); if(found){fStore.value=found.name; flash(fStore); setStatus('店を入力しました：'+found.name);} selStore.value='';});
 
     btnAddProduct.addEventListener('click',addOrUpdateProduct);
-    selProduct.addEventListener('change',function(){var id=selProduct.value; var found=products.find(function(p){return p.id===id;}); if(found){fName.value=found.name; setStatus('商品を入力しました：'+found.name);} selProduct.value='';});
+    selProduct.addEventListener('change',function(){var id=selProduct.value; var found=products.find(function(p){return p.id===id;}); if(found){fName.value=found.name; flash(fName); setStatus('商品を入力しました：'+found.name);} selProduct.value='';});
 
     btnAdd.addEventListener('click',addPurchase);
     btnSeed.addEventListener('click',seedAll);
