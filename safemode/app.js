@@ -1,16 +1,16 @@
 'use strict';
 /*
 APP: Smart Price
-VERSION: v0.6.6
+VERSION: v0.6.7
 DATE(JST): 2026-02-27 12:10 JST
 TITLE: SAFE MODE 最小構成（H：分類別集計）
 AUTHOR: ChatGPT_Yui
-BUILD_PARAM: ?b=2026-02-27_1415_safemode-j_nodialog_anim
+BUILD_PARAM: ?b=2026-02-27_1438_safemode-j_hoverhint_importfix
 DEBUG_PARAM: &debug=1
 POLICY: SAFE MODE / 最小構成 / 外部依存なし
 */
 (function(){
-  var APP={NAME:'Smart Price',VERSION:'v0.6.6',AUTHOR:'ChatGPT_Yui',TITLE:'SAFE MODE 最小構成（H：分類別集計）'};
+  var APP={NAME:'Smart Price',VERSION:'v0.6.7',AUTHOR:'ChatGPT_Yui',TITLE:'SAFE MODE 最小構成（H：分類別集計）'};
   var PURCHASE_KEY='sp_safemode_purchases_v1', STORE_KEY='sp_safemode_stores_v1', PRODUCT_KEY='sp_safemode_products_v1';
   var params=new URLSearchParams(location.search);
   var BUILD=(params.get('b')||'no-b').trim();
@@ -398,7 +398,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
   }
 
   function seedAll(){
-    if(!requireConfirm('seedAll', '確認：ダミーデータ投入', btnSeed)) return;
+    if(!requireConfirm('seedAll', '確認：ダミーデータ投入（5秒以内にもう一度）', btnSeed)) return;
     var t=todayISO();
     purchases=[
       {id:'r-001',date:t,store:'カスミ',name:'牛乳 1L',price:238,qty:1,note:'SAFE MODE ダミー'},
@@ -421,7 +421,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
   }
 
   function clearAll(){
-    if(!requireConfirm('clearAll', '確認：全消去（購入・店・商品）', btnClear)) return;
+    if(!requireConfirm('clearAll', '確認：全消去（購入・店・商品）5秒以内にもう一度', btnClear)) return;
     purchases=[]; stores=[]; products=[];
     localStorage.removeItem(PURCHASE_KEY); localStorage.removeItem(STORE_KEY); localStorage.removeItem(PRODUCT_KEY);
     renderPurchases(); rebuildStorePickers(); rebuildProductPickers(); computeStats(); updateDebug();
@@ -513,7 +513,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     var sList = storeArr ? storeArr.map(validateStore).filter(Boolean) : null;
     var gList = prodArr  ? prodArr.map(validateProduct).filter(Boolean) : null;
 
-    var msg = 'インポート確認：購入 ' + pList.length + '／店 ' + (sList? sList.length : stores.length) + '／商品 ' + (gList? gList.length : products.length);
+    var msg = 'インポート確認（5秒以内にもう一度）：購入 ' + pList.length + '／店 ' + (sList? sList.length : stores.length) + '／商品 ' + (gList? gList.length : products.length);
     var key = 'import:' + pList.length + ':' + (sList? sList.length : '-') + ':' + (gList? gList.length : '-');
     if(!requireConfirm(key, msg, btnPasteImport)) return false;
 
@@ -533,7 +533,24 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     updateDebug();
     return true;
   }
-  function importJsonText(text){var obj=safeParse(text); if(!obj)return setStatus('インポート失敗：JSONが壊れています'); importFromObject(obj);}
+  function importJsonText(text){
+    var t = String(text||'');
+    t = t.replace(/^\ufeff/,'').trim(); // BOM/空白除去
+
+    if(/^date,store,name,category,price/i.test(t)){
+      setStatus('これはCSVです。インポートは JSON（.json） を選んでください');
+      return;
+    }
+
+    var obj = safeParse(t);
+    if(!obj){
+      var head = t.slice(0,24).replace(/\s+/g,' ');
+      setStatus('インポート失敗：JSONが壊れています（先頭：'+head+'…）');
+      return;
+    }
+    importFromObject(obj);
+  }
+
   function handleImportFile(file){
     if(!file) return;
     var reader=new FileReader();
@@ -541,7 +558,13 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
       var t = String(reader.result||'');
       pasteBox.hidden = false;
       pasteText.value = t;
-      setStatus('JSONを読み込みました。貼り付け欄の「この内容でインポート」を2回押すと実行（確認）');
+
+      var name = (file && file.name) ? file.name : '';
+      if(/\.csv$/i.test(name)){
+        setStatus('CSVを読み込みました（これはインポートできません）。JSON（.json）を選んでください');
+      }else{
+        setStatus('JSONを読み込みました：'+name+'。貼り付け欄の「この内容でインポート」を2回押すと確定');
+      }
       try{ pasteText.focus(); }catch(e){}
     };
     reader.onerror=function(){ setStatus('インポート失敗：ファイル読込に失敗しました'); };

@@ -88,3 +88,14 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:var(--ui)}
 .sp-pulse{animation:spPulse .42s ease-out}
 tr.sp-armed{background:rgba(255,204,0,.06); outline:1px solid rgba(255,204,0,.25); animation:spRowWiggle .22s ease-out}
 .btn.sp-armed{animation:spPulse .42s ease-out}
+
+
+/* v0.6.7: hover hints for selectable chips (no UI change) */
+.chip{cursor:pointer; transition:transform .12s ease, box-shadow .12s ease, outline-color .12s ease}
+.chip:hover,.chip:focus-visible{
+  transform:translateY(-1px);
+  box-shadow:0 10px 22px rgba(0,0,0,.24);
+  outline:1px solid rgba(255,204,0,.28);
+  animation:spPulse .42s ease-out;
+}
+.chip:active{transform:translateY(0)}
