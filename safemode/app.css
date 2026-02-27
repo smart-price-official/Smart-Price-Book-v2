@@ -137,3 +137,7 @@ table tbody tr:hover{background:rgba(255,255,255,.03)}
 .modal__foot{display:flex; justify-content:flex-end; gap:10px; padding-top:12px; border-top:1px solid rgba(170,179,189,.14)}
 .modal__panel .form__row{margin:8px 0}
 .modal__panel .field__v{background:rgba(23,26,33,.85)}
+
+
+/* v0.7.2: clickable rows */
+table tbody tr{cursor:pointer}

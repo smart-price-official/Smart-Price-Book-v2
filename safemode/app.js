@@ -1,16 +1,16 @@
 'use strict';
 /*
 APP: Smart Price
-VERSION: v0.7.1
+VERSION: v0.7.2
 DATE(JST): 2026-02-27 12:10 JST
 TITLE: SAFE MODE 最小構成（H：分類別集計）
 AUTHOR: ChatGPT_Yui
-BUILD_PARAM: ?b=2026-02-27_1646_safemode-j_editmodal_fix
+BUILD_PARAM: ?b=2026-02-27_1702_safemode-j_click2edit_fix2
 DEBUG_PARAM: &debug=1
 POLICY: SAFE MODE / 最小構成 / 外部依存なし
 */
 (function(){
-  var APP={NAME:'Smart Price',VERSION:'v0.7.1',AUTHOR:'ChatGPT_Yui',TITLE:'SAFE MODE 最小構成（H：分類別集計）'};
+  var APP={NAME:'Smart Price',VERSION:'v0.7.2',AUTHOR:'ChatGPT_Yui',TITLE:'SAFE MODE 最小構成（H：分類別集計）'};
   var META_KEY='sp_safemode_meta_v1';
   var PURCHASE_KEY='sp_safemode_purchases_v1', STORE_KEY='sp_safemode_stores_v1', PRODUCT_KEY='sp_safemode_products_v1';
   var params=new URLSearchParams(location.search);
@@ -220,6 +220,28 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
       setTimeout(function(){ try{ el.classList.remove('sp-flash'); }catch(e){} }, 320);
     }catch(e){}
   }
+  // v0.7.2: dblclick不発の保険（クリック2回で編集）
+  var __rowClick = {key:'', t:0};
+  function click2Edit(type, id, el, openFn){
+    var key = type + ':' + id;
+    var now = Date.now();
+    if(__rowClick.key === key && (now - __rowClick.t) <= 650){
+      __rowClick.key=''; __rowClick.t=0;
+      openFn(id);
+      return;
+    }
+    __rowClick.key = key;
+    __rowClick.t = now;
+    try{ flash(el); }catch(e){}
+    setStatus('選択しました。もう一度クリックで編集（ダブルクリックでもOK）');
+    setTimeout(function(){
+      if(__rowClick.key === key && (Date.now() - __rowClick.t) > 650){
+        __rowClick.key=''; __rowClick.t=0;
+      }
+    }, 700);
+  }
+
+
 
   function requireConfirm(key, message, el){
     var now = Date.now();
@@ -230,6 +252,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     }
   function openModal(){
     editModal.hidden=false;
+    try{ editModal.scrollIntoView({block:'center'}); }catch(e){}
     editModal.setAttribute('aria-hidden','false');
     try{ document.body.style.overflow='hidden'; }catch(e){}
     // focus close button
@@ -468,6 +491,11 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
       var tr=document.createElement('tr');
       tr.dataset.id = r.id;
 
+      // v0.7.2: クリック2回で編集（dblclick不発の保険）
+      tr.addEventListener('click', function(){
+        click2Edit('purchase', this.dataset.id, this, openEditPurchase);
+      });
+
       // PC: ダブルクリック
       tr.addEventListener('dblclick', function(){
         openEditPurchase(this.dataset.id);
@@ -571,6 +599,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
 
       // 表：行操作で削除（誤操作防止）
       var tr=document.createElement('tr'); tr.dataset.id=s.id;
+      tr.addEventListener('click', function(){ click2Edit('store', this.dataset.id, this, openEditStore); });
 
       tr.addEventListener('dblclick', function(){ openEditStore(this.dataset.id); });
       tr.addEventListener('contextmenu', function(e){ e.preventDefault(); openEditStore(this.dataset.id); });
@@ -605,6 +634,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
 
       // 表：行操作で削除（誤操作防止）
       var tr=document.createElement('tr'); tr.dataset.id=p.id;
+      tr.addEventListener('click', function(){ click2Edit('product', this.dataset.id, this, openEditProduct); });
 
       tr.addEventListener('dblclick', function(){ openEditProduct(this.dataset.id); });
       tr.addEventListener('contextmenu', function(e){ e.preventDefault(); openEditProduct(this.dataset.id); });
