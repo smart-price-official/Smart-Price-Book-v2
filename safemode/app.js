@@ -1,11 +1,11 @@
 'use strict';
 /*
 APP: Smart Price
-VERSION: v0.7.8
+VERSION: v0.7.9
 DATE(JST): 2026-02-27 12:10 JST
 TITLE: SAFE MODE 最小構成（H：分類別集計）
 AUTHOR: ChatGPT_Yui
-BUILD_PARAM: ?b=2026-03-02_2054_safemode-j_modal_probe_deleg
+BUILD_PARAM: ?b=2026-03-02_2120_safemode-j_fix_pbody_debug
 DEBUG_PARAM: &debug=1
 POLICY: SAFE MODE / 最小構成 / 外部依存なし
 */
@@ -16,14 +16,14 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     if(typeof window.openEditStore!=='function') window.openEditStore=function(){ };
     if(typeof window.openEditProduct!=='function') window.openEditProduct=function(){ };
   }catch(e){}
-  var APP={NAME:'Smart Price',VERSION:'v0.7.8',AUTHOR:'ChatGPT_Yui',TITLE:'SAFE MODE 最小構成（H：分類別集計）'};
+  var APP={NAME:'Smart Price',VERSION:'v0.7.9',AUTHOR:'ChatGPT_Yui',TITLE:'SAFE MODE 最小構成（H：分類別集計）'};
   var META_KEY='sp_safemode_meta_v1';
   var PURCHASE_KEY='sp_safemode_purchases_v1', STORE_KEY='sp_safemode_stores_v1', PRODUCT_KEY='sp_safemode_products_v1';
   var params=new URLSearchParams(location.search);
   var BUILD=(params.get('b')||'no-b').trim();
   var DEBUG=(params.get('debug')==='1');
   var FULL=APP.VERSION+' ['+BUILD+']';
-  var JS_BUILD='2026-03-02_2054_safemode-j_modal_probe_deleg';
+  var JS_BUILD='2026-03-02_2120_safemode-j_fix_pbody_debug';
 
   // v0.7.5: capture runtime errors for report (no DevTools needed)
   var __lastError = '';
@@ -399,10 +399,12 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
           try{ openFn(tr.dataset.id); }catch(e){ setStatus('編集を開けません（dblclick）'); }
         }, true);
       }
-      bindDelegation(purchaseBody, 'purchase', window.openEditPurchase);
-      bindDelegation(storeBody, 'store', window.openEditStore);
-      bindDelegation(productBody, 'product', window.openEditProduct);
-    }
+      try{
+        bindDelegation(purchaseBody, 'purchase', window.openEditPurchase);
+        bindDelegation(storeBody, 'store', window.openEditStore);
+        bindDelegation(productBody, 'product', window.openEditProduct);
+      }catch(e){ setStatus('委譲バインド失敗'); }
+}
  rebuildProductPickers(); computeStats(); updateDebug();
       setStatus('更新しました（購入）');
       closeModal();
@@ -434,10 +436,12 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
           try{ openFn(tr.dataset.id); }catch(e){ setStatus('編集を開けません（dblclick）'); }
         }, true);
       }
-      bindDelegation(purchaseBody, 'purchase', window.openEditPurchase);
-      bindDelegation(storeBody, 'store', window.openEditStore);
-      bindDelegation(productBody, 'product', window.openEditProduct);
-    }
+      try{
+        bindDelegation(purchaseBody, 'purchase', window.openEditPurchase);
+        bindDelegation(storeBody, 'store', window.openEditStore);
+        bindDelegation(productBody, 'product', window.openEditProduct);
+      }catch(e){ setStatus('委譲バインド失敗'); }
+}
  computeStats(); updateDebug();
       setStatus('更新しました（店）');
       closeModal();
@@ -496,10 +500,12 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
           try{ openFn(tr.dataset.id); }catch(e){ setStatus('編集を開けません（dblclick）'); }
         }, true);
       }
-      bindDelegation(purchaseBody, 'purchase', window.openEditPurchase);
-      bindDelegation(storeBody, 'store', window.openEditStore);
-      bindDelegation(productBody, 'product', window.openEditProduct);
-    }
+      try{
+        bindDelegation(purchaseBody, 'purchase', window.openEditPurchase);
+        bindDelegation(storeBody, 'store', window.openEditStore);
+        bindDelegation(productBody, 'product', window.openEditProduct);
+      }catch(e){ setStatus('委譲バインド失敗'); }
+}
  computeStats(); updateDebug();
       setStatus('削除しました（店）');
       closeModal();
@@ -785,10 +791,12 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
           try{ openFn(tr.dataset.id); }catch(e){ setStatus('編集を開けません（dblclick）'); }
         }, true);
       }
-      bindDelegation(purchaseBody, 'purchase', window.openEditPurchase);
-      bindDelegation(storeBody, 'store', window.openEditStore);
-      bindDelegation(productBody, 'product', window.openEditProduct);
-    }
+      try{
+        bindDelegation(purchaseBody, 'purchase', window.openEditPurchase);
+        bindDelegation(storeBody, 'store', window.openEditStore);
+        bindDelegation(productBody, 'product', window.openEditProduct);
+      }catch(e){ setStatus('委譲バインド失敗'); }
+}
  computeStats(); updateDebug();
     setStatus('店を追加しました（'+stores.length+'件）'); fNewStoreName.value=''; fNewStoreNote.value=''; fNewStoreName.focus();
   }
@@ -813,10 +821,12 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
           try{ openFn(tr.dataset.id); }catch(e){ setStatus('編集を開けません（dblclick）'); }
         }, true);
       }
-      bindDelegation(purchaseBody, 'purchase', window.openEditPurchase);
-      bindDelegation(storeBody, 'store', window.openEditStore);
-      bindDelegation(productBody, 'product', window.openEditProduct);
-    }
+      try{
+        bindDelegation(purchaseBody, 'purchase', window.openEditPurchase);
+        bindDelegation(storeBody, 'store', window.openEditStore);
+        bindDelegation(productBody, 'product', window.openEditProduct);
+      }catch(e){ setStatus('委譲バインド失敗'); }
+}
  computeStats(); updateDebug();
     setStatus('店を削除しました（'+stores.length+'件）');
   }
@@ -881,10 +891,12 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
           try{ openFn(tr.dataset.id); }catch(e){ setStatus('編集を開けません（dblclick）'); }
         }, true);
       }
-      bindDelegation(purchaseBody, 'purchase', window.openEditPurchase);
-      bindDelegation(storeBody, 'store', window.openEditStore);
-      bindDelegation(productBody, 'product', window.openEditProduct);
-    }
+      try{
+        bindDelegation(purchaseBody, 'purchase', window.openEditPurchase);
+        bindDelegation(storeBody, 'store', window.openEditStore);
+        bindDelegation(productBody, 'product', window.openEditProduct);
+      }catch(e){ setStatus('委譲バインド失敗'); }
+}
  rebuildProductPickers();}
     computeStats(); updateDebug();
 
@@ -928,10 +940,12 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
           try{ openFn(tr.dataset.id); }catch(e){ setStatus('編集を開けません（dblclick）'); }
         }, true);
       }
-      bindDelegation(purchaseBody, 'purchase', window.openEditPurchase);
-      bindDelegation(storeBody, 'store', window.openEditStore);
-      bindDelegation(productBody, 'product', window.openEditProduct);
-    }
+      try{
+        bindDelegation(purchaseBody, 'purchase', window.openEditPurchase);
+        bindDelegation(storeBody, 'store', window.openEditStore);
+        bindDelegation(productBody, 'product', window.openEditProduct);
+      }catch(e){ setStatus('委譲バインド失敗'); }
+}
  rebuildProductPickers(); computeStats(); updateDebug();
     setStatus('ダミー投入完了（購入 '+purchases.length+'／店 '+stores.length+'／商品 '+products.length+'）');
   }
@@ -957,10 +971,12 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
           try{ openFn(tr.dataset.id); }catch(e){ setStatus('編集を開けません（dblclick）'); }
         }, true);
       }
-      bindDelegation(purchaseBody, 'purchase', window.openEditPurchase);
-      bindDelegation(storeBody, 'store', window.openEditStore);
-      bindDelegation(productBody, 'product', window.openEditProduct);
-    }
+      try{
+        bindDelegation(purchaseBody, 'purchase', window.openEditPurchase);
+        bindDelegation(storeBody, 'store', window.openEditStore);
+        bindDelegation(productBody, 'product', window.openEditProduct);
+      }catch(e){ setStatus('委譲バインド失敗'); }
+}
  rebuildProductPickers(); computeStats(); updateDebug();
     setStatus('全消去しました');
   }
@@ -1132,10 +1148,12 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
           try{ openFn(tr.dataset.id); }catch(e){ setStatus('編集を開けません（dblclick）'); }
         }, true);
       }
-      bindDelegation(purchaseBody, 'purchase', window.openEditPurchase);
-      bindDelegation(storeBody, 'store', window.openEditStore);
-      bindDelegation(productBody, 'product', window.openEditProduct);
-    }
+      try{
+        bindDelegation(purchaseBody, 'purchase', window.openEditPurchase);
+        bindDelegation(storeBody, 'store', window.openEditStore);
+        bindDelegation(productBody, 'product', window.openEditProduct);
+      }catch(e){ setStatus('委譲バインド失敗'); }
+}
  rebuildProductPickers(); computeStats();
 
     lastImportAt = new Date().toISOString(); saveMeta();
@@ -1210,22 +1228,42 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     lines.push('POLICY: SW/Cache/APIなし（SAFE MODE）');
     return lines.join('\n');
   }
-  function updateDebug(){if(!DEBUG)return;
-    vFull.textContent=FULL;
-    vPurchaseKey.textContent=PURCHASE_KEY;
-    vStoreKey.textContent=STORE_KEY;
-    vProductKey.textContent=PRODUCT_KEY;
-    vPurchaseCount.textContent=String(purchases.length);
-    vStoreCount.textContent=String(stores.length);
-    vProductCount.textContent=String(products.length);
-    vCatRows.textContent=String(cachedCatRows);
-    vTodayTotal.textContent=yen(cachedToday);
-    vMonthTotal.textContent=yen(cachedMonth);
-    vLastExport.textContent=lastExportAt||'-';
-    vLastImport.textContent=lastImportAt||'-';
-    vUrl.textContent=location.href;
+  function updateDebug(){
+    // v0.7.9: safe DOM query (initが途中で落ちてもログを出す)
+    var _dbg = {
+      log: document.getElementById('dbgLog'),
+      full: document.getElementById('vFull')||document.getElementById('dbgFull'),
+      pKey: document.getElementById('vPurchaseKey'),
+      sKey: document.getElementById('vStoreKey'),
+      prKey: document.getElementById('vProductKey'),
+      pCnt: document.getElementById('vPurchaseCount'),
+      sCnt: document.getElementById('vStoreCount'),
+      prCnt: document.getElementById('vProductCount'),
+      catRows: document.getElementById('vCatRows'),
+      today: document.getElementById('vTodayTotal'),
+      month: document.getElementById('vMonthTotal'),
+      lastExp: document.getElementById('vLastExport'),
+      lastImp: document.getElementById('vLastImport'),
+      url: document.getElementById('vUrl'),
+      now: document.getElementById('vNow'),
+      ua: document.getElementById('vUA')
+    };
+if(!DEBUG)return;
+    if(_dbg.full) _dbg.full.textContent=FULL;
+    if(_dbg.pKey) _dbg.pKey.textContent=PURCHASE_KEY;
+    if(_dbg.sKey) _dbg.sKey.textContent=STORE_KEY;
+    if(_dbg.prKey) _dbg.prKey.textContent=PRODUCT_KEY;
+    if(_dbg.pCnt) _dbg.pCnt.textContent=String(purchases.length);
+    if(_dbg.sCnt) _dbg.sCnt.textContent=String(stores.length);
+    if(_dbg.prCnt) _dbg.prCnt.textContent=String(products.length);
+    if(_dbg.catRows) _dbg.catRows.textContent=String(cachedCatRows);
+    if(_dbg.today) _dbg.today.textContent=yen(cachedToday);
+    if(_dbg.month) _dbg.month.textContent=yen(cachedMonth);
+    if(_dbg.lastExp) _dbg.lastExp.textContent=lastExportAt||'-';
+    if(_dbg.lastImp) _dbg.lastImp.textContent=lastImportAt||'-';
+    if(_dbg.url) _dbg.url.textContent=location.href;
     vUa.textContent=navigator.userAgent;
-    vNow.textContent=new Date().toISOString();
+    if(_dbg.now) _dbg.now.textContent=new Date().toISOString();
     diagText.textContent=buildDiagText();
   }
   function copyDiag(){
@@ -1297,10 +1335,12 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
           try{ openFn(tr.dataset.id); }catch(e){ setStatus('編集を開けません（dblclick）'); }
         }, true);
       }
-      bindDelegation(purchaseBody, 'purchase', window.openEditPurchase);
-      bindDelegation(storeBody, 'store', window.openEditStore);
-      bindDelegation(productBody, 'product', window.openEditProduct);
-    }
+      try{
+        bindDelegation(purchaseBody, 'purchase', window.openEditPurchase);
+        bindDelegation(storeBody, 'store', window.openEditStore);
+        bindDelegation(productBody, 'product', window.openEditProduct);
+      }catch(e){ setStatus('委譲バインド失敗'); }
+}
  rebuildProductPickers(); computeStats();
 
     if(DEBUG){dbgPanel.hidden=false; btnCopyDiag.addEventListener('click',copyDiag);}
