@@ -1,6 +1,6 @@
 /* Smart Price SAFE MODE - minimal CSS (F/G/H) */
 :root{
-  --sp_css_build: '2026-03-02_2120_safemode-j_fix_pbody_debug';
+  --sp_css_build: '2026-03-02_2157_safemode-j_bindglobals';
   --bg:#0f1115; --card:#171a21; --text:#e9edf1; --muted:#aab3bd; --line:#2a2f3a;
   --warn:#ffcc00; --danger:#ff453a; --btn:#222734; --btnHover:#2a3142;
   --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;

@@ -1,11 +1,11 @@
 'use strict';
 /*
 APP: Smart Price
-VERSION: v0.7.10
+VERSION: v0.7.11
 DATE(JST): 2026-02-27 12:10 JST
 TITLE: SAFE MODE 最小構成（H：分類別集計）
 AUTHOR: ChatGPT_Yui
-BUILD_PARAM: ?b=2026-03-02_2138_safemode-j_fix_ensuremodal
+BUILD_PARAM: ?b=2026-03-02_2157_safemode-j_bindglobals
 DEBUG_PARAM: &debug=1
 POLICY: SAFE MODE / 最小構成 / 外部依存なし
 */
@@ -16,7 +16,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     if(typeof window.openEditStore!=='function') window.openEditStore=function(){ };
     if(typeof window.openEditProduct!=='function') window.openEditProduct=function(){ };
   }catch(e){}
-  var APP={NAME:'Smart Price',VERSION:'v0.7.10',AUTHOR:'ChatGPT_Yui',TITLE:'SAFE MODE 最小構成（H：分類別集計）'};
+  var APP={NAME:'Smart Price',VERSION:'v0.7.11',AUTHOR:'ChatGPT_Yui',TITLE:'SAFE MODE 最小構成（H：分類別集計）'};
   var META_KEY='sp_safemode_meta_v1';
   var PURCHASE_KEY='sp_safemode_purchases_v1', STORE_KEY='sp_safemode_stores_v1', PRODUCT_KEY='sp_safemode_products_v1';
   var params=new URLSearchParams(location.search);
@@ -1373,6 +1373,19 @@ if(!DEBUG)return;
     window.ensureModalExists = ensureModalExists;
     window.openModal = openModal;
   }catch(e){}
+
+  // v0.7.11: bind real edit functions to window (placeholders were blocking modal)
+  try{
+    window.openEditPurchase = openEditPurchase;
+    window.openEditStore = openEditStore;
+    window.openEditProduct = openEditProduct;
+    window.__sp_edit_types = {
+      purchase: typeof window.openEditPurchase,
+      store: typeof window.openEditStore,
+      product: typeof window.openEditProduct
+    };
+  }catch(e){}
+
 })();
 
 
