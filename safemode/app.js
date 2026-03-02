@@ -1,11 +1,11 @@
 'use strict';
 /*
 APP: Smart Price
-VERSION: v0.7.11
+VERSION: v0.7.12
 DATE(JST): 2026-02-27 12:10 JST
 TITLE: SAFE MODE 最小構成（H：分類別集計）
 AUTHOR: ChatGPT_Yui
-BUILD_PARAM: ?b=2026-03-02_2157_safemode-j_bindglobals
+BUILD_PARAM: ?b=2026-03-02_2306_safemode-j_fix_confirm_block
 DEBUG_PARAM: &debug=1
 POLICY: SAFE MODE / 最小構成 / 外部依存なし
 */
@@ -16,7 +16,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     if(typeof window.openEditStore!=='function') window.openEditStore=function(){ };
     if(typeof window.openEditProduct!=='function') window.openEditProduct=function(){ };
   }catch(e){}
-  var APP={NAME:'Smart Price',VERSION:'v0.7.11',AUTHOR:'ChatGPT_Yui',TITLE:'SAFE MODE 最小構成（H：分類別集計）'};
+  var APP={NAME:'Smart Price',VERSION:'v0.7.12',AUTHOR:'ChatGPT_Yui',TITLE:'SAFE MODE 最小構成（H：分類別集計）'};
   var META_KEY='sp_safemode_meta_v1';
   var PURCHASE_KEY='sp_safemode_purchases_v1', STORE_KEY='sp_safemode_stores_v1', PRODUCT_KEY='sp_safemode_products_v1';
   var params=new URLSearchParams(location.search);
@@ -264,263 +264,46 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
       __confirmUntil = 0;
       return true;
     }
-  function openModal(){
-    editModal.hidden=false;
-    try{ editModal.scrollIntoView({block:'center'}); }catch(e){}
-    editModal.setAttribute('aria-hidden','false');
-    try{ document.body.style.overflow='hidden'; }catch(e){}
-    // focus close button
-    setTimeout(function(){ try{ btnEditClose.focus(); }catch(e){} }, 0);
-  }
-  function closeModal(){
-    editModal.hidden=true;
-    editModal.setAttribute('aria-hidden','true');
-    __edit={type:'',id:''};
-    __confirmKey=''; __confirmUntil=0;
-    try{ document.body.style.overflow=''; }catch(e){}
-  }
-
-  function setEditMode(mode){
-    // mode: purchase / store / product
-    editRowDate.hidden = (mode!=='purchase');
-    editRowNums.hidden = (mode!=='purchase');
-    editRowMaster.hidden = (mode==='purchase');
-  }
-
-  function fillPurchase(r){
-    eDate.value = (r.date||todayISO());
-    eStore.value = (r.store||'');
-    eName.value  = (r.name||'');
-    ePrice.value = (r.price==null? '' : String(r.price));
-    eQty.value   = (r.qty==null? '1' : String(r.qty));
-    eNote.value  = (r.note||'');
-  }
-
-  function openEditPurchase(id){
-    setStatus('編集を開きます…');
-    if(!ensureModalExists()) return;
-    var r = purchases.find(function(x){return x.id===id;});
-    if(!r) return;
-    __edit={type:'purchase', id:id};
-    setEditMode('purchase');
-    editTitle.textContent = '購入の編集';
-    editHint.textContent = '保存で更新／削除は「削除」ボタンを2回で確定（ブラウザダイアログ無し）';
-    fillPurchase(r);
-    openModal();
-  }
-
-  function openEditStore(id){
-    if(!ensureModalExists()) return;
-    var s = stores.find(function(x){return x.id===id;});
-    if(!s) return;
-    __edit={type:'store', id:id};
-    setEditMode('store');
-    editTitle.textContent = '店の編集';
-    editHint.textContent = '保存で更新／削除は「削除」ボタンを2回で確定';
-    eMasterName.value = s.name||'';
-    eMasterMeta.value = s.note||'';
-    openModal();
-  }
-
-  function openEditProduct(id){
-    if(!ensureModalExists()) return;
-    var p = products.find(function(x){return x.id===id;});
-    if(!p) return;
-    __edit={type:'product', id:id};
-    setEditMode('product');
-    editTitle.textContent = '商品の編集';
-    editHint.textContent = '保存で更新／削除は「削除」ボタンを2回で確定';
-    eMasterName.value = p.name||'';
-    eMasterMeta.value = p.cat||'';
-    openModal();
-  }
-
-  function saveEdit(){
-    if(!__edit.type) return;
-    if(__edit.type==='purchase'){
-      var id=__edit.id;
-      var r = purchases.find(function(x){return x.id===id;});
-      if(!r) return;
-      var obj = validatePurchase({
-        id: id,
-        date: eDate.value || todayISO(),
-        store: (eStore.value||'').trim(),
-        name: (eName.value||'').trim(),
-        price: Number(ePrice.value||0),
-        qty: Number(eQty.value||1),
-        note: (eNote.value||'').trim()
-      });
-      if(!obj){ setStatus('保存できません：必須項目（店/商品/価格）を確認'); return; }
-      // update
-      r.date=obj.date; r.store=obj.store; r.name=obj.name; r.price=obj.price; r.qty=obj.qty; r.note=obj.note;
-      sortPurchases();
-      var syncChanged = syncMastersFromPurchases();
-      if(syncChanged){ sortByName(stores); sortByName(products); }
-      saveAll();
-      renderPurchases(); rebuildStorePickers();
-    // v0.7.8: event delegation (tbody-level)
-    if(!__delegationInstalled){
-      __delegationInstalled=true;
-      function bindDelegation(tbody, type){
-        if(!tbody) return;
-        function getOpenFn(){
-          if(type==='purchase') return window.openEditPurchase;
-          if(type==='store') return window.openEditStore;
-          if(type==='product') return window.openEditProduct;
-          return null;
-        }
-        tbody.addEventListener('click', function(ev){
-          var tr = ev.target && ev.target.closest ? ev.target.closest('tr[data-id]') : null;
-          if(!tr) return;
-          click2Edit(type, tr.dataset.id, tr, getOpenFn());
-        }, true);
-        tbody.addEventListener('dblclick', function(ev){
-          var tr = ev.target && ev.target.closest ? ev.target.closest('tr[data-id]') : null;
-          if(!tr) return;
-          var fn=getOpenFn();
-          try{ if(typeof fn==='function'){ fn(tr.dataset.id); } else { setStatus('編集関数が未初期化です'); } }catch(e){ setStatus('編集を開けません（dblclick）'); }
-        }, true);
-      }
-      try{
-        bindDelegation(purchaseBody, 'purchase');
-        bindDelegation(storeBody, 'store');
-        bindDelegation(productBody, 'product');
-      }catch(e){ setStatus('委譲バインド失敗'); }
-}
- rebuildProductPickers(); computeStats(); updateDebug();
-      setStatus('更新しました（購入）');
-      closeModal();
-      return;
-    }
-    if(__edit.type==='store'){
-      var id=__edit.id;
-      var s=stores.find(function(x){return x.id===id;});
-      if(!s) return;
-      var name=(eMasterName.value||'').trim();
-      if(!name){ setStatus('保存できません：店名が空です'); return; }
-      s.name=name;
-      s.note=(eMasterMeta.value||'').trim();
-      sortByName(stores);
-      saveAll(); rebuildStorePickers();
-    // v0.7.8: event delegation (tbody-level)
-    if(!__delegationInstalled){
-      __delegationInstalled=true;
-      function bindDelegation(tbody, type){
-        if(!tbody) return;
-        tbody.addEventListener('click', function(ev){
-          var tr = ev.target && ev.target.closest ? ev.target.closest('tr[data-id]') : null;
-          if(!tr) return;
-          click2Edit(type, tr.dataset.id, tr, openFn);
-        }, true);
-        tbody.addEventListener('dblclick', function(ev){
-          var tr = ev.target && ev.target.closest ? ev.target.closest('tr[data-id]') : null;
-          if(!tr) return;
-          try{ openFn(tr.dataset.id); }catch(e){ setStatus('編集を開けません（dblclick）'); }
-        }, true);
-      }
-      try{
-        bindDelegation(purchaseBody, 'purchase');
-        bindDelegation(storeBody, 'store');
-        bindDelegation(productBody, 'product');
-      }catch(e){ setStatus('委譲バインド失敗'); }
-}
- computeStats(); updateDebug();
-      setStatus('更新しました（店）');
-      closeModal();
-      return;
-    }
-    if(__edit.type==='product'){
-      var id=__edit.id;
-      var p=products.find(function(x){return x.id===id;});
-      if(!p) return;
-      var name=(eMasterName.value||'').trim();
-      if(!name){ setStatus('保存できません：商品名が空です'); return; }
-      p.name=name;
-      p.cat=(eMasterMeta.value||'').trim();
-      sortByName(products);
-      saveAll(); rebuildProductPickers(); computeStats(); updateDebug();
-      setStatus('更新しました（商品）');
-      closeModal();
-      return;
-    }
-  }
-
-  function deleteEdit(){
-    if(!__edit.type) return;
-    var id=__edit.id;
-    if(__edit.type==='purchase'){
-      var r=purchases.find(function(x){return x.id===id;});
-      if(!r) return;
-      var summary='削除（購入）：'+(r.date||'')+' '+(r.store||'')+' '+(r.name||'');
-      if(!requireConfirm('delPurchaseModal:'+id, summary, btnEditDelete)) return;
-      purchases=purchases.filter(function(x){return x.id!==id;});
-      saveAll(); renderPurchases(); computeStats(); updateDebug();
-      setStatus('削除しました（購入）');
-      closeModal();
-      return;
-    }
-    if(__edit.type==='store'){
-      var s=stores.find(function(x){return x.id===id;});
-      if(!s) return;
-      var summary='削除（店）：'+(s.name||'');
-      if(!requireConfirm('delStoreModal:'+id, summary, btnEditDelete)) return;
-      stores=stores.filter(function(x){return x.id!==id;});
-      saveAll(); rebuildStorePickers();
-    // v0.7.8: event delegation (tbody-level)
-    if(!__delegationInstalled){
-      __delegationInstalled=true;
-      function bindDelegation(tbody, type){
-        if(!tbody) return;
-        tbody.addEventListener('click', function(ev){
-          var tr = ev.target && ev.target.closest ? ev.target.closest('tr[data-id]') : null;
-          if(!tr) return;
-          click2Edit(type, tr.dataset.id, tr, openFn);
-        }, true);
-        tbody.addEventListener('dblclick', function(ev){
-          var tr = ev.target && ev.target.closest ? ev.target.closest('tr[data-id]') : null;
-          if(!tr) return;
-          try{ openFn(tr.dataset.id); }catch(e){ setStatus('編集を開けません（dblclick）'); }
-        }, true);
-      }
-      try{
-        bindDelegation(purchaseBody, 'purchase');
-        bindDelegation(storeBody, 'store');
-        bindDelegation(productBody, 'product');
-      }catch(e){ setStatus('委譲バインド失敗'); }
-}
- computeStats(); updateDebug();
-      setStatus('削除しました（店）');
-      closeModal();
-      return;
-    }
-    if(__edit.type==='product'){
-      var p=products.find(function(x){return x.id===id;});
-      if(!p) return;
-      var summary='削除（商品）：'+(p.name||'');
-      if(!requireConfirm('delProductModal:'+id, summary, btnEditDelete)) return;
-      products=products.filter(function(x){return x.id!==id;});
-      saveAll(); rebuildProductPickers(); computeStats(); updateDebug();
-      setStatus('削除しました（商品）');
-      closeModal();
-      return;
-    }
-  }
-
     __confirmKey = key;
-    __confirmUntil = now + 4500;
+    __confirmUntil = now + 2000; // 2秒以内にもう一度で確定
+    try{ flash(el); }catch(e){}
     setStatus(message + '（もう一度で確定）');
-    if(el) armVisual(el);
     return false;
   }
 
-  document.addEventListener('keydown', function(e){
-    if(e && e.key === 'Escape'){
-      __confirmKey = '';
-      __confirmUntil = 0;
-      setStatus('キャンセルしました');
-      if(__armedEl){ try{ __armedEl.classList.remove('sp-armed'); }catch(_){} }
-    }
-  });
+  function openModal(){
+    try{
+      if(!editModal) return;
+      editModal.hidden=false;
+      editModal.setAttribute('aria-hidden','false');
+      try{ editModal.scrollIntoView({block:'center'}); }catch(e){}
+      try{ document.body.style.overflow='hidden'; }catch(e){}
+      setTimeout(function(){ try{ if(btnEditClose) btnEditClose.focus(); }catch(e){} }, 0);
+    }catch(e){}
+  }
+
+  function closeModal(){
+    try{
+      if(!editModal) return;
+      editModal.hidden=true;
+      editModal.setAttribute('aria-hidden','true');
+      __edit={type:'',id:''};
+      __confirmKey=''; __confirmUntil=0;
+      try{ document.body.style.overflow=''; }catch(e){}
+    }catch(e){}
+  }
+
+  // ESCで「もう一度で確定」を解除
+  try{
+    document.addEventListener('keydown', function(e){
+      if(e && e.key === 'Escape'){
+        __confirmKey = '';
+        __confirmUntil = 0;
+        setStatus('キャンセルしました');
+        if(__armedEl){ try{ __armedEl.classList.remove('sp-armed'); }catch(_){} }
+      }
+    }, true);
+  }catch(e){}
 
   function safeParse(s){try{return JSON.parse(s);}catch(e){return null;}}
   function todayISO(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
