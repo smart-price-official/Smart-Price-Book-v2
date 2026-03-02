@@ -1,11 +1,11 @@
 'use strict';
 /*
 APP: Smart Price
-VERSION: v0.7.12
+VERSION: v0.7.13
 DATE(JST): 2026-02-27 12:10 JST
 TITLE: SAFE MODE 最小構成（H：分類別集計）
 AUTHOR: ChatGPT_Yui
-BUILD_PARAM: ?b=2026-03-02_2306_safemode-j_fix_confirm_block
+BUILD_PARAM: ?b=2026-03-03_0008_safemode-j_editmodal_fnfix
 DEBUG_PARAM: &debug=1
 POLICY: SAFE MODE / 最小構成 / 外部依存なし
 */
@@ -16,14 +16,14 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     if(typeof window.openEditStore!=='function') window.openEditStore=function(){ };
     if(typeof window.openEditProduct!=='function') window.openEditProduct=function(){ };
   }catch(e){}
-  var APP={NAME:'Smart Price',VERSION:'v0.7.12',AUTHOR:'ChatGPT_Yui',TITLE:'SAFE MODE 最小構成（H：分類別集計）'};
+  var APP={NAME:'Smart Price',VERSION:'v0.7.13',AUTHOR:'ChatGPT_Yui',TITLE:'SAFE MODE 最小構成（H：分類別集計）'};
   var META_KEY='sp_safemode_meta_v1';
   var PURCHASE_KEY='sp_safemode_purchases_v1', STORE_KEY='sp_safemode_stores_v1', PRODUCT_KEY='sp_safemode_products_v1';
   var params=new URLSearchParams(location.search);
   var BUILD=(params.get('b')||'no-b').trim();
   var DEBUG=(params.get('debug')==='1');
   var FULL=APP.VERSION+' ['+BUILD+']';
-  var JS_BUILD='2026-03-02_2138_safemode-j_fix_ensuremodal';
+  var JS_BUILD='2026-03-03_0008_safemode-j_editmodal_fnfix';
 
   // v0.7.5: capture runtime errors for report (no DevTools needed)
   var __lastError = '';
@@ -1070,6 +1070,271 @@ if(!DEBUG)return;
     }
     document.body.removeChild(ta);
   }
+
+  // v0.7.13: edit modal handlers (openEditX / saveEdit / deleteEdit) — no alert/confirm
+  function openEditPurchase(id){
+    try{
+      if(!ensureModalExists()) return;
+      var r = purchases.find(function(x){ return x.id===id; });
+      if(!r){ setStatus('購入が見つかりません'); return; }
+
+      __edit = {type:'purchase', id:id};
+
+      editTitle.textContent = '購入を編集';
+      editHint.textContent = '日付：' + (r.date||'') + ' / 店：' + (r.store||'') + ' / 商品：' + (r.name||'');
+
+      editRowDate.hidden = false;
+      editRowNums.hidden = false;
+      editRowMaster.hidden = true;
+
+      eDate.value = r.date || '';
+      eStore.value = r.store || '';
+      eName.value = r.name || '';
+      ePrice.value = String(r.price || '');
+      eQty.value = String(r.qty || 1);
+      eNote.value = r.note || '';
+
+      openModal();
+    }catch(e){
+      setStatus('購入編集でエラー');
+      updateDebug();
+    }
+  }
+
+  function openEditStore(id){
+    try{
+      if(!ensureModalExists()) return;
+      var s = stores.find(function(x){ return x.id===id; });
+      if(!s){ setStatus('店が見つかりません'); return; }
+
+      __edit = {type:'store', id:id};
+
+      editTitle.textContent = '店を編集';
+      editHint.textContent = '登録店：' + (s.name||'');
+
+      editRowDate.hidden = true;
+      editRowNums.hidden = true;
+      editRowMaster.hidden = false;
+
+      eMasterName.value = s.name || '';
+      eMasterMeta.value = s.note || '';
+
+      openModal();
+    }catch(e){
+      setStatus('店編集でエラー');
+      updateDebug();
+    }
+  }
+
+  function openEditProduct(id){
+    try{
+      if(!ensureModalExists()) return;
+      var p = products.find(function(x){ return x.id===id; });
+      if(!p){ setStatus('商品が見つかりません'); return; }
+
+      __edit = {type:'product', id:id};
+
+      editTitle.textContent = '商品を編集';
+      editHint.textContent = '登録商品：' + (p.name||'');
+
+      editRowDate.hidden = true;
+      editRowNums.hidden = true;
+      editRowMaster.hidden = false;
+
+      eMasterName.value = p.name || '';
+      eMasterMeta.value = p.cat || '';
+
+      openModal();
+    }catch(e){
+      setStatus('商品編集でエラー');
+      updateDebug();
+    }
+  }
+
+  function saveEdit(){
+    try{
+      if(!__edit.type || !__edit.id){ setStatus('編集対象が不明です'); return; }
+
+      if(__edit.type === 'purchase'){
+        var r = purchases.find(function(x){ return x.id===__edit.id; });
+        if(!r){ setStatus('購入が見つかりません'); closeModal(); return; }
+
+        var date = norm(eDate.value);
+        var store = norm(eStore.value);
+        var name  = norm(eName.value);
+        var price = Number(ePrice.value);
+        var qty   = Number(eQty.value);
+        var note  = norm(eNote.value);
+
+        if(!date){ setStatus('日付が未入力です'); return; }
+        if(!store){ setStatus('店が未入力です'); return; }
+        if(!name){ setStatus('商品が未入力です'); return; }
+        if(!Number.isFinite(price) || price < 0){ setStatus('価格が不正です'); return; }
+        if(!Number.isFinite(qty) || qty <= 0){ setStatus('個数が不正です'); return; }
+
+        r.date = date;
+        r.store = store;
+        r.name  = name;
+        r.price = price;
+        r.qty   = qty;
+        r.note  = note;
+
+        sortPurchases();
+
+        var masterChanged = false;
+        if(ensureStoreName(store)) masterChanged = true;
+        if(ensureProductName(name)) masterChanged = true;
+
+        saveAll();
+        renderPurchases();
+        if(masterChanged){
+          rebuildStorePickers();
+          rebuildProductPickers();
+        }
+        computeStats();
+        updateDebug();
+
+        setStatus('保存しました（購入）');
+        closeModal();
+        return;
+      }
+
+      if(__edit.type === 'store'){
+        var s = stores.find(function(x){ return x.id===__edit.id; });
+        if(!s){ setStatus('店が見つかりません'); closeModal(); return; }
+
+        var n = norm(eMasterName.value);
+        var note2 = norm(eMasterMeta.value);
+        if(!n){ setStatus('店名が未入力です'); return; }
+
+        var k = key(n);
+        var dup = stores.find(function(x){ return x.id!==__edit.id && key(x.name)===k; });
+        if(dup){ setStatus('同じ店名がすでにあります'); return; }
+
+        s.name = n;
+        s.note = note2;
+
+        sortByName(stores);
+        saveAll();
+        rebuildStorePickers();
+        computeStats();
+        updateDebug();
+
+        setStatus('保存しました（店）');
+        closeModal();
+        return;
+      }
+
+      if(__edit.type === 'product'){
+        var p = products.find(function(x){ return x.id===__edit.id; });
+        if(!p){ setStatus('商品が見つかりません'); closeModal(); return; }
+
+        var pn = norm(eMasterName.value);
+        var cat = norm(eMasterMeta.value);
+        if(!pn){ setStatus('商品名が未入力です'); return; }
+
+        var pk = key(pn);
+        var dup2 = products.find(function(x){ return x.id!==__edit.id && key(x.name)===pk; });
+        if(dup2){ setStatus('同じ商品名がすでにあります'); return; }
+
+        p.name = pn;
+        p.cat = cat;
+
+        sortByName(products);
+        saveAll();
+        rebuildProductPickers();
+        computeStats();
+        updateDebug();
+
+        setStatus('保存しました（商品）');
+        closeModal();
+        return;
+      }
+    }catch(e){
+      setStatus('保存でエラー');
+      updateDebug();
+    }
+  }
+
+  function deleteEdit(){
+    try{
+      if(!__edit.type || !__edit.id){ setStatus('削除対象が不明です'); return; }
+
+      var summary = '';
+      var confirmKey = '';
+
+      if(__edit.type === 'purchase'){
+        var r = purchases.find(function(x){ return x.id===__edit.id; });
+        if(!r){ setStatus('購入が見つかりません'); closeModal(); return; }
+
+        summary = '削除：' + (r.date||'') + ' ' + (r.store||'') + ' ' + (r.name||'');
+        confirmKey = 'delPurchase:' + __edit.id;
+
+        if(!requireConfirm(confirmKey, summary, btnEditDelete)) return;
+
+        purchases = purchases.filter(function(x){ return x.id!==__edit.id; });
+        saveAll();
+        renderPurchases();
+        computeStats();
+        updateDebug();
+        setStatus('削除しました（購入）');
+        closeModal();
+        return;
+      }
+
+      if(__edit.type === 'store'){
+        var s = stores.find(function(x){ return x.id===__edit.id; });
+        if(!s){ setStatus('店が見つかりません'); closeModal(); return; }
+
+        summary = '店を削除：' + (s.name||'');
+        confirmKey = 'delStore:' + __edit.id;
+
+        if(!requireConfirm(confirmKey, summary, btnEditDelete)) return;
+
+        stores = stores.filter(function(x){ return x.id!==__edit.id; });
+        saveAll();
+        rebuildStorePickers();
+        computeStats();
+        updateDebug();
+        setStatus('削除しました（店）');
+        closeModal();
+        return;
+      }
+
+      if(__edit.type === 'product'){
+        var p = products.find(function(x){ return x.id===__edit.id; });
+        if(!p){ setStatus('商品が見つかりません'); closeModal(); return; }
+
+        summary = '商品を削除：' + (p.name||'');
+        confirmKey = 'delProduct:' + __edit.id;
+
+        if(!requireConfirm(confirmKey, summary, btnEditDelete)) return;
+
+        products = products.filter(function(x){ return x.id!==__edit.id; });
+        saveAll();
+        rebuildProductPickers();
+        computeStats();
+        updateDebug();
+        setStatus('削除しました（商品）');
+        closeModal();
+        return;
+      }
+    }catch(e){
+      setStatus('削除でエラー');
+      updateDebug();
+    }
+  }
+
+  // v0.7.13: expose edit functions to window for delegated handlers
+  try{
+    window.openEditPurchase = openEditPurchase;
+    window.openEditStore = openEditStore;
+    window.openEditProduct = openEditProduct;
+    window.saveEdit = saveEdit;
+    window.deleteEdit = deleteEdit;
+  }catch(e){}
+
+
 
   function init(){
     var __delegationInstalled = false;
