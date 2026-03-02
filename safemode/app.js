@@ -1,11 +1,11 @@
 'use strict';
 /*
 APP: Smart Price
-VERSION: v0.7.9
+VERSION: v0.7.10
 DATE(JST): 2026-02-27 12:10 JST
 TITLE: SAFE MODE 最小構成（H：分類別集計）
 AUTHOR: ChatGPT_Yui
-BUILD_PARAM: ?b=2026-03-02_2120_safemode-j_fix_pbody_debug
+BUILD_PARAM: ?b=2026-03-02_2138_safemode-j_fix_ensuremodal
 DEBUG_PARAM: &debug=1
 POLICY: SAFE MODE / 最小構成 / 外部依存なし
 */
@@ -16,14 +16,14 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     if(typeof window.openEditStore!=='function') window.openEditStore=function(){ };
     if(typeof window.openEditProduct!=='function') window.openEditProduct=function(){ };
   }catch(e){}
-  var APP={NAME:'Smart Price',VERSION:'v0.7.9',AUTHOR:'ChatGPT_Yui',TITLE:'SAFE MODE 最小構成（H：分類別集計）'};
+  var APP={NAME:'Smart Price',VERSION:'v0.7.10',AUTHOR:'ChatGPT_Yui',TITLE:'SAFE MODE 最小構成（H：分類別集計）'};
   var META_KEY='sp_safemode_meta_v1';
   var PURCHASE_KEY='sp_safemode_purchases_v1', STORE_KEY='sp_safemode_stores_v1', PRODUCT_KEY='sp_safemode_products_v1';
   var params=new URLSearchParams(location.search);
   var BUILD=(params.get('b')||'no-b').trim();
   var DEBUG=(params.get('debug')==='1');
   var FULL=APP.VERSION+' ['+BUILD+']';
-  var JS_BUILD='2026-03-02_2120_safemode-j_fix_pbody_debug';
+  var JS_BUILD='2026-03-02_2138_safemode-j_fix_ensuremodal';
 
   // v0.7.5: capture runtime errors for report (no DevTools needed)
   var __lastError = '';
@@ -115,86 +115,61 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
   var __edit = {type:'', id:''};
 
   function ensureModalExists(){
-    // もし index.html 側が更新されていない等でモーダル要素が無い場合でも、JS側で生成して復旧する
-    if(editModal && btnEditClose && btnEditSave && btnEditDelete) try{ editModal.style.zIndex='99999'; editModal.style.position='fixed'; }catch(e){}
-    return true;
-
-    var existing = document.getElementById('editModal');
-    if(!existing){
-      var wrap = document.createElement('div');
-      wrap.innerHTML = '<div class="modal" id="editModal" hidden aria-hidden="true">'+
-        '<div class="modal__backdrop" id="editBackdrop"></div>'+
-        '<div class="modal__panel" role="dialog" aria-modal="true" aria-label="edit panel">'+
-          '<div class="modal__head">'+
-            '<div class="modal__title" id="editTitle">編集</div>'+
-            '<button class="btn btn--sub modal__close" type="button" id="btnEditClose">閉じる</button>'+
-          '</div>'+
-          '<div class="modal__body">'+
-            '<div class="modal__note" id="editHint">-</div>'+
-            '<div class="form__row" id="editRowDate">'+
-              '<label class="field"><div class="field__k">日付</div><input class="field__v" type="date" id="eDate"></label>'+
-              '<label class="field"><div class="field__k">店</div><input class="field__v" type="text" id="eStore" list="storeDatalist"></label>'+
-              '<label class="field field--wide"><div class="field__k">商品</div><input class="field__v" type="text" id="eName" list="productDatalist"></label>'+
-            '</div>'+
-            '<div class="form__row" id="editRowNums">'+
-              '<label class="field"><div class="field__k">価格</div><input class="field__v" type="number" id="ePrice" inputmode="numeric"></label>'+
-              '<label class="field"><div class="field__k">個数</div><input class="field__v" type="number" id="eQty" inputmode="numeric" min="1"></label>'+
-              '<label class="field field--wide"><div class="field__k">メモ</div><input class="field__v" type="text" id="eNote"></label>'+
-            '</div>'+
-            '<div class="form__row" id="editRowMaster">'+
-              '<label class="field field--wide"><div class="field__k">名前</div><input class="field__v" type="text" id="eMasterName"></label>'+
-              '<label class="field field--wide"><div class="field__k">分類/メモ</div><input class="field__v" type="text" id="eMasterMeta"></label>'+
-            '</div>'+
-          '</div>'+
-          '<div class="modal__foot">'+
-            '<button class="btn" type="button" id="btnEditSave">保存</button>'+
-            '<button class="btn btn--danger" type="button" id="btnEditDelete">削除</button>'+
-          '</div>'+
-        '</div>'+
-      '</div>';
-      document.body.appendChild(wrap.firstChild);
-    }
-  function publishGlobals(){
     try{
-      // overwrite with real functions (function declarations are hoisted in this file)
-      window.openEditPurchase = openEditPurchase;
-      window.openEditStore = openEditStore;
-      window.openEditProduct = openEditProduct;
-      window.ensureModalExists = ensureModalExists;
-    }catch(e){}
-  }
+      // 既に参照が揃っているならそれを使う
+      if(editModal && btnEditClose && btnEditSave && btnEditDelete){
+        try{ editModal.style.zIndex='99999'; editModal.style.position='fixed'; }catch(e){}
+        return true;
+      }
+      // DOMに無ければ生成
+      var existing = document.getElementById('editModal');
+      if(!existing){
+        var wrap = document.createElement('div');
+        wrap.innerHTML = '<div class="modal" id="editModal" hidden aria-hidden="true">'+
+          '<div class="modal__backdrop" id="editBackdrop"></div>'+
+          '<div class="modal__panel" role="dialog" aria-modal="true" aria-label="edit panel">'+
+            '<div class="modal__head">'+
+              '<div class="modal__title" id="editTitle">編集</div>'+
+              '<button class="btn btn--sub modal__close" type="button" id="btnEditClose">閉じる</button>'+
+            '</div>'+
+            '<div class="modal__body">'+
+              '<p class="modal__note" id="editHint"></p>'+
+              '<div class="form" id="editForm"></div>'+
+            '</div>'+
+            '<div class="modal__foot">'+
+              '<button class="btn" type="button" id="btnEditSave">保存</button>'+
+              '<button class="btn btn--danger" type="button" id="btnEditDelete">削除</button>'+
+            '</div>'+
+          '</div>'+
+        '</div>';
+        document.body.appendChild(wrap.firstChild);
+      }
+      // 参照を再取得（生成後に必須）
+      editModal = document.getElementById('editModal');
+      editBackdrop = document.getElementById('editBackdrop');
+      editTitle = document.getElementById('editTitle');
+      editHint = document.getElementById('editHint');
+      editForm = document.getElementById('editForm');
+      btnEditClose = document.getElementById('btnEditClose');
+      btnEditSave = document.getElementById('btnEditSave');
+      btnEditDelete = document.getElementById('btnEditDelete');
 
-
-    // refs を取り直す（var で宣言済みなので代入のみ）
-    editModal = document.getElementById('editModal');
-    editBackdrop = document.getElementById('editBackdrop');
-    btnEditClose = document.getElementById('btnEditClose');
-    editTitle = document.getElementById('editTitle');
-    editHint = document.getElementById('editHint');
-
-    eDate = document.getElementById('eDate');
-    eStore = document.getElementById('eStore');
-    eName = document.getElementById('eName');
-    ePrice = document.getElementById('ePrice');
-    eQty = document.getElementById('eQty');
-    eNote = document.getElementById('eNote');
-
-    eMasterName = document.getElementById('eMasterName');
-    eMasterMeta = document.getElementById('eMasterMeta');
-
-    editRowDate = document.getElementById('editRowDate');
-    editRowNums = document.getElementById('editRowNums');
-    editRowMaster = document.getElementById('editRowMaster');
-
-    btnEditSave = document.getElementById('btnEditSave');
-    btnEditDelete = document.getElementById('btnEditDelete');
-
-    if(!editModal || !btnEditClose || !btnEditSave || !btnEditDelete){
-      setStatus('編集画面の初期化に失敗しました（ファイル差し替えを確認してください）');
+      // 1回だけ閉じる導線をバインド
+      if(editModal && !editModal.dataset.bound){
+        editModal.dataset.bound='1';
+        try{ if(btnEditClose) btnEditClose.addEventListener('click', closeModal); }catch(e){}
+        try{ if(editBackdrop) editBackdrop.addEventListener('click', closeModal); }catch(e){}
+        try{
+          document.addEventListener('keydown', function(ev){
+            if(ev && ev.key==='Escape'){ try{ closeModal(); }catch(e){} }
+          }, true);
+        }catch(e){}
+      }
+      try{ if(editModal){ editModal.style.zIndex='99999'; editModal.style.position='fixed'; } }catch(e){}
+      return !!editModal;
+    }catch(e){
       return false;
     }
-    try{ editModal.style.zIndex='99999'; editModal.style.position='fixed'; }catch(e){}
-    return true;
   }
 
 
@@ -386,23 +361,30 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     // v0.7.8: event delegation (tbody-level)
     if(!__delegationInstalled){
       __delegationInstalled=true;
-      function bindDelegation(tbody, type, openFn){
+      function bindDelegation(tbody, type){
         if(!tbody) return;
+        function getOpenFn(){
+          if(type==='purchase') return window.openEditPurchase;
+          if(type==='store') return window.openEditStore;
+          if(type==='product') return window.openEditProduct;
+          return null;
+        }
         tbody.addEventListener('click', function(ev){
           var tr = ev.target && ev.target.closest ? ev.target.closest('tr[data-id]') : null;
           if(!tr) return;
-          click2Edit(type, tr.dataset.id, tr, openFn);
+          click2Edit(type, tr.dataset.id, tr, getOpenFn());
         }, true);
         tbody.addEventListener('dblclick', function(ev){
           var tr = ev.target && ev.target.closest ? ev.target.closest('tr[data-id]') : null;
           if(!tr) return;
-          try{ openFn(tr.dataset.id); }catch(e){ setStatus('編集を開けません（dblclick）'); }
+          var fn=getOpenFn();
+          try{ if(typeof fn==='function'){ fn(tr.dataset.id); } else { setStatus('編集関数が未初期化です'); } }catch(e){ setStatus('編集を開けません（dblclick）'); }
         }, true);
       }
       try{
-        bindDelegation(purchaseBody, 'purchase', window.openEditPurchase);
-        bindDelegation(storeBody, 'store', window.openEditStore);
-        bindDelegation(productBody, 'product', window.openEditProduct);
+        bindDelegation(purchaseBody, 'purchase');
+        bindDelegation(storeBody, 'store');
+        bindDelegation(productBody, 'product');
       }catch(e){ setStatus('委譲バインド失敗'); }
 }
  rebuildProductPickers(); computeStats(); updateDebug();
@@ -423,7 +405,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     // v0.7.8: event delegation (tbody-level)
     if(!__delegationInstalled){
       __delegationInstalled=true;
-      function bindDelegation(tbody, type, openFn){
+      function bindDelegation(tbody, type){
         if(!tbody) return;
         tbody.addEventListener('click', function(ev){
           var tr = ev.target && ev.target.closest ? ev.target.closest('tr[data-id]') : null;
@@ -437,9 +419,9 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
         }, true);
       }
       try{
-        bindDelegation(purchaseBody, 'purchase', window.openEditPurchase);
-        bindDelegation(storeBody, 'store', window.openEditStore);
-        bindDelegation(productBody, 'product', window.openEditProduct);
+        bindDelegation(purchaseBody, 'purchase');
+        bindDelegation(storeBody, 'store');
+        bindDelegation(productBody, 'product');
       }catch(e){ setStatus('委譲バインド失敗'); }
 }
  computeStats(); updateDebug();
@@ -487,7 +469,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     // v0.7.8: event delegation (tbody-level)
     if(!__delegationInstalled){
       __delegationInstalled=true;
-      function bindDelegation(tbody, type, openFn){
+      function bindDelegation(tbody, type){
         if(!tbody) return;
         tbody.addEventListener('click', function(ev){
           var tr = ev.target && ev.target.closest ? ev.target.closest('tr[data-id]') : null;
@@ -501,9 +483,9 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
         }, true);
       }
       try{
-        bindDelegation(purchaseBody, 'purchase', window.openEditPurchase);
-        bindDelegation(storeBody, 'store', window.openEditStore);
-        bindDelegation(productBody, 'product', window.openEditProduct);
+        bindDelegation(purchaseBody, 'purchase');
+        bindDelegation(storeBody, 'store');
+        bindDelegation(productBody, 'product');
       }catch(e){ setStatus('委譲バインド失敗'); }
 }
  computeStats(); updateDebug();
@@ -778,7 +760,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     // v0.7.8: event delegation (tbody-level)
     if(!__delegationInstalled){
       __delegationInstalled=true;
-      function bindDelegation(tbody, type, openFn){
+      function bindDelegation(tbody, type){
         if(!tbody) return;
         tbody.addEventListener('click', function(ev){
           var tr = ev.target && ev.target.closest ? ev.target.closest('tr[data-id]') : null;
@@ -792,9 +774,9 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
         }, true);
       }
       try{
-        bindDelegation(purchaseBody, 'purchase', window.openEditPurchase);
-        bindDelegation(storeBody, 'store', window.openEditStore);
-        bindDelegation(productBody, 'product', window.openEditProduct);
+        bindDelegation(purchaseBody, 'purchase');
+        bindDelegation(storeBody, 'store');
+        bindDelegation(productBody, 'product');
       }catch(e){ setStatus('委譲バインド失敗'); }
 }
  computeStats(); updateDebug();
@@ -808,7 +790,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     // v0.7.8: event delegation (tbody-level)
     if(!__delegationInstalled){
       __delegationInstalled=true;
-      function bindDelegation(tbody, type, openFn){
+      function bindDelegation(tbody, type){
         if(!tbody) return;
         tbody.addEventListener('click', function(ev){
           var tr = ev.target && ev.target.closest ? ev.target.closest('tr[data-id]') : null;
@@ -822,9 +804,9 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
         }, true);
       }
       try{
-        bindDelegation(purchaseBody, 'purchase', window.openEditPurchase);
-        bindDelegation(storeBody, 'store', window.openEditStore);
-        bindDelegation(productBody, 'product', window.openEditProduct);
+        bindDelegation(purchaseBody, 'purchase');
+        bindDelegation(storeBody, 'store');
+        bindDelegation(productBody, 'product');
       }catch(e){ setStatus('委譲バインド失敗'); }
 }
  computeStats(); updateDebug();
@@ -878,7 +860,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     // v0.7.8: event delegation (tbody-level)
     if(!__delegationInstalled){
       __delegationInstalled=true;
-      function bindDelegation(tbody, type, openFn){
+      function bindDelegation(tbody, type){
         if(!tbody) return;
         tbody.addEventListener('click', function(ev){
           var tr = ev.target && ev.target.closest ? ev.target.closest('tr[data-id]') : null;
@@ -892,9 +874,9 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
         }, true);
       }
       try{
-        bindDelegation(purchaseBody, 'purchase', window.openEditPurchase);
-        bindDelegation(storeBody, 'store', window.openEditStore);
-        bindDelegation(productBody, 'product', window.openEditProduct);
+        bindDelegation(purchaseBody, 'purchase');
+        bindDelegation(storeBody, 'store');
+        bindDelegation(productBody, 'product');
       }catch(e){ setStatus('委譲バインド失敗'); }
 }
  rebuildProductPickers();}
@@ -927,7 +909,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     // v0.7.8: event delegation (tbody-level)
     if(!__delegationInstalled){
       __delegationInstalled=true;
-      function bindDelegation(tbody, type, openFn){
+      function bindDelegation(tbody, type){
         if(!tbody) return;
         tbody.addEventListener('click', function(ev){
           var tr = ev.target && ev.target.closest ? ev.target.closest('tr[data-id]') : null;
@@ -941,9 +923,9 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
         }, true);
       }
       try{
-        bindDelegation(purchaseBody, 'purchase', window.openEditPurchase);
-        bindDelegation(storeBody, 'store', window.openEditStore);
-        bindDelegation(productBody, 'product', window.openEditProduct);
+        bindDelegation(purchaseBody, 'purchase');
+        bindDelegation(storeBody, 'store');
+        bindDelegation(productBody, 'product');
       }catch(e){ setStatus('委譲バインド失敗'); }
 }
  rebuildProductPickers(); computeStats(); updateDebug();
@@ -958,7 +940,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     // v0.7.8: event delegation (tbody-level)
     if(!__delegationInstalled){
       __delegationInstalled=true;
-      function bindDelegation(tbody, type, openFn){
+      function bindDelegation(tbody, type){
         if(!tbody) return;
         tbody.addEventListener('click', function(ev){
           var tr = ev.target && ev.target.closest ? ev.target.closest('tr[data-id]') : null;
@@ -972,9 +954,9 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
         }, true);
       }
       try{
-        bindDelegation(purchaseBody, 'purchase', window.openEditPurchase);
-        bindDelegation(storeBody, 'store', window.openEditStore);
-        bindDelegation(productBody, 'product', window.openEditProduct);
+        bindDelegation(purchaseBody, 'purchase');
+        bindDelegation(storeBody, 'store');
+        bindDelegation(productBody, 'product');
       }catch(e){ setStatus('委譲バインド失敗'); }
 }
  rebuildProductPickers(); computeStats(); updateDebug();
@@ -1135,7 +1117,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     // v0.7.8: event delegation (tbody-level)
     if(!__delegationInstalled){
       __delegationInstalled=true;
-      function bindDelegation(tbody, type, openFn){
+      function bindDelegation(tbody, type){
         if(!tbody) return;
         tbody.addEventListener('click', function(ev){
           var tr = ev.target && ev.target.closest ? ev.target.closest('tr[data-id]') : null;
@@ -1149,9 +1131,9 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
         }, true);
       }
       try{
-        bindDelegation(purchaseBody, 'purchase', window.openEditPurchase);
-        bindDelegation(storeBody, 'store', window.openEditStore);
-        bindDelegation(productBody, 'product', window.openEditProduct);
+        bindDelegation(purchaseBody, 'purchase');
+        bindDelegation(storeBody, 'store');
+        bindDelegation(productBody, 'product');
       }catch(e){ setStatus('委譲バインド失敗'); }
 }
  rebuildProductPickers(); computeStats();
@@ -1322,7 +1304,7 @@ if(!DEBUG)return;
     // v0.7.8: event delegation (tbody-level)
     if(!__delegationInstalled){
       __delegationInstalled=true;
-      function bindDelegation(tbody, type, openFn){
+      function bindDelegation(tbody, type){
         if(!tbody) return;
         tbody.addEventListener('click', function(ev){
           var tr = ev.target && ev.target.closest ? ev.target.closest('tr[data-id]') : null;
@@ -1336,9 +1318,9 @@ if(!DEBUG)return;
         }, true);
       }
       try{
-        bindDelegation(purchaseBody, 'purchase', window.openEditPurchase);
-        bindDelegation(storeBody, 'store', window.openEditStore);
-        bindDelegation(productBody, 'product', window.openEditProduct);
+        bindDelegation(purchaseBody, 'purchase');
+        bindDelegation(storeBody, 'store');
+        bindDelegation(productBody, 'product');
       }catch(e){ setStatus('委譲バインド失敗'); }
 }
  rebuildProductPickers(); computeStats();
