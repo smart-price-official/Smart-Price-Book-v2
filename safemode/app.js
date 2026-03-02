@@ -1,23 +1,29 @@
 'use strict';
 /*
 APP: Smart Price
-VERSION: v0.7.6
+VERSION: v0.7.7
 DATE(JST): 2026-02-27 12:10 JST
 TITLE: SAFE MODE 最小構成（H：分類別集計）
 AUTHOR: ChatGPT_Yui
-BUILD_PARAM: ?b=2026-02-27_1939_safemode-j_cssjs_stamp_openfn2
+BUILD_PARAM: ?b=2026-02-27_2109_safemode-j_modalforce_noor
 DEBUG_PARAM: &debug=1
 POLICY: SAFE MODE / 最小構成 / 外部依存なし
 */
 (function(){
-  var APP={NAME:'Smart Price',VERSION:'v0.7.6',AUTHOR:'ChatGPT_Yui',TITLE:'SAFE MODE 最小構成（H：分類別集計）'};
+  // v0.7.7: early placeholders (prevent TypeError/ReferenceError)
+  try{
+    if(typeof window.openEditPurchase!=='function') window.openEditPurchase=function(){ };
+    if(typeof window.openEditStore!=='function') window.openEditStore=function(){ };
+    if(typeof window.openEditProduct!=='function') window.openEditProduct=function(){ };
+  }catch(e){}
+  var APP={NAME:'Smart Price',VERSION:'v0.7.7',AUTHOR:'ChatGPT_Yui',TITLE:'SAFE MODE 最小構成（H：分類別集計）'};
   var META_KEY='sp_safemode_meta_v1';
   var PURCHASE_KEY='sp_safemode_purchases_v1', STORE_KEY='sp_safemode_stores_v1', PRODUCT_KEY='sp_safemode_products_v1';
   var params=new URLSearchParams(location.search);
   var BUILD=(params.get('b')||'no-b').trim();
   var DEBUG=(params.get('debug')==='1');
   var FULL=APP.VERSION+' ['+BUILD+']';
-  var JS_BUILD='2026-02-27_1939_safemode-j_cssjs_stamp_openfn2';
+  var JS_BUILD='2026-02-27_2109_safemode-j_modalforce_noor';
 
   // v0.7.5: capture runtime errors for report (no DevTools needed)
   var __lastError = '';
@@ -149,16 +155,11 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     }
   function publishGlobals(){
     try{
-      // placeholders to avoid ReferenceError even if JS/CSS were not replaced correctly
-      if(typeof window.openEditPurchase!=='function') window.openEditPurchase=function(){ setStatus('編集（購入）未初期化'); };
-      if(typeof window.openEditStore!=='function') window.openEditStore=function(){ setStatus('編集（店）未初期化'); };
-      if(typeof window.openEditProduct!=='function') window.openEditProduct=function(){ setStatus('編集（商品）未初期化'); };
-      if(typeof window.ensureModalExists!=='function') window.ensureModalExists=function(){ return false; };
-      // upgrade to real functions if present
-      if(typeof openEditPurchase==='function') window.openEditPurchase=openEditPurchase;
-      if(typeof openEditStore==='function') window.openEditStore=openEditStore;
-      if(typeof openEditProduct==='function') window.openEditProduct=openEditProduct;
-      if(typeof ensureModalExists==='function') window.ensureModalExists=ensureModalExists;
+      // overwrite with real functions (function declarations are hoisted in this file)
+      window.openEditPurchase = openEditPurchase;
+      window.openEditStore = openEditStore;
+      window.openEditProduct = openEditProduct;
+      window.ensureModalExists = ensureModalExists;
     }catch(e){}
   }
 
@@ -256,7 +257,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     var now = Date.now();
     if(__rowClick.key === key && (now - __rowClick.t) <= 650){
       __rowClick.key=''; __rowClick.t=0;
-      if(openFn){ try{ openFn(id); }catch(e){ setStatus('編集を開けません（openFn）'); } }
+      if(openFn){ try{ if(typeof openFn==='function'){ openFn(id); } else { setStatus('編集関数が未初期化です（openFn）'); } }catch(e){ setStatus('編集を開けません（openFn）'); } }
       return;
     }
     __rowClick.key = key;
@@ -264,6 +265,12 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     try{ flash(el); }catch(e){}
     setStatus('選択しました。もう一度クリックで編集（ダブルクリックでもOK）');
     setTimeout(function(){
+  // v0.7.7: early placeholders (prevent TypeError/ReferenceError)
+  try{
+    if(typeof window.openEditPurchase!=='function') window.openEditPurchase=function(){ };
+    if(typeof window.openEditStore!=='function') window.openEditStore=function(){ };
+    if(typeof window.openEditProduct!=='function') window.openEditProduct=function(){ };
+  }catch(e){}
       if(__rowClick.key === key && (Date.now() - __rowClick.t) > 650){
         __rowClick.key=''; __rowClick.t=0;
       }
@@ -523,7 +530,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
 
       // v0.7.2: クリック2回で編集（dblclick不発の保険）
       tr.addEventListener('click', function(){
-        click2Edit('purchase', this.dataset.id, this, window.openEditPurchase || openEditPurchase);
+        click2Edit('purchase', this.dataset.id, this, window.openEditPurchase);
       });
 
       // PC: ダブルクリック
@@ -542,6 +549,12 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
       tr.addEventListener('pointerdown', function(){
         var id = this.dataset.id;
         pressTimer = setTimeout(function(){
+  // v0.7.7: early placeholders (prevent TypeError/ReferenceError)
+  try{
+    if(typeof window.openEditPurchase!=='function') window.openEditPurchase=function(){ };
+    if(typeof window.openEditStore!=='function') window.openEditStore=function(){ };
+    if(typeof window.openEditProduct!=='function') window.openEditProduct=function(){ };
+  }catch(e){}
           window.openEditPurchase(id);
         }, 650);
       });
@@ -629,7 +642,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
 
       // 表：行操作で削除（誤操作防止）
       var tr=document.createElement('tr'); tr.dataset.id=s.id;
-      tr.addEventListener('click', function(){ click2Edit('store', this.dataset.id, this, window.openEditStore || openEditStore); });
+      tr.addEventListener('click', function(){ click2Edit('store', this.dataset.id, this, window.openEditStore); });
 
       tr.addEventListener('dblclick', function(){ window.openEditStore(this.dataset.id); });
       tr.addEventListener('contextmenu', function(e){ e.preventDefault(); window.openEditStore(this.dataset.id); });
@@ -664,7 +677,7 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
 
       // 表：行操作で削除（誤操作防止）
       var tr=document.createElement('tr'); tr.dataset.id=p.id;
-      tr.addEventListener('click', function(){ click2Edit('product', this.dataset.id, this, window.openEditProduct || openEditProduct); });
+      tr.addEventListener('click', function(){ click2Edit('product', this.dataset.id, this, window.openEditProduct); });
 
       tr.addEventListener('dblclick', function(){ window.openEditProduct(this.dataset.id); });
       tr.addEventListener('contextmenu', function(e){ e.preventDefault(); window.openEditProduct(this.dataset.id); });
@@ -1027,8 +1040,20 @@ POLICY: SAFE MODE / 最小構成 / 外部依存なし
     var text = buildDiagText();
     if(navigator.clipboard && navigator.clipboard.writeText){
       navigator.clipboard.writeText(text).then(function(){
+  // v0.7.7: early placeholders (prevent TypeError/ReferenceError)
+  try{
+    if(typeof window.openEditPurchase!=='function') window.openEditPurchase=function(){ };
+    if(typeof window.openEditStore!=='function') window.openEditStore=function(){ };
+    if(typeof window.openEditProduct!=='function') window.openEditProduct=function(){ };
+  }catch(e){}
         setStatus('診断ログをコピーしました');
       }).catch(function(){
+  // v0.7.7: early placeholders (prevent TypeError/ReferenceError)
+  try{
+    if(typeof window.openEditPurchase!=='function') window.openEditPurchase=function(){ };
+    if(typeof window.openEditStore!=='function') window.openEditStore=function(){ };
+    if(typeof window.openEditProduct!=='function') window.openEditProduct=function(){ };
+  }catch(e){}
         fallbackCopy(text);
       });
     } else {
