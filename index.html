@@ -4915,7 +4915,7 @@ function startScanner() {
       ensureManualEntryDom();
       try{ suppressQrcodeGuides(); setTimeout(suppressQrcodeGuides, 80); setTimeout(suppressQrcodeGuides, 250); setTimeout(suppressQrcodeGuides, 700);}catch(e){}
       
-      showToast("読み取りOK", 1500);
+      showToast(\`✅ 読取: ${t}\`, 3000);
       
       // ✅ P0: 取得できたら track.applyConstraints() を段階的にtry
       try {
@@ -5011,7 +5011,13 @@ function startScanner() {
       await stopScanner();
       
       // ✅ 共通処理へ（手入力と同じ）
-      await processBarcodeData(t);
+      showToast(\`⏳ 処理開始: ${t}\`, 3000);
+      try {
+        await processBarcodeData(t);
+      } catch(scanErr) {
+        showToast(\`❌ エラー: ${scanErr && scanErr.message ? scanErr.message : scanErr}\`, 8000);
+        console.error('[ScanCallback] processBarcodeData error:', scanErr);
+      }
     }).catch((err) => {
       // ✅ P0: スキャナー起動失敗時の詳細なエラーハンドリング
       let errorMsg = "起動失敗";
@@ -5612,6 +5618,8 @@ return true;
 
   // ✅ バーコードデータ処理（スキャン/手入力共通）with OFF優先 + dirtyフラグ保護 + P0タイムラグ対策
   async function processBarcodeData(code) {
+    // 診断: 関数に入ったことを常時表示
+    showToast(`🔍 解析開始: ${String(code).substring(0,6)}...`, 2000);
     // ✅ P0: JAN正規化（数字のみに統一・空白・ハイフン除去）
     let jan = normalizeJan(code);
     
@@ -5628,12 +5636,8 @@ return true;
     
     // ✅ P0: チェックデジット検証
     if (!validateJanCheckDigit(jan)) {
-      const errorMsg = `バーコードのチェックデジットが不正です: ${jan}`;
-      showToast(errorMsg, 5000);
-      if (isDebug()) {
-        console.error("[ProcessBarcode] Invalid check digit:", jan);
-        addErrorLog(`[JAN Check Digit Error] ${errorMsg}`);
-      }
+      const errorMsg = `❌ チェックデジット不正: ${jan}`;
+      showToast(errorMsg, 6000);
       return; // チェックデジット不正の場合は処理を中止
     }
     
