@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.3.0";
+  const APP_VERSION = "v23.3.1";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-11_scan-debug";
+  const BUILD_ID = "2026-03-11_wrapper-fix";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -716,19 +716,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 
 <script>
 // === SAFETY WRAPPERS (keep onclick working) ===
-window.startScanner = window.startScanner || function() {
-  try {
-    // 手入力で隠した要素を復帰
-    try{ document.querySelectorAll('.scan-frame,.scan-laser').forEach(el=>el.style.display='block'); }catch(e){}
-    try{ const inter=document.getElementById('interactive'); if(inter){ inter.style.pointerEvents='auto'; } }catch(e){}
-    if (typeof startScannerImpl === 'function') return startScannerImpl();
-    if (typeof SmartPriceScanner?.start === 'function') return SmartPriceScanner.start();
-    if (typeof openScanner === 'function') return openScanner();
-    if (typeof showToast === 'function') showToast('スキャン機能の初期化に失敗しました（startScanner未接続）');
-  } catch(e) {
-    try { if (typeof showToast==='function') showToast('スキャン起動エラー: ' + (e?.message||e)); } catch(_){}
-  }
-};
+// startScanner SAFETY WRAPPER removed - function defined below
 window.showVeggieMenu = window.showVeggieMenu || function() {
   try {
     if (typeof showVeggieMenuImpl === 'function') return showVeggieMenuImpl();
@@ -5054,6 +5042,7 @@ function startScanner() {
       }
     }, 300); // カメラ起動後0.3秒待ってから実行
   }
+  window.startScanner = startScanner; // ← windowに登録
 
 
   // ===== ネイティブ BarcodeDetector =====
