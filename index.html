@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.3.1";
+  const APP_VERSION = "v23.3.2";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-11_wrapper-fix";
+  const BUILD_ID = "2026-03-11_diag";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -741,7 +741,18 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 <div class="container p-3">
   <div id="mainView">
     <div class="row g-2 mb-4">
-      <div class="col-7"><button id="scanBtnTop" class="btn btn-danger w-100 py-3 rounded-4 shadow" onclick="startScanner()"><i class="bi bi-upc-scan fs-1"></i><br>スキャン</button></div>
+      <div class="col-7"><button id="scanBtnTop" class="btn btn-danger w-100 py-3 rounded-4 shadow" onclick="
+  var dbg = document.getElementById('sp-diag');
+  if(!dbg){ dbg=document.createElement('div'); dbg.id='sp-diag'; dbg.style='position:fixed;top:0;left:0;right:0;background:red;color:#fff;font-size:14px;padding:10px;z-index:99999;'; document.body.appendChild(dbg); }
+  dbg.innerHTML = '🔍 onclick発火OK<br>'
+    + 'window.startScanner: ' + typeof window.startScanner + '<br>'
+    + 'startScanner: ' + (function(){ try{ return typeof startScanner; }catch(e){ return 'ERROR:'+e.message; } })() + '<br>'
+    + 'Html5Qrcode: ' + typeof Html5Qrcode + '<br>'
+    + 'showToast: ' + typeof showToast;
+  if(typeof window.startScanner === 'function'){ window.startScanner(); }
+  else if(typeof startScanner === 'function'){ startScanner(); }
+  else { dbg.innerHTML += '<br>❌ startScanner関数が見つかりません'; }
+"><i class="bi bi-upc-scan fs-1"></i><br>スキャン</button></div>
       <div class="col-5"><button class="btn btn-dark w-100 py-3 rounded-4 border-secondary shadow" onclick="openBarcodeManual()"><i class="bi bi-keyboard fs-1"></i><br>手入力</button></div>
     </div>
     <div id="historyList"></div>
