@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.3.2";
+  const APP_VERSION = "v23.3.3";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-11_diag";
+  const BUILD_ID = "2026-03-11_noqrbox";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -296,8 +296,8 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 
     .toast-container{
   position: fixed;
-  top: auto;
-  bottom: 110px; /* fallback */
+  top: 320px; /* 赤バーの下に表示 */
+  bottom: auto;
   left: 50%;
   transform: translateX(-50%);
   width: min(92vw, 420px);
@@ -4865,12 +4865,10 @@ function startScanner() {
     
     // ✅ P0: その他の設定（解像度・アスペクト比等）は別の設定引数へ分離
     // ✅ P0修正: Html5Qrcodeライブラリの要求に準拠（cameraIdOrConfigは1キーのみ）
+    // ★ シンプル最優先: qrbox/aspectRatioなし = 画面全体で検出
     const scannerConfig = {
-      fps: 15,
-      qrbox: {width: 280, height: 180}, // ROI内だけの検出を確実にする
-      aspectRatio: 1.0, // 正方形に近い形状で精度向上
-      disableFlip: false // フリップを有効にして検出精度向上
-      // ✅ 注意: 解像度設定は、カメラ起動後にtrack.applyConstraints()で適用（後続の処理で実装済み）
+      fps: 10,
+      disableFlip: false
     };
     
     // ✅ P0: 検出は枠（ROI）内だけにして精度/速度を上げる（細い側面バーコードで特に）
