@@ -21,9 +21,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v22.7.4";
+  const APP_VERSION = "v22.7.5";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-11_qrbox-fix";
+  const BUILD_ID = "2026-03-11_ean13-fix";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -4875,7 +4875,15 @@ function startScanner() {
     
     try {
       if(!scanner) {
-        scanner = new Html5Qrcode("interactive");
+        scanner = new Html5Qrcode("interactive", {
+          formatsToSupport: [
+            Html5QrcodeSupportedFormats.EAN_13,
+            Html5QrcodeSupportedFormats.EAN_8,
+            Html5QrcodeSupportedFormats.UPC_A,
+            Html5QrcodeSupportedFormats.CODE_128
+          ],
+          verbose: false
+        });
         if (isDebug()) {
           console.log("[Scanner] Html5Qrcode instance created");
         }
