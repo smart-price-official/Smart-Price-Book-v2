@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.2.0";
+  const APP_VERSION = "v23.3.0";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-11_scanner-restore";
+  const BUILD_ID = "2026-03-11_scan-debug";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -4828,47 +4828,32 @@ function openManualEntryOnly(){
 
 function startScanner() {
     if(isScanning) {
-      if (isDebug()) {
-        console.log("[Scanner] Already scanning, skip");
-      }
+      showToast("⚠️ 既にスキャン中", 2000);
       return;
     }
     
-    // ✅ P0: Html5Qrcodeライブラリの読み込み確認
+    // ① ライブラリ確認
+    showToast(`① Html5Qrcode: ${typeof Html5Qrcode}`, 3000);
     if (typeof Html5Qrcode === 'undefined') {
-      const errorMsg = "バーコードスキャンライブラリが読み込まれていません。ページを再読み込みしてください。";
-      showToast(errorMsg, 10000);
-      if (isDebug()) {
-        console.error("[Scanner] Html5Qrcode library not loaded");
-        setLastError(`[Scanner] ${errorMsg}`);
-      }
+      showToast("❌ ライブラリ未ロード！ページ再読込してください", 15000);
       return;
     }
     
     isScanning = true;
     document.getElementById('camera-area').style.display='block';
-    // ✅ P0: トースト「カメラ起動中…」は表示しない（最低でも debug=1 の時だけに限定）
-    if (isDebug()) {
-      showToast("カメラ起動中…", 2000);
-      console.log("[Scanner] Starting scanner...");
-    }
+    showToast("② カメラ起動中…", 2000);
     
     try {
       if(!scanner) {
         scanner = new Html5Qrcode("interactive");
-        if (isDebug()) {
-          console.log("[Scanner] Html5Qrcode instance created");
-        }
+        showToast("③ Qrcodeインスタンス生成OK", 2000);
+      } else {
+        showToast("③ 既存インスタンス使用", 2000);
       }
     } catch(e) {
       isScanning = false;
       document.getElementById('camera-area').style.display='none';
-      const errorMsg = `スキャナーの初期化に失敗しました: ${e.message || e}`;
-      showToast(errorMsg, 10000);
-      if (isDebug()) {
-        console.error("[Scanner] Initialization error:", e);
-        setLastError(`[Scanner] ${errorMsg}`);
-      }
+      showToast(`❌ 初期化失敗: ${e.message || e}`, 15000);
       return;
     }
     
@@ -4890,13 +4875,13 @@ function startScanner() {
     };
     
     // ✅ P0: 検出は枠（ROI）内だけにして精度/速度を上げる（細い側面バーコードで特に）
+    showToast("④ scanner.start() 呼び出し中…", 2000);
     scanner.start(cameraConfig, scannerConfig, async (t)=> {
-      // ✅ スキャンバーDOM要素を確実に生成・配置（カメラ起動成功後すぐ）
       ensureScanbarDom();
       ensureManualEntryDom();
       try{ suppressQrcodeGuides(); setTimeout(suppressQrcodeGuides, 80); setTimeout(suppressQrcodeGuides, 250); setTimeout(suppressQrcodeGuides, 700);}catch(e){}
       
-      showToast("読み取りOK", 1500);
+      showToast(`✅ 読取: ${t}`, 2000);
       
       // ✅ P0: 取得できたら track.applyConstraints() を段階的にtry
       try {
@@ -4995,6 +4980,7 @@ function startScanner() {
       await processBarcodeData(t);
     }).catch((err) => {
       // ✅ P0: スキャナー起動失敗時の詳細なエラーハンドリング
+      showToast(`❌ .catch発火: ${err && (err.message||err.name||String(err))}`, 15000);
       let errorMsg = "起動失敗";
       let errorDetail = "";
       
