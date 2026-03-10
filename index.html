@@ -2894,7 +2894,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     
     const startTime = Date.now();
     let syncResult = { success: false, itemsCount: 0, historyCount: 0, imageKeyCount: 0, error: null };
-    
+
     try {
       // 1. ローカルDBを読み込み
       const localDb = deepClone(db);
