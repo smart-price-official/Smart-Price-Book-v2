@@ -2906,6 +2906,9 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       try{
         const res = await fetchWithTimeout(targetUrl, {}, 12000);
         cloudDb = await res.json();
+        if (cloudDb && !cloudDb.products && typeof cloudDb === 'object') {
+  cloudDb = { products: cloudDb, config: {} };
+}
       }catch(e){ cloudDb = null; }
 
       // 旧URLの救済（ユーザーID導入前のデータを表示）
@@ -2913,7 +2916,10 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         try{
           const legacyUrl = getSafeUrl(fbUrl);
           const resL = await fetchWithTimeout(legacyUrl, {}, 12000);
-          const cloudL = await resL.json();
+          let cloud0 = await res0.json();
+if (cloud0 && !cloud0.products && typeof cloud0 === 'object') {
+  cloud0 = { products: cloud0, config: {} };
+}
           if(cloudL && cloudL.products){
             cloudDb = cloudL;
           }
@@ -6271,7 +6277,10 @@ return true;
       try {
         // まずユーザーID単位（新）を読む
         const res0 = await fetchWithTimeout(targetUrl, { signal: activeSyncController.signal }, 9000);
-        const cloud0 = await res0.json();
+        let cloud0 = await res0.json();
+if (cloud0 && !cloud0.products && typeof cloud0 === 'object') {
+  cloud0 = { products: cloud0, config: {} };
+}
         if (cloud0 && cloud0.products) {
           db = mergeDb(db, cloud0); // ✅ マージ方式で画像情報が消えない
           saveLocalOnly();
@@ -6279,7 +6288,10 @@ return true;
           // 旧URL（全員共通）にデータが残っている場合の救済
           try{
             const resL = await fetchWithTimeout(legacyUrl, { signal: activeSyncController.signal }, 9000);
-            const cloudL = await resL.json();
+            let cloudL = await resL.json();
+if (cloudL && !cloudL.products && typeof cloudL === 'object') {
+  cloudL = { products: cloudL, config: {} };
+}
             if (cloudL && cloudL.products) {
               db = mergeDb(db, cloudL);
               saveLocalOnly();
@@ -6290,7 +6302,10 @@ return true;
         // 読めなくても続行
         try{
           const resL = await fetchWithTimeout(legacyUrl, { signal: activeSyncController.signal }, 9000);
-          const cloudL = await resL.json();
+          let cloudL = await resL.json();
+if (cloudL && !cloudL.products && typeof cloudL === 'object') {
+  cloudL = { products: cloudL, config: {} };
+}
           if (cloudL && cloudL.products) { db = mergeDb(db, cloudL); saveLocalOnly(); }
         }catch(e){}
       }
