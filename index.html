@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.3.3";
+  const APP_VERSION = "v23.3.4";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-11_noqrbox";
+  const BUILD_ID = "2026-03-11_diagbar";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -4826,33 +4826,39 @@ function openManualEntryOnly(){
   }
 
 function startScanner() {
+    // ★ 診断バーにログを書き込む関数
+    function diagLog(msg) {
+      const d = document.getElementById('sp-diag');
+      if(d) d.innerHTML += '<br>' + msg;
+      console.log('[SCAN]', msg);
+    }
+
     if(isScanning) {
-      showToast("⚠️ 既にスキャン中", 2000);
+      diagLog("⚠️ 既にスキャン中");
       return;
     }
     
-    // ① ライブラリ確認
-    showToast(`① Html5Qrcode: ${typeof Html5Qrcode}`, 3000);
+    diagLog(`① Html5Qrcode: ${typeof Html5Qrcode}`);
     if (typeof Html5Qrcode === 'undefined') {
-      showToast("❌ ライブラリ未ロード！ページ再読込してください", 15000);
+      diagLog("❌ ライブラリ未ロード！");
       return;
     }
     
     isScanning = true;
     document.getElementById('camera-area').style.display='block';
-    showToast("② カメラ起動中…", 2000);
+    diagLog("② カメラ起動中…");
     
     try {
       if(!scanner) {
         scanner = new Html5Qrcode("interactive");
-        showToast("③ Qrcodeインスタンス生成OK", 2000);
+        diagLog("③ インスタンスOK");
       } else {
-        showToast("③ 既存インスタンス使用", 2000);
+        diagLog("③ 既存インスタンス使用");
       }
     } catch(e) {
       isScanning = false;
       document.getElementById('camera-area').style.display='none';
-      showToast(`❌ 初期化失敗: ${e.message || e}`, 15000);
+      diagLog(`❌ 初期化失敗: ${e.message||e}`);
       return;
     }
     
@@ -4872,13 +4878,13 @@ function startScanner() {
     };
     
     // ✅ P0: 検出は枠（ROI）内だけにして精度/速度を上げる（細い側面バーコードで特に）
-    showToast("④ scanner.start() 呼び出し中…", 2000);
+    diagLog("④ scanner.start()呼び出し中…");
     scanner.start(cameraConfig, scannerConfig, async (t)=> {
       ensureScanbarDom();
       ensureManualEntryDom();
       try{ suppressQrcodeGuides(); setTimeout(suppressQrcodeGuides, 80); setTimeout(suppressQrcodeGuides, 250); setTimeout(suppressQrcodeGuides, 700);}catch(e){}
       
-      showToast(`✅ 読取: ${t}`, 2000);
+      diagLog(`✅ 読取: ${t}`);
       
       // ✅ P0: 取得できたら track.applyConstraints() を段階的にtry
       try {
@@ -4977,7 +4983,7 @@ function startScanner() {
       await processBarcodeData(t);
     }).catch((err) => {
       // ✅ P0: スキャナー起動失敗時の詳細なエラーハンドリング
-      showToast(`❌ .catch発火: ${err && (err.message||err.name||String(err))}`, 15000);
+      diagLog(`❌ .catch: ${err&&(err.message||err.name||String(err))}`);
       let errorMsg = "起動失敗";
       let errorDetail = "";
       
