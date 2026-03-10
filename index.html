@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.4.0";
+  const APP_VERSION = "v23.5.0";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-11_barcodedetector";
+  const BUILD_ID = "2026-03-11_h5qr-clean";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -4833,88 +4833,61 @@ function startScanner() {
     }
 
     if (isScanning) { diagLog("⚠️ 既にスキャン中"); return; }
-    isScanning = true;
 
-    const cameraArea = document.getElementById('camera-area');
-    cameraArea.style.display = 'block';
-    ensureScanbarDom();
-
-    // BarcodeDetector（Android Chrome内蔵）を使う
-    if (!('BarcodeDetector' in window)) {
-      diagLog("❌ BarcodeDetector未対応ブラウザ");
-      isScanning = false;
-      cameraArea.style.display = 'none';
+    if (typeof Html5Qrcode === 'undefined') {
+      diagLog("❌ Html5Qrcodeライブラリ未ロード");
       return;
     }
 
-    diagLog("① BarcodeDetector起動中…");
+    isScanning = true;
+    document.getElementById('camera-area').style.display = 'block';
+    ensureScanbarDom();
+    diagLog("① 起動中…");
 
-    const detector = new BarcodeDetector({
-      formats: ['ean_13','ean_8','upc_a','upc_e','code_128','itf','code_39']
-    });
+    // ★ 既存インスタンスを必ず破棄してから作り直す
+    if (scanner) {
+      try { scanner.clear(); } catch(e) {}
+      scanner = null;
+    }
 
-    navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { exact: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
-    }).catch(() => {
-      // exact指定が失敗した場合はideaで再試行
-      return navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' }
-      });
-    }).then(stream => {
-      diagLog("② カメラ取得OK");
-
-      let video = document.getElementById('scannerNativeVideo');
-      if (!video) {
-        video = document.createElement('video');
-        video.id = 'scannerNativeVideo';
-        video.setAttribute('playsinline', '');
-        video.muted = true;
-        video.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;';
-        document.getElementById('interactive').appendChild(video);
-      }
-      video.srcObject = stream;
-      window._scanStream = stream;
-
-      return video.play().then(() => {
-        diagLog("③ 映像再生OK → 検出ループ開始");
-        let lastCode = '';
-        let lastTime = 0;
-
-        const loop = async () => {
-          if (!isScanning) return;
-          try {
-            const results = await detector.detect(video);
-            if (results.length > 0) {
-              const code = results[0].rawValue;
-              const now = Date.now();
-              if (code !== lastCode || now - lastTime > 2000) {
-                lastCode = code;
-                lastTime = now;
-                diagLog(`✅ 読取: ${code}`);
-                await stopScanner();
-                try { await processBarcodeData(code); } catch(e) { diagLog(`❌ 処理エラー: ${e.message}`); }
-                return;
-              }
-            }
-          } catch(e) { /* 検出失敗は無視 */ }
-          if (isScanning) requestAnimationFrame(loop);
-        };
-        requestAnimationFrame(loop);
-      });
-    }).catch(err => {
-      diagLog(`❌ カメラエラー: ${err.message || err}`);
+    try {
+      scanner = new Html5Qrcode("interactive", { verbose: false });
+    } catch(e) {
+      diagLog(`❌ new Html5Qrcode失敗: ${e.message}`);
       isScanning = false;
+      document.getElementById('camera-area').style.display = 'none';
+      return;
+    }
+
+    diagLog("② インスタンスOK → start()");
+
+    // ★ 設定は最小限: fps+videoConstraintsのみ
+    scanner.start(
+      { facingMode: "environment" },
+      { fps: 10 },
+      async (code) => {
+        diagLog(`✅ 読取: ${code}`);
+        await stopScanner();
+        ensureScanbarDom();
+        ensureManualEntryDom();
+        try { await processBarcodeData(code); } catch(e) { diagLog(`❌ 処理エラー: ${e.message}`); }
+      }
+    ).then(() => {
+      diagLog("③ start()成功 → 検出待機中");
+      setTimeout(() => {
+        try { suppressQrcodeGuides(); } catch(e) {}
+        if (isDebug()) displayScanbarDebugInfo();
+      }, 300);
+    }).catch(err => {
+      diagLog(`❌ start()失敗: ${err && (err.message || String(err))}`);
+      isScanning = false;
+      scanner = null;
       document.getElementById('camera-area').style.display = 'none';
     });
   }
   window.startScanner = startScanner; // ← windowに登録
 
 
-  // ===== ネイティブ BarcodeDetector =====
-
-
-
-  // ===== Html5Qrcode フォールバック =====
   
   // ✅ スキャンバーDOM要素を確実に生成・配置する関数（自己修復機能）
   function ensureScanbarDom() {
@@ -5246,15 +5219,18 @@ return true;
 
   async function stopScanner() {
     isScanning = false;
-    // BarcodeDetector stream停止
+    if (scanner) {
+      try { await scanner.stop(); } catch(e) {}
+      try { scanner.clear(); } catch(e) {}
+      scanner = null;
+    }
+    // BarcodeDetector stream残留対策
     if (window._scanStream) {
-      window._scanStream.getTracks().forEach(t => t.stop());
+      try { window._scanStream.getTracks().forEach(t => t.stop()); } catch(e) {}
       window._scanStream = null;
     }
-    const v = document.getElementById('scannerNativeVideo');
-    if (v) { v.srcObject = null; v.remove(); }
-    // Html5Qrcode停止（フォールバック用）
-    if (scanner) { try { await scanner.stop(); } catch(e) {} }
+    const nv = document.getElementById('scannerNativeVideo');
+    if (nv) { try { nv.srcObject = null; nv.remove(); } catch(e) {} }
     document.getElementById('camera-area').style.display = 'none';
     try { const me = document.getElementById('manual-entry'); if(me) me.style.display='none'; } catch(e) {}
   }
