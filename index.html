@@ -1,16 +1,8 @@
 <!DOCTYPE html>
 <!--APP: Smart Price
-VERSION: v22.7.0
-DATE(JST): 2026-02-15 00:48 JST
-TITLE: UIFIX23（手入力ボタン修正/履歴復旧探索強化/バージョン表示SSOT修正）
-CHANGES:
-- 重大なJS構文エラーを修正（設定の同期/移行スクリプト末尾の `});` / `})();` を整理）→ startScanner等が未定義になる連鎖を停止
-- VERSION/BUILD/表示のSSOT（単一正本）を v22.7.0 / 2026-02-14_2230_layout-fix に統一（旧表記を全削除）
-- 既存UIはそのまま（UI_FREEZE）。ボタンの見た目・配置は変更なし
-BUILD_PARAM(b): ?b=2026-02-15_0102_ui-fix24
-DEBUG_PARAM: &debug=1
-AUTHOR: Yui
-POLICY: UI_FREEZE / 単一HTML / VERSION SSOT-->
+AUTHOR: Claude
+POLICY: UI_FREEZE / 単一HTML / VERSION SSOT
+NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-->
 <html lang="ja">
 <head>
 <!-- SW GUARD: prevent old Service Worker from serving stale index.html -->
@@ -21,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v22.7.5";
+  const APP_VERSION = "v23.0.0";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-11_ean13-fix";
+  const BUILD_ID = "2026-03-11_maker-fix";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -110,8 +102,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 
   <meta charset="UTF-8">
   <script>
-  // === VERSION SSOT (auto) ===
-  window.VERSION_INFO = 'v22.7.0';
+  // === VERSION SSOT: APP_VERSION/BUILD_IDのみで管理 ===
   </script>
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -1259,7 +1250,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
 
-<script src="https://unpkg.com/html5-qrcode"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script>
   // ========= Firebase Configuration =========
   const FIREBASE_CONFIG = {
@@ -4264,10 +4255,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       }
     }
     
-    // ✅ 7. まとめ買い注記を追加（短く）
-    if (packHint && name.length > 0) {
-      name = name + '（ケース）';
-    }
+    // まとめ買い表記は削除するのみ（商品名に混入させない）
+    // packHintフラグは上位関数で画像差し替え等の判断に使う
     
     // ✅ デバッグログ
     if (isDebug() && (name !== original.name || maker !== original.maker)) {
@@ -4487,6 +4476,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       const proxyUrl = (window.SP_CONFIG && window.SP_CONFIG.yahooProxyExecUrl) ? window.SP_CONFIG.yahooProxyExecUrl.trim() : '';
       
       if (!proxyUrl) {
+        if (isDebug()) showToast('[楽天] ProxyURL未設定、スキップ', 2000);
         return null;
       }
 
@@ -4596,107 +4586,97 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     }
   }
 
-  // ========= Yahoo Shopping API（JANコード検索）with キャッシュ =========
+  // ========= Yahoo商品検索（GASプロキシ優先 → Yahoo直接API フォールバック）=========
   async function lookupYahooByJan(jan, forceUpdate = false) {
     try {
-      // ✅ キャッシュチェック（7日間有効）
+      // キャッシュチェック（7日間有効）
       const cacheKey = `yahoo_cache_${jan}`;
-      const cacheTtl = 7 * 24 * 60 * 60 * 1000; // 7日
-      
+      const cacheTtl = 7 * 24 * 60 * 60 * 1000;
       if (!forceUpdate) {
         try {
           const cached = localStorage.getItem(cacheKey);
           if (cached) {
             const cacheData = JSON.parse(cached);
             if (cacheData && cacheData.ts && (Date.now() - cacheData.ts < cacheTtl)) {
-              if (isDebug()) console.log("[YahooSearch] Cache hit:", jan);
+              if (isDebug()) showToast(`[Yahoo] キャッシュ使用: ${jan}`, 2000);
               return cacheData.data || null;
             }
           }
-        } catch(e) {
-          // キャッシュ読み込みエラーは無視
-        }
-      }
-      
-      // Config.jsonからYahoo Proxy URLを取得（最優先）
-      const proxyUrl = (window.SP_CONFIG && window.SP_CONFIG.yahooProxyExecUrl) ? window.SP_CONFIG.yahooProxyExecUrl.trim() : '';
-      
-      if (!proxyUrl) {
-        showToast("Yahoo設定なし（config.json未設定）", 4000);
-        return null;
+        } catch(e) {}
       }
 
-      // ✅ デバッグ: Yahoo検索開始
-      const requestUrl = `${proxyUrl}?jan=${encodeURIComponent(jan)}`;
-      if (isDebug()) {
-        showToast(`[Yahoo] Fetching: ${requestUrl}`, 5000);
-        console.log("[YahooSearch] JAN:", jan, "Proxy URL:", proxyUrl);
-        console.log("[YahooSearch] Request URL:", requestUrl);
-      }
-      
-      // ✅ AbortController+timeout（12秒）
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 12000);
-      
-      showToast("Yahoo検索中…", 5000);
-      const res = await fetch(requestUrl, { 
-        cache: 'no-store', 
-        signal: controller.signal 
-      });
-      clearTimeout(timeoutId);
-      
-      // ✅ デバッグ: HTTPステータス表示
-      if (isDebug()) {
-        showToast(`[Yahoo] HTTP Status: ${res.status} ${res.statusText}`, 5000);
-        console.log("[YahooSearch] HTTP Status:", res.status, res.statusText);
-      }
-      
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-      
-      const json = await res.json();
-      
-      if (json && json.name) {
-        const rawResult = {
-          name: json.name || "",
-          maker: json.maker || "",
-          imageUrl: json.imageUrl || ""
-        };
-        
-        // ✅ 商品情報を自動整形（12本1箱問題対応）
-        const result = normalizeYahooProductInfo(rawResult);
-        
-        // ✅ キャッシュに保存（整形後）
+      const proxyUrl = (window.SP_CONFIG && window.SP_CONFIG.yahooProxyExecUrl)
+        ? window.SP_CONFIG.yahooProxyExecUrl.trim() : '';
+      // APIキーはGASプロキシ内で管理（HTMLには置かない）
+      // config.jsonにyahooClientIdがあれば直接API呼び出しのフォールバックとして使用
+      const appId = (window.SP_CONFIG && window.SP_CONFIG.yahooClientId)
+        ? window.SP_CONFIG.yahooClientId.trim() : '';
+
+      let result = null;
+
+      // ① GASプロキシ優先
+      if (proxyUrl) {
         try {
-          localStorage.setItem(cacheKey, JSON.stringify({
-            ts: Date.now(),
-            data: result
-          }));
-        } catch(e) {
-          // キャッシュ保存エラーは無視
-        }
-        
-        if (isDebug()) {
-          console.log("[YahooSearch] Found:", json.name);
-          if (result.packHint) {
-            showToast('[Yahoo] まとめ買い商品を検出しました', 3000);
+          if (isDebug()) showToast(`[Yahoo] プロキシ検索中...`, 2000);
+          const controller = new AbortController();
+          const tid = setTimeout(() => controller.abort(), 12000);
+          const res = await fetch(`${proxyUrl}?jan=${encodeURIComponent(jan)}`, {
+            cache: 'no-store', signal: controller.signal
+          });
+          clearTimeout(tid);
+          if (res.ok) {
+            const json = await res.json();
+            if (json && json.name) {
+              result = normalizeYahooProductInfo({ name: json.name, maker: json.maker || '', imageUrl: json.imageUrl || '' });
+              if (isDebug()) showToast(`[Yahoo] プロキシOK: ${json.name.substring(0,20)}`, 3000);
+            }
           }
+        } catch(e) {
+          if (isDebug()) showToast(`[Yahoo] プロキシ失敗: ${e.message}`, 3000);
         }
-        return result;
       }
-      return null;
+
+      // ② Yahoo直接API（プロキシが失敗/未設定の場合）
+      if (!result && appId) {
+        try {
+          if (isDebug()) showToast(`[Yahoo] 直接API検索中...`, 2000);
+          const url = `https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch?appid=${encodeURIComponent(appId)}&jan_code=${encodeURIComponent(jan)}&results=3&output=json`;
+          const controller2 = new AbortController();
+          const tid2 = setTimeout(() => controller2.abort(), 12000);
+          const res2 = await fetch(url, { cache: 'no-store', signal: controller2.signal });
+          clearTimeout(tid2);
+          if (res2.ok) {
+            const json2 = await res2.json();
+            const hits = json2 && json2.hits;
+            if (hits && hits.length > 0) {
+              const item = hits[0];
+              const name = (item.name || '').trim();
+              const maker = (item.brand && item.brand.name) ? item.brand.name.trim()
+                          : (item.seller && item.seller.name) ? item.seller.name.trim() : '';
+              const imageUrl = (item.image && item.image.medium) ? item.image.medium
+                             : (item.image && item.image.small) ? item.image.small : '';
+              if (name) {
+                result = normalizeYahooProductInfo({ name, maker, imageUrl });
+                if (isDebug()) showToast(`[Yahoo] 直接APIok: ${name.substring(0,20)}`, 3000);
+              }
+            }
+          }
+        } catch(e) {
+          if (isDebug()) showToast(`[Yahoo] 直接API失敗: ${e.message}`, 3000);
+        }
+      }
+
+      // キャッシュ保存
+      if (result) {
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data: result }));
+        } catch(e) {}
+      }
+
+      return result || null;
+
     } catch(e) {
-      // ✅ デバッグ: エラー詳細表示
-      if (isDebug()) {
-        const errorDetail = e.name === 'AbortError' ? 'タイムアウト（12秒）' : e.message || '不明なエラー';
-        showToast(`[Yahoo] Error: ${errorDetail}`, 8000);
-        console.error("[YahooSearch] Error:", e);
-        console.error("[YahooSearch] Error name:", e.name);
-        console.error("[YahooSearch] Error stack:", e.stack);
-      } else {
-        showToast(`Yahoo検索失敗: ${e.name === 'AbortError' ? 'タイムアウト' : '通信エラー'}`, 5000);
-      }
+      if (isDebug()) console.error("[Yahoo] 予期しないエラー:", e);
       return null;
     }
   }
@@ -4882,6 +4862,9 @@ function startScanner() {
             Html5QrcodeSupportedFormats.UPC_A,
             Html5QrcodeSupportedFormats.CODE_128
           ],
+          experimentalFeatures: {
+            useBarCodeDetectorIfSupported: true
+          },
           verbose: false
         });
         if (isDebug()) {
@@ -5473,52 +5456,152 @@ return true;
   function cleanProductName(name) {
     if (!name) return '';
     let cleaned = String(name).trim();
-    
-    // 箱売り情報を除去
-    cleaned = cleaned.replace(/[×xX]\d+[個本入枚缶袋]/g, ''); // ×10個、×12本、×24入 など
-    cleaned = cleaned.replace(/\d+[個本入枚缶袋]セット/g, ''); // 12個セット など
-    cleaned = cleaned.replace(/\（ケース）/g, ''); // （ケース）
-    cleaned = cleaned.replace(/\[ケース\]/g, ''); // [ケース]
-    cleaned = cleaned.replace(/ケース販売/g, ''); // ケース販売
-    
-    // 送料情報を除去
-    cleaned = cleaned.replace(/送料[別込無料]/g, ''); // 送料別、送料込、送料無料
-    cleaned = cleaned.replace(/\|.*送料.*/g, ''); // | 送料別 など
-    
+
+    // 箱売り・まとめ買い表記を除去
+    cleaned = cleaned.replace(/[×xX]\s*\d+\s*[個本入枚缶袋パック]/g, '');
+    cleaned = cleaned.replace(/\d+\s*[個本入枚缶袋パック]\s*[×x]\s*/g, '');
+    cleaned = cleaned.replace(/\d+\s*[個本入枚缶袋パック]\s*セット/g, '');
+    cleaned = cleaned.replace(/（ケース）/g, '');
+    cleaned = cleaned.replace(/\[ケース\]/g, '');
+    cleaned = cleaned.replace(/ケース販売/g, '');
+    cleaned = cleaned.replace(/ケース買い/g, '');
+    cleaned = cleaned.replace(/まとめ買い/g, '');
+    cleaned = cleaned.replace(/業務用/g, '');
+    cleaned = cleaned.replace(/セット販売/g, '');
+    cleaned = cleaned.replace(/箱買い/g, '');
+
+    // 送料・販促情報を除去
+    cleaned = cleaned.replace(/送料[別込無料]/g, '');
+    cleaned = cleaned.replace(/\|.*送料.*/g, '');
+    cleaned = cleaned.replace(/【[^】]*】/g, '');   // 【○○】を全除去
+    cleaned = cleaned.replace(/「[^」]*」/g, '');   // 「○○」を全除去
+    cleaned = cleaned.replace(/\([^)]*送料[^)]*\)/g, '');
+    cleaned = cleaned.replace(/\([^)]*ポイント[^)]*\)/g, '');
+
+    // ECサイト・店舗名を除去
+    cleaned = cleaned.replace(/楽天|Amazon|ヤフー|Yahoo!?|Rakuten|公式|本店/gi, '');
+
+    // メーカー名が先頭に重複している場合を検出して除去
+    // 例：「日清食品 日清のどん兵衛 天ぷらそば」→「日清のどん兵衛 天ぷらそば」
+    // （メーカー名除去はlookupMakerByJanと連携して行う）
+
     // 余分な空白・記号を整理
     cleaned = cleaned.replace(/\s+/g, ' ').trim();
-    cleaned = cleaned.replace(/\s*\|\s*$/, '').trim(); // 末尾の | を除去
-    
+    cleaned = cleaned.replace(/^[\s　\-・|／]+|[\s　\-・|／]+$/g, '').trim();
+
     return cleaned;
   }
 
-  // ✅ P0: メーカー名検証（販売店名などの不正確な情報を検出）
+  // メーカー名検証（販売店名・ECサイト名を除外）
   function validateMakerName(maker) {
     if (!maker) return '';
     const cleaned = String(maker).trim();
-    
-    // 販売店名のパターン（除外すべきもの）
+
+    // 販売店・ECサイト名パターン（空文字を返す）
     const invalidPatterns = [
-      /店$/,           // 「○○店」で終わる
-      /ショップ$/,     // 「○○ショップ」で終わる
-      /販売$/,         // 「○○販売」で終わる
-      /^楽天/,         // 「楽天○○」で始まる
-      /^Amazon/i,      // 「Amazon○○」で始まる
-      /^Yahoo/i,       // 「Yahoo○○」で始まる
-      /！$/            // 「○○！」で終わる（販売店名の特徴）
+      /店$/, /ショップ$/, /販売$/, /通販$/, /市場$/,
+      /^楽天/, /^Amazon/i, /^Yahoo/i, /^Rakuten/i,
+      /^ヤフー/, /^メルカリ/i, /公式$/, /！$/, /!$/,
+      /オンライン$/, /ダイレクト$/, /ストア$/,
+      /[0-9]{5,}/,  // 数字が5桁以上（注文番号っぽい）
     ];
-    
-    // 不正確なパターンに一致する場合は空文字を返す
+
     for (const pattern of invalidPatterns) {
       if (pattern.test(cleaned)) {
-        if (isDebug()) {
-          console.log(`[MakerValidation] Invalid maker name detected: ${cleaned}`);
-        }
+        if (isDebug()) console.log(`[MakerValidation] 除外: ${cleaned}`);
         return '';
       }
     }
-    
+
+    // 長すぎる（30文字超）はメーカー名ではなく商品説明の可能性
+    if (cleaned.length > 30) return '';
+
     return cleaned;
+  }
+
+  // JANコード先頭桁からメーカーを特定（GS1ジャパン登録情報ベース）
+  function lookupMakerByJan(jan) {
+    if (!jan || jan.length < 7) return '';
+
+    // 主要メーカーのJAN企業コード（先頭2-7桁）
+    const makerMap = [
+      // 食品・飲料
+      { prefix: '4901085', name: '明治' },
+      { prefix: '4901301', name: '森永製菓' },
+      { prefix: '4901777', name: '日清食品' },
+      { prefix: '4901990', name: '江崎グリコ' },
+      { prefix: '4902102', name: 'カルビー' },
+      { prefix: '4902201', name: 'ハウス食品' },
+      { prefix: '4902370', name: '任天堂' },
+      { prefix: '4902555', name: '日本ハム' },
+      { prefix: '4902707', name: '雪印メグミルク' },
+      { prefix: '4903015', name: 'ポッカサッポロ' },
+      { prefix: '4903301', name: 'キッコーマン' },
+      { prefix: '4903414', name: 'エースコック' },
+      { prefix: '4904001', name: '花王' },
+      { prefix: '4904230', name: '丸大食品' },
+      { prefix: '4904315', name: '亀田製菓' },
+      { prefix: '4904661', name: '日本たばこ産業' },
+      { prefix: '4904810', name: 'ヤクルト' },
+      { prefix: '4905009', name: 'アサヒ飲料' },
+      { prefix: '4905516', name: 'カゴメ' },
+      { prefix: '4905841', name: '永谷園' },
+      { prefix: '4906039', name: '伊藤ハム' },
+      { prefix: '4906409', name: 'ニチレイ' },
+      { prefix: '4907113', name: '味の素' },
+      { prefix: '4907335', name: 'キユーピー' },
+      { prefix: '4907897', name: 'サントリー' },
+      { prefix: '4908011', name: '大塚食品' },
+      { prefix: '4908139', name: 'ブルドックソース' },
+      { prefix: '4909313', name: 'ソフトバンク' },
+      { prefix: '4910049', name: '小林製薬' },
+      { prefix: '4910041', name: '第一三共ヘルスケア' },
+      { prefix: '4911006', name: 'ロート製薬' },
+      { prefix: '4987035', name: 'ライオン' },
+      { prefix: '4987072', name: 'アース製薬' },
+      { prefix: '4987123', name: 'P&G' },
+      { prefix: '4987176', name: '大正製薬' },
+      { prefix: '4987228', name: 'ユニ・チャーム' },
+      { prefix: '4987241', name: '資生堂' },
+      { prefix: '4987360', name: 'コーセー' },
+      { prefix: '4987413', name: '武田薬品工業' },
+      { prefix: '4987517', name: 'バスクリン' },
+      { prefix: '4987600', name: '日本製紙クレシア' },
+      { prefix: '4988003', name: 'バンダイ' },
+      { prefix: '4988006', name: '伊藤園' },
+      { prefix: '4988013', name: 'ダイドードリンコ' },
+      { prefix: '4988021', name: 'ロッテ' },
+      { prefix: '4988065', name: '明治（チョコ）' },
+      { prefix: '4988085', name: '不二家' },
+      { prefix: '4988110', name: 'コカ・コーラ' },
+      { prefix: '4988166', name: 'ペプシコーラ' },
+      { prefix: '4988203', name: 'キリンビバレッジ' },
+      { prefix: '4988208', name: 'サッポロビール' },
+      { prefix: '4988371', name: 'ミツカン' },
+      { prefix: '4988395', name: '日清オイリオ' },
+      { prefix: '4988485', name: 'カルピス' },
+      { prefix: '4988490', name: 'ネスレ日本' },
+      { prefix: '4988527', name: 'アサヒビール' },
+      { prefix: '4988603', name: 'キリンビール' },
+      { prefix: '4988616', name: 'サントリービール' },
+      { prefix: '4988680', name: '日清製粉' },
+      { prefix: '4988770', name: '昭和産業' },
+      { prefix: '4988788', name: '日本製粉' },
+      { prefix: '4902033', name: '味の素冷凍食品' },
+      { prefix: '4901330', name: '山崎製パン' },
+      { prefix: '4901550', name: '敷島製パン' },
+      // 日用品・雑貨
+      { prefix: '4901301', name: '花王' },
+      { prefix: '4901460', name: 'エステー' },
+      { prefix: '4549741', name: '無印良品' },
+    ];
+
+    for (const { prefix, name } of makerMap) {
+      if (jan.startsWith(prefix)) return name;
+    }
+
+    // 企業コード（先頭7桁）が一致しない場合は空文字
+    return '';
   }
 
   // ✅ P0: JAN/EAN-13 チェックデジット検証
@@ -5975,8 +6058,20 @@ return true;
         }
 
         // ✅ 商品情報をDBに保存（finalInfoを使用）
+        // 商品名の先頭にメーカー名が重複している場合を除去
+        // 例：「日清食品 日清のどん兵衛 天ぷらそば」→「日清のどん兵衛 天ぷらそば」
+        if (finalInfo.name && finalInfo.maker) {
+          const makerPrefix = finalInfo.maker.replace(/[（()）]/g, '').trim();
+          if (makerPrefix && finalInfo.name.startsWith(makerPrefix)) {
+            finalInfo.name = finalInfo.name.slice(makerPrefix.length).trim();
+          }
+        }
         if (finalInfo.name && (!p.name || !p.name.trim())) {
           p.name = finalInfo.name;
+        }
+        // メーカー名がAPIから取れない場合はJANコードから特定
+        if (!finalInfo.maker) {
+          finalInfo.maker = lookupMakerByJan(jan) || '';
         }
         if (finalInfo.maker && (!p.maker || !p.maker.trim())) {
           p.maker = finalInfo.maker;
@@ -6063,7 +6158,12 @@ return true;
         if (hasData) {
           showToast("商品情報を取得しました", 3000);
         } else {
-          showToast("商品情報が見つかりませんでした", 5000);
+          // 全API失敗 → JANコードをフォームに表示して手動入力を促す
+          showToast(`商品情報が見つかりませんでした\nJAN: ${jan}\n商品名・メーカーを手入力してください`, 8000);
+          const nameInput = document.getElementById('inputName');
+          if (nameInput && !nameInput.value) {
+            nameInput.placeholder = `JAN: ${jan} （商品名を入力）`;
+          }
         }
         
         // ✅ P0: debug=1 時の詳細表示（LAST_JAN / SOURCE / STATUS / 取得データ）
