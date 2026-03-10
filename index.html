@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.1.0";
+  const APP_VERSION = "v23.2.0";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-11_native-scan";
+  const BUILD_ID = "2026-03-11_scanner-restore";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -1250,7 +1250,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
 
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://unpkg.com/html5-qrcode"></script>
 <script>
   // ========= Firebase Configuration =========
   const FIREBASE_CONFIG = {
@@ -4827,154 +4827,254 @@ function openManualEntryOnly(){
   }
 
 function startScanner() {
-    if (isScanning) return;
-    isScanning = true;
-
-    const cameraArea = document.getElementById('camera-area');
-    cameraArea.style.display = 'block';
-    ensureScanbarDom();
-    ensureManualEntryDom();
-
-    if (isDebug()) showToast('カメラ起動中…', 2000);
-
-    // BarcodeDetector が使えるか確認
-    const hasBarcodeDetector = ('BarcodeDetector' in window);
-    if (isDebug()) showToast(`BarcodeDetector: ${hasBarcodeDetector ? '✅ 使用可' : '❌ 不可→Html5Qrcode'}`, 3000);
-
-    if (hasBarcodeDetector) {
-      // ── ネイティブ BarcodeDetector 方式 ──
-      _startNativeScanner();
-    } else {
-      // ── Html5Qrcode フォールバック ──
-      _startHtml5QrcodeScanner();
-    }
-  }
-
-  // ===== ネイティブ BarcodeDetector =====
-  let _nativeStream = null;
-  let _nativeTimer = null;
-  let _nativeDetector = null;
-
-  async function _startNativeScanner() {
-    try {
-      _nativeDetector = new BarcodeDetector({
-        formats: ['ean_13', 'ean_8', 'upc_a', 'code_128', 'itf']
-      });
-
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
-      });
-      _nativeStream = stream;
-
-      // カメラ映像をvideoに流す
-      let video = document.getElementById('scannerVideo');
-      if (!video) {
-        video = document.createElement('video');
-        video.id = 'scannerVideo';
-        video.setAttribute('playsinline', '');
-        video.setAttribute('muted', '');
-        video.style.cssText = 'width:100%;height:100%;object-fit:cover;position:absolute;top:0;left:0;';
-        const interactive = document.getElementById('interactive');
-        if (interactive) interactive.appendChild(video);
-        else document.getElementById('camera-area').appendChild(video);
+    if(isScanning) {
+      if (isDebug()) {
+        console.log("[Scanner] Already scanning, skip");
       }
-      video.srcObject = stream;
-      await video.play();
-
-      if (isDebug()) showToast('📷 カメラ起動完了', 1500);
-
-      // スキャンループ
-      let lastScan = 0;
-      const scan = async () => {
-        if (!isScanning) return;
-        try {
-          const barcodes = await _nativeDetector.detect(video);
-          if (barcodes && barcodes.length > 0) {
-            const now = Date.now();
-            if (now - lastScan > 1500) { // 1.5秒クールダウン
-              lastScan = now;
-              const code = barcodes[0].rawValue;
-              showToast(`✅ 読取: ${code}`, 2000);
-              await _stopNativeScanner();
-              await processBarcodeData(code);
-              return;
-            }
-          }
-        } catch(e) {}
-        if (isScanning) _nativeTimer = requestAnimationFrame(scan);
-      };
-      _nativeTimer = requestAnimationFrame(scan);
-
-    } catch(e) {
-      showToast(`カメラエラー: ${e.message}`, 8000);
-      isScanning = false;
-      document.getElementById('camera-area').style.display = 'none';
-    }
-  }
-
-  async function _stopNativeScanner() {
-    isScanning = false;
-    if (_nativeTimer) { cancelAnimationFrame(_nativeTimer); _nativeTimer = null; }
-    if (_nativeStream) { _nativeStream.getTracks().forEach(t => t.stop()); _nativeStream = null; }
-    const video = document.getElementById('scannerVideo');
-    if (video) { video.srcObject = null; video.remove(); }
-    document.getElementById('camera-area').style.display = 'none';
-  }
-
-  // ===== Html5Qrcode フォールバック =====
-  function _startHtml5QrcodeScanner() {
-    if (typeof Html5Qrcode === 'undefined') {
-      showToast('スキャンライブラリが読み込まれていません', 8000);
-      isScanning = false;
       return;
     }
-    try {
-      if (!scanner) {
-        scanner = new Html5Qrcode('interactive', {
-          formatsToSupport: [
-            Html5QrcodeSupportedFormats.EAN_13,
-            Html5QrcodeSupportedFormats.EAN_8,
-            Html5QrcodeSupportedFormats.UPC_A,
-            Html5QrcodeSupportedFormats.CODE_128
-          ],
-          experimentalFeatures: { useBarCodeDetectorIfSupported: true },
-          verbose: false
-        });
+    
+    // ✅ P0: Html5Qrcodeライブラリの読み込み確認
+    if (typeof Html5Qrcode === 'undefined') {
+      const errorMsg = "バーコードスキャンライブラリが読み込まれていません。ページを再読み込みしてください。";
+      showToast(errorMsg, 10000);
+      if (isDebug()) {
+        console.error("[Scanner] Html5Qrcode library not loaded");
+        setLastError(`[Scanner] ${errorMsg}`);
       }
-      const scannerConfig = {
-        fps: 10,
-        qrbox: { width: 300, height: 150 },
-        aspectRatio: 1.7777778,
-        disableFlip: false
-      };
-      scanner.start(
-        { facingMode: 'environment' },
-        scannerConfig,
-        async (t) => {
-          showToast(`✅ 読取: ${t}`, 2000);
-          await stopScanner();
-          try {
-            await processBarcodeData(t);
-          } catch(e) {
-            showToast(`❌ エラー: ${e.message}`, 8000);
+      return;
+    }
+    
+    isScanning = true;
+    document.getElementById('camera-area').style.display='block';
+    // ✅ P0: トースト「カメラ起動中…」は表示しない（最低でも debug=1 の時だけに限定）
+    if (isDebug()) {
+      showToast("カメラ起動中…", 2000);
+      console.log("[Scanner] Starting scanner...");
+    }
+    
+    try {
+      if(!scanner) {
+        scanner = new Html5Qrcode("interactive");
+        if (isDebug()) {
+          console.log("[Scanner] Html5Qrcode instance created");
+        }
+      }
+    } catch(e) {
+      isScanning = false;
+      document.getElementById('camera-area').style.display='none';
+      const errorMsg = `スキャナーの初期化に失敗しました: ${e.message || e}`;
+      showToast(errorMsg, 10000);
+      if (isDebug()) {
+        console.error("[Scanner] Initialization error:", e);
+        setLastError(`[Scanner] ${errorMsg}`);
+      }
+      return;
+    }
+    
+    // ✅ P0: カメラのピント問題対応
+    // ✅ P0修正: cameraIdOrConfigは1キーだけにする（ライブラリの要求に準拠）
+    // ✅ getUserMedia は最初は安全に取得（落ちにくい条件）
+    const cameraConfig = {
+      facingMode: "environment" // 背面カメラ固定（1キーのみ）
+    };
+    
+    // ✅ P0: その他の設定（解像度・アスペクト比等）は別の設定引数へ分離
+    // ✅ P0修正: Html5Qrcodeライブラリの要求に準拠（cameraIdOrConfigは1キーのみ）
+    const scannerConfig = {
+      fps: 15,
+      qrbox: {width: 280, height: 180}, // ROI内だけの検出を確実にする
+      aspectRatio: 1.0, // 正方形に近い形状で精度向上
+      disableFlip: false // フリップを有効にして検出精度向上
+      // ✅ 注意: 解像度設定は、カメラ起動後にtrack.applyConstraints()で適用（後続の処理で実装済み）
+    };
+    
+    // ✅ P0: 検出は枠（ROI）内だけにして精度/速度を上げる（細い側面バーコードで特に）
+    scanner.start(cameraConfig, scannerConfig, async (t)=> {
+      // ✅ スキャンバーDOM要素を確実に生成・配置（カメラ起動成功後すぐ）
+      ensureScanbarDom();
+      ensureManualEntryDom();
+      try{ suppressQrcodeGuides(); setTimeout(suppressQrcodeGuides, 80); setTimeout(suppressQrcodeGuides, 250); setTimeout(suppressQrcodeGuides, 700);}catch(e){}
+      
+      showToast("読み取りOK", 1500);
+      
+      // ✅ P0: 取得できたら track.applyConstraints() を段階的にtry
+      try {
+        const videoElement = document.querySelector('#interactive video');
+        if (videoElement && videoElement.srcObject) {
+          const stream = videoElement.srcObject;
+          const track = stream.getVideoTracks()[0];
+          if (track) {
+            // ✅ track.getCapabilities() で端末の対応状況を確認
+            const capabilities = track.getCapabilities ? track.getCapabilities() : {};
+            const settings = track.getSettings ? track.getSettings() : {};
+            
+            // ✅ torch（ライト）対応チェック（暗所だけ自動点灯）
+            if (capabilities.torch && capabilities.torch.length > 0) {
+              try {
+                // 簡易的な明るさ判定（環境光センサーがない場合の代替）
+                // 実際の実装では、より高度な判定が必要な場合がある
+                const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+                // より確実な方法：明るさが低いと判断した場合のみ点灯
+                // ここでは、ユーザーが明示的に要求しない限り、自動点灯は控えめに
+                // 将来的には、実際の環境光センサーやカメラの明るさ情報を使用可能
+                if (isDebug()) {
+                  console.log("[Camera] torch capability available:", capabilities.torch);
+                }
+              } catch(e) {
+                if (isDebug()) {
+                  console.log("[Camera] torch check error:", e);
+                }
+              }
+            }
+            
+            // ✅ P0: ピント改善（連続AF/露出/ホワイトバランス等の強化）
+            // getCapabilities() を見て、対応端末は focusMode=continuous を優先
+            const constraints = [];
+            
+            // ✅ focusMode: continuous（連続オートフォーカス優先）
+            if (capabilities.focusMode && capabilities.focusMode.includes && capabilities.focusMode.includes("continuous")) {
+              constraints.push({ focusMode: "continuous" });
+            } else if (capabilities.focusMode && Array.isArray(capabilities.focusMode) && capabilities.focusMode.includes("continuous")) {
+              constraints.push({ focusMode: "continuous" });
+            } else {
+              // 対応していない場合は manual を試す（フォールバック）
+              if (capabilities.focusMode && (capabilities.focusMode.includes && capabilities.focusMode.includes("manual") || 
+                  (Array.isArray(capabilities.focusMode) && capabilities.focusMode.includes("manual")))) {
+                constraints.push({ focusMode: "manual" });
+              }
+            }
+            
+            // ✅ exposureMode: continuous（連続露出調整）
+            if (capabilities.exposureMode && capabilities.exposureMode.includes && capabilities.exposureMode.includes("continuous")) {
+              constraints.push({ exposureMode: "continuous" });
+            } else if (capabilities.exposureMode && Array.isArray(capabilities.exposureMode) && capabilities.exposureMode.includes("continuous")) {
+              constraints.push({ exposureMode: "continuous" });
+            }
+            
+            // ✅ whiteBalanceMode: continuous（ホワイトバランス調整）
+            if (capabilities.whiteBalanceMode && capabilities.whiteBalanceMode.includes && capabilities.whiteBalanceMode.includes("continuous")) {
+              constraints.push({ whiteBalanceMode: "continuous" });
+            } else if (capabilities.whiteBalanceMode && Array.isArray(capabilities.whiteBalanceMode) && capabilities.whiteBalanceMode.includes("continuous")) {
+              constraints.push({ whiteBalanceMode: "continuous" });
+            }
+            
+            // ✅ zoom: 1.2 は条件付き（capabilityがあり、かつ読み取りがブレる端末のみ）
+            if (capabilities.zoom && capabilities.zoom.max && capabilities.zoom.max >= 1.2) {
+              constraints.push({ zoom: 1.2 }); // 控えめなズーム（対応端末のみ）
+            }
+            
+            for (let i = 0; i < constraints.length; i++) {
+              try {
+                await track.applyConstraints({ advanced: [constraints[i]] });
+                if (isDebug()) {
+                  const constraintName = Object.keys(constraints[i])[0];
+                  showToast(`[Camera] Constraint ${i+1} OK: ${constraintName}`, 2000);
+                  console.log("[Camera] Applied constraint:", constraints[i]);
+                }
+              } catch(e) {
+                if (isDebug()) {
+                  const constraintName = Object.keys(constraints[i])[0];
+                  console.log(`[Camera] Constraint ${i+1} failed: ${constraintName}`, e.message);
+                }
+                // 失敗しても継続
+              }
+            }
           }
         }
-      ).catch(err => {
-        showToast(`スキャナー起動失敗: ${err.message || err}`, 10000);
-        isScanning = false;
-        document.getElementById('camera-area').style.display = 'none';
+      } catch(e) {
+        if (isDebug()) {
+          console.log("[Camera] applyConstraints error:", e);
+        }
+        // エラーは握りつぶして継続
+      }
+      
+      await stopScanner();
+      
+      // ✅ 共通処理へ（手入力と同じ）
+      await processBarcodeData(t);
+    }).catch((err) => {
+      // ✅ P0: スキャナー起動失敗時の詳細なエラーハンドリング
+      let errorMsg = "起動失敗";
+      let errorDetail = "";
+      
+      if (err) {
+        if (err instanceof Error) {
+          errorMsg = err.message || "起動失敗";
+          errorDetail = err.name || "";
+          if (err.stack) {
+            console.error("[Scanner] Error stack:", err.stack);
+          }
+        } else if (typeof err === 'string') {
+          errorMsg = err;
+        } else {
+          errorMsg = JSON.stringify(err) || "起動失敗";
+        }
+      }
+      
+      // エラーメッセージの詳細化
+      if (errorMsg.includes('NotAllowedError') || errorMsg.includes('Permission denied')) {
+        errorMsg = "カメラへのアクセスが拒否されました。ブラウザの設定でカメラの許可を確認してください。";
+      } else if (errorMsg.includes('NotFoundError') || errorMsg.includes('No camera found')) {
+        errorMsg = "カメラが見つかりません。カメラが接続されているか確認してください。";
+      } else if (errorMsg.includes('NotReadableError') || errorMsg.includes('Could not start video source')) {
+        errorMsg = "カメラが使用中です。他のアプリでカメラを使用していないか確認してください。";
+      } else if (errorMsg.includes('OverconstrainedError') || errorMsg.includes('constraint')) {
+        errorMsg = "カメラの設定が端末に対応していません。";
+      }
+      
+      const fullErrorMsg = errorDetail ? `${errorDetail}: ${errorMsg}` : errorMsg;
+      
+      // ✅ P0修正: スキャナー起動失敗時は必ず15秒表示（debug=1時は画面内ログにも残す）
+      const errorToastMsg = `[Scanner起動失敗] ${fullErrorMsg}`;
+      showToast(errorToastMsg, 15000); // 最低15秒
+      
+      // ✅ P0修正: debug=1 時は、同じ内容を画面内ログにも残す（消えない領域）
+      if (isDebug()) {
+        console.error("[Scanner] Start failed:", {
+          error: err,
+          message: errorMsg,
+          detail: errorDetail,
+          stack: err instanceof Error ? err.stack : '',
+          rawError: err
+        });
+      }
+      
+      // ✅ P0修正: エラーログを保存（診断ツール用）- 生の例外メッセージも必ず保存
+      addErrorLog({
+        type: 'scanner_start_failed',
+        message: errorMsg,
+        detail: errorDetail,
+        stack: err instanceof Error ? err.stack : '',
+        rawError: String(err),
+        rawErrorObject: err instanceof Error ? {
+          name: err.name,
+          message: err.message,
+          stack: err.stack
+        } : err,
+        timestamp: new Date().toISOString()
       });
-    } catch(e) {
-      showToast(`スキャナー初期化失敗: ${e.message}`, 10000);
-      isScanning = false;
-    }
-
+      
+      stopScanner();
+    });
+    
+    // ✅ スキャンバーDOM要素を確実に生成・配置（エラー時も実行）
     setTimeout(() => {
       ensureScanbarDom();
-      try { suppressQrcodeGuides(); } catch(e) {}
-      if (isDebug()) displayScanbarDebugInfo();
-    }, 300);
+      
+      // ✅ debug=1時にスキャンバー情報を表示
+      if (isDebug()) {
+        displayScanbarDebugInfo();
+      }
+    }, 300); // カメラ起動後0.3秒待ってから実行
   }
+
+
+  // ===== ネイティブ BarcodeDetector =====
+
+
+
+  // ===== Html5Qrcode フォールバック =====
   
   // ✅ スキャンバーDOM要素を確実に生成・配置する関数（自己修復機能）
   function ensureScanbarDom() {
@@ -5305,18 +5405,15 @@ return true;
   }
 
   async function stopScanner() {
-    // ネイティブBarcodeDetector停止
-    if (typeof _stopNativeScanner === 'function' && window._nativeStream) {
-      await _stopNativeScanner();
-    }
-    // Html5Qrcode停止
-    if (scanner) {
+    if(scanner) {
       try { await scanner.stop(); } catch(e) {}
+      finally { document.getElementById('camera-area').style.display='none'; isScanning = false;
+      try{ const me=document.getElementById('manual-entry'); if(me) me.style.display='none'; const mi=document.getElementById('manualCodeInput'); if(mi) mi.value=''; }catch(e){} }
+    } else {
+      document.getElementById('camera-area').style.display='none'; isScanning = false;
     }
-    isScanning = false;
-    document.getElementById('camera-area').style.display = 'none';
-    try { const me = document.getElementById('manual-entry'); if(me) me.style.display='none'; } catch(e) {}
   }
+
 
   async function showHome() {
     try{ clearToasts(); }catch(e){}
