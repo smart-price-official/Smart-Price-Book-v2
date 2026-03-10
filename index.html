@@ -2667,7 +2667,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
   }
   function getSafeUrl(url) {
     const base = getBaseUrl(url);
-    return base ? `${base}/smart_price.json` : "";
+    return base ? `${base}/db/db/smart_price.json` : "";
   }
 
   // UIFIX24: ユーザーID（複数端末・複数ユーザーの同期単位）
