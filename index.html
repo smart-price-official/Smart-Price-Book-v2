@@ -9,7 +9,7 @@ CHANGES:
 - 既存UIはそのまま（UI_FREEZE）。ボタンの見た目・配置は変更なし
 BUILD_PARAM(b): ?b=2026-02-15_0102_ui-fix24
 DEBUG_PARAM: &debug=1
-AUTHOR: Claude
+AUTHOR: Yui
 POLICY: UI_FREEZE / 単一HTML / VERSION SSOT-->
 <html lang="ja">
 <head>
@@ -20,9 +20,10 @@ POLICY: UI_FREEZE / 単一HTML / VERSION SSOT-->
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
-  const APP_VERSION = "v22.7.3";
+  // Author: Claude
+  const APP_VERSION = "v22.7.4";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-11_syntax-fix";
+  const BUILD_ID = "2026-03-11_qrbox-fix";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -4901,11 +4902,10 @@ function startScanner() {
     // ✅ P0: その他の設定（解像度・アスペクト比等）は別の設定引数へ分離
     // ✅ P0修正: Html5Qrcodeライブラリの要求に準拠（cameraIdOrConfigは1キーのみ）
     const scannerConfig = {
-      fps: 15,
-      qrbox: {width: 280, height: 180}, // ROI内だけの検出を確実にする
-      aspectRatio: 1.0, // 正方形に近い形状で精度向上
-      disableFlip: false // フリップを有効にして検出精度向上
-      // ✅ 注意: 解像度設定は、カメラ起動後にtrack.applyConstraints()で適用（後続の処理で実装済み）
+      fps: 10,
+      qrbox: { width: 300, height: 150 }, // バーコード（横長）に最適化
+      aspectRatio: 1.7777778, // 16:9（縦持ちスマホの実カメラ比率に合わせる）
+      disableFlip: false
     };
     
     // ✅ P0: 検出は枠（ROI）内だけにして精度/速度を上げる（細い側面バーコードで特に）
