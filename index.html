@@ -17,7 +17,7 @@ window.BUILD_ID = BUILD_ID;
 const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
 window.FULL_VERSION = FULL_VERSION;
 function setHeaderVersionBadge(){
-const _jD24gG7r3 = document.getElementById('versionBadge') || document.getElementById('version-_jD24gG7r3');
+const _jD24gG7r3 = document.getElementById('versionBadge') || document.getElementById('version-badge');
 if(!_jD24gG7r3) return;
 const _vyD275ESb = window.matchMedia && window.matchMedia('(max-width: 640px)').matches;
 const _hjK2Oph0C = document.getElementById('settingsModal');
@@ -1255,7 +1255,7 @@ if (!_z1Bb7NTw2) return;
 _z1Bb7NTw2.onAuthStateChanged((user) => {
 if (user) {
 _eZ0gNkBCF = user.uid;
-if (isDebug()) console.log('[Firebase] Auth state _wlOQyxJkV, UID:', _eZ0gNkBCF);
+if (isDebug()) console.log('[Firebase] Auth state changed, UID:', _eZ0gNkBCF);
 } else {
 _eZ0gNkBCF = null;
 _tPyAJxtk3 = false;
@@ -1416,7 +1416,7 @@ _kiruMyoCJ: [],
 storeTaxModes: {}
 };
 const _twMRyIWzQ = "smart_price_img_db_v1";
-const _oHEP5I7Az = "_dMTZ2icTw";
+const _oHEP5I7Az = "images";
 let _frWPJlYQZ = null;
 function _xpy3ldLMA() {
 if (!('indexedDB' in window)) return Promise.resolve(null);
@@ -1539,7 +1539,7 @@ const w = img.width, h = img.height;
 const _g9ekkGEmf = Math.min(1, maxSide / Math.max(w, h));
 const cw = Math.max(1, Math.round(w * _g9ekkGEmf));
 const ch = Math.max(1, Math.round(h * _g9ekkGEmf));
-const _dOD2UiC3U = document.createElement('_dOD2UiC3U');
+const _dOD2UiC3U = document.createElement('canvas');
 _dOD2UiC3U.width = cw; _dOD2UiC3U.height = ch;
 const ctx = _dOD2UiC3U.getContext('2d');
 ctx.fillStyle = "#fff";
@@ -1598,7 +1598,7 @@ createdAt: Date.now()
 const imageUrl = _kcr460x29(_jkyMBr94l, code, _kAZkkcqnq);
 await _fyKKcE8q8(imageUrl, {
 method: 'PUT',
-headers: { "Content-Type": "application/_uAFilvM5Q" },
+headers: { "Content-Type": "application/json" },
 body: JSON.stringify(_dbHVLvMuP)
 }, 15000);
 return { _kAZkkcqnq, owner: _uXnvPCk5Z };
@@ -1616,10 +1616,10 @@ if (_cd8D0DRuX && typeof _cd8D0DRuX === 'object' && _cd8D0DRuX.imageUrl) {
 _dMTZ2icTw.push({ _kAZkkcqnq, ..._cd8D0DRuX });
 }
 }
-if (isDebug()) console.log('[Firebase SDK] Loaded _dMTZ2icTw:', _dMTZ2icTw.length);
+if (isDebug()) console.log('[Firebase SDK] Loaded images:', _dMTZ2icTw.length);
 return _dMTZ2icTw;
 } catch(e) {
-if (isDebug()) console.warn('[Firebase SDK] Get _dMTZ2icTw failed, fallback to REST:', e);
+if (isDebug()) console.warn('[Firebase SDK] Get images failed, fallback to REST:', e);
 }
 }
 if (!_jkyMBr94l) return [];
@@ -1636,7 +1636,7 @@ _dMTZ2icTw.push({ _kAZkkcqnq, ..._cd8D0DRuX });
 }
 return _dMTZ2icTw;
 } catch(e) {
-if (isDebug()) console.warn('[_ozC5BUEHd]', e);
+if (isDebug()) console.warn('[getSharedImages]', e);
 return [];
 }
 }
@@ -1730,14 +1730,14 @@ if (_fHem7tWEi.dataset && _fHem7tWEi.dataset.objurl) {
 try { URL.revokeObjectURL(_fHem7tWEi.dataset.objurl); } catch(e) {}
 }
 _fHem7tWEi.dataset.objurl = url;
-if (isDebug()) console.log('[_ypxsNtI2B] Found old key:', candidateKey, 'for', key);
+if (isDebug()) console.log('[applyImageKeyToImg] Found old key:', candidateKey, 'for', key);
 return Promise.resolve();
 }
 }
 }
 return Promise.reject(new Error('Image not found in IndexedDB (tried fallback)'));
 } catch(e) {
-if (isDebug()) console.warn('[_ypxsNtI2B]', e);
+if (isDebug()) console.warn('[applyImageKeyToImg]', e);
 return Promise.reject(e);
 }
 }
@@ -1804,7 +1804,7 @@ if (isDebug()) console.error('[UserProfile] Failed to save:', e);
 function _uCdEEHdru() {
 try {
 const _p9rF3Rs7c = new URL(location.href).searchParams;
-const _tNRMg6B6O = _p9rF3Rs7c.get('ref') || _p9rF3Rs7c.get('_tNRMg6B6O');
+const _tNRMg6B6O = _p9rF3Rs7c.get('ref') || _p9rF3Rs7c.get('invite');
 if (_tNRMg6B6O && _tNRMg6B6O.trim().length > 0) {
 return _tNRMg6B6O.trim();
 }
@@ -1889,16 +1889,16 @@ return await res._uAFilvM5Q();
 let cfg = null;
 if (_iOKd4UHMO) {
 try {
-cfg = await _yGrCb9YNh('./config._uAFilvM5Q');
+cfg = await _yGrCb9YNh('./config.json');
 } catch (e1) {
 if (isDebug()) {
-console.warn('[Config] 1st try failed (./config._uAFilvM5Q), fallback to ./dev/config._uAFilvM5Q');
-showToast('[Config] Fallback to ./dev/config._uAFilvM5Q', 5000);
+console.warn('[Config] 1st try failed (./config.json), fallback to ./dev/config.json');
+showToast('[Config] Fallback to ./dev/config.json', 5000);
 }
-cfg = await _yGrCb9YNh('./dev/config._uAFilvM5Q');
+cfg = await _yGrCb9YNh('./dev/config.json');
 }
 } else {
-cfg = await _yGrCb9YNh('./config._uAFilvM5Q');
+cfg = await _yGrCb9YNh('./config.json');
 }
 window.SP_CONFIG = cfg || {};
 if (isDebug()) {
@@ -1941,7 +1941,7 @@ if (isDebug()) console.warn('[DOMContentLoaded] version update error:', e);
 window.onload = async () => {
 try {
 document.body.style.display = 'block';
-const _luRfyGMd5 = document.getElementById('_luRfyGMd5');
+const _luRfyGMd5 = document.getElementById('mainView');
 if (_luRfyGMd5) _luRfyGMd5.style.display = 'block';
 } catch(e) {
 if (isDebug()) console.warn('[onload] display error:', e);
@@ -1979,7 +1979,7 @@ renderStoreList();
 if (isDebug()) console.log('[onload] Nearby stores loaded:', _fcEFmRvam.length);
 }
 } catch(e) {
-if (isDebug()) console.warn('[onload] _unriTwm90 failed:', e);
+if (isDebug()) console.warn('[onload] fetchNearbyStores failed:', e);
 }
 if (isDebug()) {
 document.body.setAttribute('data-debug', '1');
@@ -2004,7 +2004,7 @@ window.addEventListener('beforeinstallprompt', (e) => {
 e.preventDefault();
 _tA2uqztSy = e;
 if (isDebug()) console.log('[PWA] Install prompt captured');
-const _nJQA0RVIH = document.getElementById('_nJQA0RVIH');
+const _nJQA0RVIH = document.getElementById('webModal');
 const _wONHWp7Fx = document.getElementById('pwaInstallBtn');
 if (_nJQA0RVIH && _nJQA0RVIH.style.display === 'flex' && _wONHWp7Fx) {
 _wONHWp7Fx.style.display = 'block';
@@ -2074,7 +2074,7 @@ while (_f1g8VNNSK.children.length >= _mdzfUTWUl) {
 _f1g8VNNSK.removeChild(_f1g8VNNSK.firstChild);
 }
 const _eYFlYGmiU = document.createElement("div");
-_eYFlYGmiU.className = "_eYFlYGmiU _eYFlYGmiU-compact";
+_eYFlYGmiU.className = "toast toast-compact";
 _eYFlYGmiU.style.pointerEvents = "auto";
 _eYFlYGmiU.style.margin = "6px 0";
 _eYFlYGmiU.style.borderRadius = "10px";
@@ -2316,13 +2316,13 @@ throw e;
 function _r0Wz6i4X1(url) {
 if(!url) return "";
 let _aqTLvECHI = url.trim().replace(/\/rules$/, "").replace(/\/+$/, "");
-if(_aqTLvECHI.endsWith('._uAFilvM5Q')) _aqTLvECHI = _aqTLvECHI.slice(0, -5);
+if(_aqTLvECHI.endsWith('.json')) _aqTLvECHI = _aqTLvECHI.slice(0, -5);
 if(_aqTLvECHI.endsWith('/smart_price') || _aqTLvECHI.endsWith('smart_price')) _aqTLvECHI = _aqTLvECHI.replace(/\/?smart_price$/, '');
 return _aqTLvECHI.replace(/\/+$/, '');
 }
 function _rBWyofg4c(url) {
 const _aqTLvECHI = _r0Wz6i4X1(url);
-return _aqTLvECHI ? `${_aqTLvECHI}/smart_price._uAFilvM5Q` : "";
+return _aqTLvECHI ? `${_aqTLvECHI}/smart_price.json` : "";
 }
 function _rdAS3GL0o(){
 try{
@@ -2343,12 +2343,12 @@ try{
 const u = baseJsonUrl || '';
 const uid = encodeURIComponent((userId||'').trim());
 if(!u || !uid) return u;
-if(u.endsWith('._uAFilvM5Q')){
-const i = u.lastIndexOf('/smart_price._uAFilvM5Q');
+if(u.endsWith('.json')){
+const i = u.lastIndexOf('/smart_price.json');
 if(i !== -1){
-return u.slice(0, i) + `/users/${uid}/smart_price._uAFilvM5Q`;
+return u.slice(0, i) + `/users/${uid}/smart_price.json`;
 }
-const j = u.lastIndexOf('._uAFilvM5Q');
+const j = u.lastIndexOf('.json');
 return u.slice(0, j) + `/users/${uid}` + u.slice(j);
 }
 return u;
@@ -2357,12 +2357,12 @@ return u;
 function _kcr460x29(url, code, _kAZkkcqnq) {
 const _aqTLvECHI = _r0Wz6i4X1(url);
 if (!_aqTLvECHI) return "";
-return `${_aqTLvECHI}/smart_price_images/${encodeURIComponent(code)}/${encodeURIComponent(_kAZkkcqnq)}._uAFilvM5Q`;
+return `${_aqTLvECHI}/smart_price_images/${encodeURIComponent(code)}/${encodeURIComponent(_kAZkkcqnq)}.json`;
 }
 function _uY0bwiW5B(url, code) {
 const _aqTLvECHI = _r0Wz6i4X1(url);
 if (!_aqTLvECHI) return "";
-return `${_aqTLvECHI}/smart_price_images/${encodeURIComponent(code)}._uAFilvM5Q`;
+return `${_aqTLvECHI}/smart_price_images/${encodeURIComponent(code)}.json`;
 }
 async function _d09H3BjIR() {
 if(!_jkyMBr94l) return;
@@ -2372,7 +2372,7 @@ const _bVIp4ygXr = _qNODcf3xL(_rBWyofg4c(_jkyMBr94l), uid);
 const _hPs3JSB08 = _jf3rl36hI(db);
 await _fyKKcE8q8(_bVIp4ygXr, {
 method: 'PUT',
-headers: { "Content-Type": "application/_uAFilvM5Q" },
+headers: { "Content-Type": "application/json" },
 body: JSON.stringify(_hPs3JSB08)
 }, 12000);
 } catch(e){
@@ -2714,7 +2714,7 @@ showToast("店名を追加しました", 3000);
 }
 function renderStoreList(manualPriority = []) {
 db = normalizeDb(db);
-const _lIEPCDRoV = document.getElementById('store-_lIEPCDRoV');
+const _lIEPCDRoV = document.getElementById('store-list');
 if(!_lIEPCDRoV) return;
 const _k2LMsuQDA = {};
 const _obcm7KnPE = {};
@@ -2743,10 +2743,10 @@ if (window.SP_BOOT_RESET_STORE) {
 curStore = '未設定';
 window.SP_BOOT_RESET_STORE = false;
 }
-const _lIFrkhGKL = _smLBsR2UQ ? `GPS<_eOxUxeS3w class="gps-status">●${lastGpsTime}</_eOxUxeS3w>` : `GPS<_eOxUxeS3w class="gps-status">OFF</_eOxUxeS3w>`;
-_lIEPCDRoV.innerHTML = `<_eOxUxeS3w class="store-tag gps-btn ${_smLBsR2UQ?'on':''}" onclick="toggleGps()">${_lIFrkhGKL}</_eOxUxeS3w>`;
+const _lIFrkhGKL = _smLBsR2UQ ? `GPS<span class="gps-status">●${lastGpsTime}</span>` : `GPS<span class="gps-status">OFF</span>`;
+_lIEPCDRoV.innerHTML = `<span class="store-tag gps-btn ${_smLBsR2UQ?'on':''}" onclick="toggleGps()">${_lIFrkhGKL}</span>`;
 _eipTOaHrs.forEach(name => {
-const _eOxUxeS3w = document.createElement('_eOxUxeS3w');
+const _eOxUxeS3w = document.createElement('span');
 _eOxUxeS3w.className = 'store-tag' + (name === curStore ? ' active' : '');
 _eOxUxeS3w.innerText = name;
 _eOxUxeS3w.onclick = () => {
@@ -2770,7 +2770,7 @@ showToast(`税${_xHfv3UkG5 === "in" ? "込" : "別"}に自動切替`, 2000);
 };
 _lIEPCDRoV.appendChild(_eOxUxeS3w);
 });
-const _pelEOzYgJ = document.createElement('_eOxUxeS3w');
+const _pelEOzYgJ = document.createElement('span');
 _pelEOzYgJ.className = 'store-tag add-store';
 _pelEOzYgJ.innerText = '＋店名入力';
 _pelEOzYgJ.onclick = () => _mtIUqeuWF();
@@ -2801,7 +2801,7 @@ const _uC2fOuhVt = Object.keys(db.products).map(k => ({ code: k, ...db.products[
 _uC2fOuhVt.sort((a,b) => (_cMwhMdSZp(b.history?.[b.history.length-1]) || 0) - (_cMwhMdSZp(a.history?.[a.history.length-1]) || 0));
 const _gDO6ScIAD = _uC2fOuhVt.some(x => x.history && x.history.length);
 if(!_gDO6ScIAD){
-_lIEPCDRoV.innerHTML = `<div class="text-secondary _tmbwfWkaO text-center py-3" style="opacity:.85;">購入履歴がありません（必要なら「設定保存と同期」を実行してください）</div>`;
+_lIEPCDRoV.innerHTML = `<div class="text-secondary small text-center py-3" style="opacity:.85;">購入履歴がありません（必要なら「設定保存と同期」を実行してください）</div>`;
 _wDCBUmOWc = false; return;
 }
 const _lefotFnQU = new Set();
@@ -2814,7 +2814,7 @@ continue;
 }
 const _nNUUrAX3I = _tph0x9tD9(it.name, it.maker);
 if (_nNUUrAX3I && _nNUUrAX3I !== '|' && _f6QLNV7VM.has(_nNUUrAX3I)) {
-if (isDebug()) console.log('[renderHistory] Skipped duplicate _nNUUrAX3I:', it.code, _nNUUrAX3I);
+if (isDebug()) console.log('[renderHistory] Skipped duplicate normalized:', it.code, _nNUUrAX3I);
 continue;
 }
 _lefotFnQU.add(it.code);
@@ -2859,7 +2859,7 @@ _to1EmPnIG = _vb2dy9iG2.imageUrl;
 }
 }
 } catch(e) {
-if (isDebug()) console.warn('[renderHistory] _ozC5BUEHd failed:', e);
+if (isDebug()) console.warn('[renderHistory] getSharedImages failed:', e);
 }
 }
 const _jJtjsEk4a = _yWaJFk2pq.map(h => Number(h.price)).filter(p => !isNaN(p) && p > 0);
@@ -2868,20 +2868,20 @@ const _rQkpaucAp = _jJtjsEk4a.length ? Math.min(..._jJtjsEk4a) : null;
 const _qRbHKRPOW = _xf9bSQQHp && _xf9bSQQHp.price ? Number(_xf9bSQQHp.price) : null;
 const _nd0Kbt2z7 = (_jJtjsEk4a.length >= 2) ? `
 <div class="d-flex gap-2 mt-1" style="font-size:0.6rem; color:#aaa;">
-<_eOxUxeS3w>平均 <b style="color:#fff;">${_huETiIvqn}円</b></_eOxUxeS3w>
-<_eOxUxeS3w>最安 <b style="color:#e74c3c;">${_rQkpaucAp}円</b></_eOxUxeS3w>
-<_eOxUxeS3w>前回 <b style="color:#fff;">${_qRbHKRPOW}円</b></_eOxUxeS3w>
+<span>平均 <b style="color:#fff;">${_huETiIvqn}円</b></span>
+<span>最安 <b style="color:#e74c3c;">${_rQkpaucAp}円</b></span>
+<span>前回 <b style="color:#fff;">${_qRbHKRPOW}円</b></span>
 </div>` : '';
 div.innerHTML = `
-<div class="d-flex align-_uC2fOuhVt-center">
+<div class="d-flex align-items-center">
 <img id="${_wafB195DX}" src="${_to1EmPnIG}" class="prod-thumb" referrerpolicy="no-referrer">
 <div class="flex-grow-1 overflow-hidden">
-<div class="fw-bold text-white _tmbwfWkaO text-truncate">${it.name || ''}</div>
+<div class="fw-bold text-white small text-truncate">${it.name || ''}</div>
 <div class="text-secondary" style="font-size:0.6rem;">${_xf9bSQQHp.store || '未設定'}</div>
 ${_nd0Kbt2z7}
 </div>
 <div class="text-end ms-2 flex-shrink-0">
-<div class="price-_xcW5WUp4V">${_xf9bSQQHp.price}<_eOxUxeS3w style="font-size:0.6rem;">円</_eOxUxeS3w></div>
+<div class="price-main">${_xf9bSQQHp.price}<span style="font-size:0.6rem;">円</span></div>
 </div>
 </div>`;
 _lIEPCDRoV.appendChild(div);
@@ -2960,9 +2960,9 @@ _wDCBUmOWc = false;
 }
 async function openForm(code) {
 const _qFG0rHjEk = document.getElementById('calcOptionArea');
-const _mfgJGtv65 = document.getElementById('_mfgJGtv65');
+const _mfgJGtv65 = document.getElementById('saveBtn');
 const _pr8udnW05 = document.getElementById('delHistBtn');
-const _w2sT5rW2y = document.getElementById('_w2sT5rW2y');
+const _w2sT5rW2y = document.getElementById('storeJumpBtn');
 const _fxTwQM3C3 = document.getElementById('delProductBtn');
 if(_qFG0rHjEk) _qFG0rHjEk.style.display = 'flex';
 if(_mfgJGtv65) _mfgJGtv65.innerText = '保存';
@@ -2973,7 +2973,7 @@ _rLCpzje5D = code; editingHistIdx = null;
 const p = db.products[code];
 const _sxMv0EE1F = !!p;
 _jvVpHOCQe();
-document.getElementById('_luRfyGMd5').style.display='none';
+document.getElementById('mainView').style.display='none';
 document.getElementById('formView').style.display='block';
 const ind = document.getElementById('curStoreIndicator');
 if(ind) ind.innerText = `【 ${curStore} 】で保存します`;
@@ -3235,7 +3235,7 @@ _doXDESQnD.src = _kItpzE46W();
 }
 }
 } catch(e) {
-if (isDebug()) console.warn('[openForm] _ozC5BUEHd failed:', e);
+if (isDebug()) console.warn('[openForm] getSharedImages failed:', e);
 }
 })();
 }
@@ -3254,9 +3254,9 @@ const avg = Math.floor(_oxBDm7EJk.reduce((a,b)=>a+b,0)/_oxBDm7EJk.length);
 const low = Math.min(..._oxBDm7EJk);
 const _xf9bSQQHp = _oxBDm7EJk[_oxBDm7EJk.length-1];
 box.innerHTML = `<div class="stats-row">
-<div class="stat-_xgRW6qG9v">平均<_eOxUxeS3w class="stat-val">${avg}円</_eOxUxeS3w></div>
-<div class="stat-_xgRW6qG9v">最安<_eOxUxeS3w class="stat-val text-danger">${low}円</_eOxUxeS3w></div>
-<div class="stat-_xgRW6qG9v">前回<_eOxUxeS3w class="stat-val">${_xf9bSQQHp}円</_eOxUxeS3w></div>
+<div class="stat-item">平均<span class="stat-val">${avg}円</span></div>
+<div class="stat-item">最安<span class="stat-val text-danger">${low}円</span></div>
+<div class="stat-item">前回<span class="stat-val">${_xf9bSQQHp}円</span></div>
 </div>`;
 }
 function _xAhSgvOtg(history) {
@@ -3274,12 +3274,12 @@ const t = _cMwhMdSZp(h);
 const _pqGo0s8a4 = t ? new Date(t).toLocaleString() : "(不明)";
 row.innerHTML = `
 <div class="flex-grow-1">
-<_eOxUxeS3w class="text-secondary _tmbwfWkaO">${_pqGo0s8a4}</_eOxUxeS3w><br>
-<_eOxUxeS3w class="text-white fw-bold">${h.store || '未設定'}</_eOxUxeS3w>
+<span class="text-secondary small">${_pqGo0s8a4}</span><br>
+<span class="text-white fw-bold">${h.store || '未設定'}</span>
 </div>
 <div class="text-end">
-<_eOxUxeS3w class="fw-bold text-white">${h.price}円</_eOxUxeS3w><br>
-<_eOxUxeS3w class="text-info _tmbwfWkaO">タップで編集</_eOxUxeS3w>
+<span class="fw-bold text-white">${h.price}円</span><br>
+<span class="text-info small">タップで編集</span>
 </div>`;
 div.appendChild(row);
 });
@@ -3297,9 +3297,9 @@ const ind = document.getElementById('curStoreIndicator');
 if(ind) ind.innerText = `【 ${curStore} 】で保存します`;
 renderStoreList();
 document.getElementById('calcOptionArea').style.display = "none";
-document.getElementById('_mfgJGtv65').innerText = "変更確定";
+document.getElementById('saveBtn').innerText = "変更確定";
 document.getElementById('delHistBtn').style.display = "block";
-document.getElementById('_w2sT5rW2y').style.display = "block";
+document.getElementById('storeJumpBtn').style.display = "block";
 _xAhSgvOtg(p.history);
 window.scrollTo({ top: 0, behavior: 'smooth' });
 showToast("店名は上のチップで変更できます", 3000);
@@ -3310,7 +3310,7 @@ window.scrollTo({ top: 0, behavior: 'smooth' });
 showToast("上の店名チップで変更できます", 3000);
 }
 async function saveData() {
-const _mfgJGtv65 = document.getElementById('_mfgJGtv65');
+const _mfgJGtv65 = document.getElementById('saveBtn');
 if (_mfgJGtv65) _mfgJGtv65.disabled = true;
 try {
 if (curStore === "未設定") {
@@ -3388,7 +3388,7 @@ const _rKmr5rsUx = { price: _urfl24iER, store: curStore, ts: Date.now() };
 if(curPos) { _rKmr5rsUx.lat = curPos.lat; _rKmr5rsUx.lng = curPos.lng; }
 p.history.push(_rKmr5rsUx);
 showToast("保存完了", 2000);
-if (isDebug()) console.log("[SaveData] New _rKmr5rsUx added:", _rKmr5rsUx);
+if (isDebug()) console.log("[SaveData] New entry added:", _rKmr5rsUx);
 }
 db.products[_rLCpzje5D] = p;
 db = normalizeDb(db);
@@ -3444,7 +3444,7 @@ window.nearbyStoreNames = _fcEFmRvam;
 if (isDebug()) console.log('[GPS] Nearby stores loaded:', _fcEFmRvam.length);
 }
 } catch(e) {
-if (isDebug()) console.warn('[GPS] _unriTwm90 failed:', e);
+if (isDebug()) console.warn('[GPS] fetchNearbyStores failed:', e);
 }
 renderStoreList();
 const msg = isDebug()
@@ -3670,8 +3670,8 @@ showToast(`[OFF] Fetching...`, 3000);
 console.log("[OFF] JAN:", jan);
 }
 const _lOQ82vt2M = [
-`https://jp.openfoodfacts.org/api/v2/_mI91Mh5ic/${jan}._uAFilvM5Q`,
-`https://world.openfoodfacts.org/api/v2/_mI91Mh5ic/${jan}._uAFilvM5Q`
+`https://jp.openfoodfacts.org/api/v2/product/${jan}.json`,
+`https://world.openfoodfacts.org/api/v2/product/${jan}.json`
 ];
 const _cydbAXsc7 = new AbortController();
 const _aGoOiV226 = setTimeout(() => _cydbAXsc7.abort(), 12000);
@@ -3738,7 +3738,7 @@ const _paaeLVxqA = imageUrl && (
 imageUrl.includes('user') ||
 imageUrl.includes('upload') ||
 imageUrl.includes('mobile') ||
-(!_k6wuuUl0T && imageUrl.includes('_dMTZ2icTw.openfoodfacts.org'))
+(!_k6wuuUl0T && imageUrl.includes('images.openfoodfacts.org'))
 );
 if (imageUrl && (_paaeLVxqA || !_k6wuuUl0T)) {
 if (!_bskGXS1z6) {
@@ -3761,7 +3761,7 @@ maker: _cszbC5Nt6 || '',
 imageUrl: imageUrl || ''
 };
 if (isDebug()) {
-showToast(`[OFF] OK name=${_nSfAHgPGf.name ? _nSfAHgPGf.name.substring(0, 20) + '...' : '(empty)'} _cszbC5Nt6=${_nSfAHgPGf.maker || '(empty)'} img=${_nSfAHgPGf.imageUrl ? 'OK' : '(empty)'}`, 5000);
+showToast(`[OFF] OK name=${_nSfAHgPGf.name ? _nSfAHgPGf.name.substring(0, 20) + '...' : '(empty)'} brand=${_nSfAHgPGf.maker || '(empty)'} img=${_nSfAHgPGf.imageUrl ? 'OK' : '(empty)'}`, 5000);
 console.log("[OFF] Found:", _nSfAHgPGf);
 }
 return _nSfAHgPGf;
@@ -3834,7 +3834,7 @@ const _uAFilvM5Q = await res._uAFilvM5Q();
 if (!_uAFilvM5Q || !_uAFilvM5Q.ok) {
 if (isDebug()) {
 showToast(`[楽天] Proxy未実装の可能性 (ok:false)`, 5000);
-console.log("[Rakuten] Proxy may not be implemented, _vbSQjXqlw:", _uAFilvM5Q);
+console.log("[Rakuten] Proxy may not be implemented, response:", _uAFilvM5Q);
 }
 return null;
 }
@@ -3864,7 +3864,7 @@ maker: _cszbC5Nt6 || '',
 imageUrl: imageUrl || ''
 };
 if (isDebug()) {
-showToast(`[楽天] OK name=${_nSfAHgPGf.name ? _nSfAHgPGf.name.substring(0, 20) + '...' : '(empty)'} _cszbC5Nt6=${_nSfAHgPGf.maker || '(empty)'} img=${_nSfAHgPGf.imageUrl ? 'OK' : '(empty)'}`, 5000);
+showToast(`[楽天] OK name=${_nSfAHgPGf.name ? _nSfAHgPGf.name.substring(0, 20) + '...' : '(empty)'} brand=${_nSfAHgPGf.maker || '(empty)'} img=${_nSfAHgPGf.imageUrl ? 'OK' : '(empty)'}`, 5000);
 console.log("[Rakuten] Found:", _nSfAHgPGf);
 }
 return _nSfAHgPGf;
@@ -3928,7 +3928,7 @@ if (isDebug()) showToast(`[Yahoo] プロキシ失敗: ${e.message}`, 3000);
 if (!_nSfAHgPGf && _rzi6wdx5H) {
 try {
 if (isDebug()) showToast(`[Yahoo] 直接API検索中...`, 2000);
-const url = `https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch?appid=${encodeURIComponent(_rzi6wdx5H)}&jan_code=${encodeURIComponent(jan)}&results=3&output=_uAFilvM5Q`;
+const url = `https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch?appid=${encodeURIComponent(_rzi6wdx5H)}&jan_code=${encodeURIComponent(jan)}&results=3&output=json`;
 const _w666edPEJ = new AbortController();
 const _yTi3cWg3S = setTimeout(() => _w666edPEJ.abort(), 12000);
 const _kBpDBlqA8 = await fetch(url, { cache: 'no-store', _oDeGBoCBj: _w666edPEJ._oDeGBoCBj });
@@ -3982,13 +3982,13 @@ return [];
 if (_smLBsR2UQ && curPos && curPos.lat && curPos.lng) {
 const _hSHKKygtP = 5;
 const _aMH7gaRIM = 40;
-const _zz2yqUzqH = `${_xeFdhK4JV}?action=stores&lat=${curPos.lat}&lng=${curPos.lng}&radius_km=${_hSHKKygtP}&_aMH7gaRIM=${_aMH7gaRIM}`;
+const _zz2yqUzqH = `${_xeFdhK4JV}?action=stores&lat=${curPos.lat}&lng=${curPos.lng}&radius_km=${_hSHKKygtP}&limit=${_aMH7gaRIM}`;
 if (isDebug()) console.log('[FetchStores] GPS mode:', _zz2yqUzqH);
 const res = await _fyKKcE8q8(_zz2yqUzqH, { cache: 'no-store' }, 15000);
 if (!res.ok) throw new Error(`HTTP ${res.status}`);
 const _uAFilvM5Q = await res._uAFilvM5Q();
 if (_uAFilvM5Q && _uAFilvM5Q.ok && Array.isArray(_uAFilvM5Q.stores)) {
-if (isDebug()) console.log('[FetchStores] GPS _nSfAHgPGf:', _uAFilvM5Q.stores.length, 'stores');
+if (isDebug()) console.log('[FetchStores] GPS result:', _uAFilvM5Q.stores.length, 'stores');
 return _uAFilvM5Q.stores.map(s => String(s.name || '').trim()).filter(_gbSuX8kAy);
 }
 return [];
@@ -3997,13 +3997,13 @@ const _pwHlRehfd = (db && db.config && db.config.homeCity) ? String(db.config.ho
 if (_pwHlRehfd) {
 const _hSHKKygtP = 15;
 const _aMH7gaRIM = 40;
-const _zz2yqUzqH = `${_xeFdhK4JV}?action=stores&_pwHlRehfd=${encodeURIComponent(_pwHlRehfd)}&radius_km=${_hSHKKygtP}&_aMH7gaRIM=${_aMH7gaRIM}`;
+const _zz2yqUzqH = `${_xeFdhK4JV}?action=stores&area=${encodeURIComponent(_pwHlRehfd)}&radius_km=${_hSHKKygtP}&limit=${_aMH7gaRIM}`;
 if (isDebug()) console.log('[FetchStores] Area mode:', _pwHlRehfd, _zz2yqUzqH);
 const res = await _fyKKcE8q8(_zz2yqUzqH, { cache: 'no-store' }, 15000);
 if (!res.ok) throw new Error(`HTTP ${res.status}`);
 const _uAFilvM5Q = await res._uAFilvM5Q();
 if (_uAFilvM5Q && _uAFilvM5Q.ok && Array.isArray(_uAFilvM5Q.stores)) {
-if (isDebug()) console.log('[FetchStores] Area _nSfAHgPGf:', _uAFilvM5Q.stores.length, 'stores');
+if (isDebug()) console.log('[FetchStores] Area result:', _uAFilvM5Q.stores.length, 'stores');
 return _uAFilvM5Q.stores.map(s => String(s.name || '').trim()).filter(_gbSuX8kAy);
 } else if (_uAFilvM5Q && !_uAFilvM5Q.ok) {
 if (isDebug()) {
@@ -4014,7 +4014,7 @@ return [];
 }
 return [];
 }
-if (isDebug()) console.log('[FetchStores] No GPS or _pwHlRehfd configured');
+if (isDebug()) console.log('[FetchStores] No GPS or area configured');
 return [];
 } catch(e) {
 if (isDebug()) {
@@ -4048,11 +4048,11 @@ _tMOf7ZVhU();
 }
 function _wGQ3wjWmt(){
 try{
-const ca = document.getElementById('camera-_pwHlRehfd');
+const ca = document.getElementById('camera-area');
 const _oNK4M3ioR = document.getElementById('interactive');
-const _oYKL5X7zN = document.getElementById('_oYKL5X7zN-_rKmr5rsUx');
+const _oYKL5X7zN = document.getElementById('manual-entry');
 if(ca) ca.style.display = 'block';
-try{ document.querySelectorAll('.scan-_hZ2SQtn9A,.scan-laser').forEach(el=>el.style.display='none'); }catch(e){}
+try{ document.querySelectorAll('.scan-frame,.scan-laser').forEach(el=>el.style.display='none'); }catch(e){}
 try{ if(_oNK4M3ioR){ _oNK4M3ioR.style.pointerEvents='none'; _oNK4M3ioR.style.opacity='0.18'; } }catch(e){}
 isScanning = false;
 if(_oYKL5X7zN){
@@ -4070,7 +4070,7 @@ const _hCa5m8fL7 = document.getElementById('manualCodeInput');
 if(_hCa5m8fL7){ _hCa5m8fL7.blur(); }
 }catch(e){}
 }catch(e){
-if(isDebug()) console.warn('[_wGQ3wjWmt] failed:', e);
+if(isDebug()) console.warn('[openManualEntryOnly] failed:', e);
 showToast('手入力画面の表示に失敗しました', 6000);
 }
 }
@@ -4081,7 +4081,7 @@ showToast("スキャンライブラリが読み込まれていません。再読
 return;
 }
 isScanning = true;
-document.getElementById('camera-_pwHlRehfd').style.display = 'block';
+document.getElementById('camera-area').style.display = 'block';
 _v1gSsIiXt();
 if (_sPdW2UX47) {
 try { _sPdW2UX47.clear(); } catch(e) {}
@@ -4092,7 +4092,7 @@ _sPdW2UX47 = new Html5Qrcode("interactive", { verbose: false });
 } catch(e) {
 showToast(`スキャナー初期化失敗: ${e.message}`, 8000);
 isScanning = false;
-document.getElementById('camera-_pwHlRehfd').style.display = 'none';
+document.getElementById('camera-area').style.display = 'none';
 return;
 }
 _sPdW2UX47.start(
@@ -4111,23 +4111,23 @@ if (isDebug()) _zGozPy5fd();
 showToast(`カメラ起動失敗: ${err && (err.message || String(err))}`, 8000);
 isScanning = false;
 _sPdW2UX47 = null;
-document.getElementById('camera-_pwHlRehfd').style.display = 'none';
+document.getElementById('camera-area').style.display = 'none';
 });
 }
 window.startScanner = startScanner;
 function _v1gSsIiXt() {
-const _fjtlZOmWv = document.getElementById('camera-_pwHlRehfd');
+const _fjtlZOmWv = document.getElementById('camera-area');
 if (!_fjtlZOmWv) {
-console.error('[EnsureScanbar] camera-_pwHlRehfd not found');
+console.error('[EnsureScanbar] camera-area not found');
 return false;
 }
-let _cwo28pbrd = _fjtlZOmWv.querySelector('.scan-_hZ2SQtn9A');
+let _cwo28pbrd = _fjtlZOmWv.querySelector('.scan-frame');
 if (!_cwo28pbrd) {
 _cwo28pbrd = document.createElement('div');
-_cwo28pbrd.className = 'scan-_hZ2SQtn9A';
+_cwo28pbrd.className = 'scan-frame';
 _fjtlZOmWv.appendChild(_cwo28pbrd);
 if (isDebug()) {
-console.log('[EnsureScanbar] Created scan-_hZ2SQtn9A');
+console.log('[EnsureScanbar] Created scan-frame');
 }
 }
 _cwo28pbrd.style.position = 'absolute';
@@ -4166,10 +4166,10 @@ function _u5OlWTI93(){
 try{
 const _fn8tYgMk0 = document.getElementById('interactive');
 if(!_fn8tYgMk0) return;
-const _dsZwOmthn = _fn8tYgMk0.querySelectorAll('div, _eOxUxeS3w, img');
+const _dsZwOmthn = _fn8tYgMk0.querySelectorAll('div, span, img');
 _dsZwOmthn.forEach(el=>{
 if(!el) return;
-if(el.id === 'scan-_hZ2SQtn9A' || el.id === 'scan-laser') return;
+if(el.id === 'scan-frame' || el.id === 'scan-laser') return;
 const cs = window.getComputedStyle ? getComputedStyle(el) : null;
 if(!cs) return;
 const bw =
@@ -4196,9 +4196,9 @@ el.style.opacity = '0';
 }catch(e){}
 }
 function _cDIuJNJT9() {
-const _fjtlZOmWv = document.getElementById('camera-_pwHlRehfd');
-const _oYKL5X7zN = document.getElementById('_oYKL5X7zN-_rKmr5rsUx');
-const _hZ2SQtn9A = _fjtlZOmWv ? _fjtlZOmWv.querySelector('.scan-_hZ2SQtn9A') : null;
+const _fjtlZOmWv = document.getElementById('camera-area');
+const _oYKL5X7zN = document.getElementById('manual-entry');
+const _hZ2SQtn9A = _fjtlZOmWv ? _fjtlZOmWv.querySelector('.scan-frame') : null;
 if (!_fjtlZOmWv || !_oYKL5X7zN || !_hZ2SQtn9A) return false;
 const r = _hZ2SQtn9A.getBoundingClientRect();
 const top = Math.min(window.innerHeight - 260, Math.max(10, r.top + r.height + 14));
@@ -4283,7 +4283,7 @@ return true;
 function _zGozPy5fd() {
 if (!isDebug()) return;
 const _wgXpwBphp = document.querySelector('.scan-laser');
-const _cwo28pbrd = document.querySelector('.scan-_hZ2SQtn9A');
+const _cwo28pbrd = document.querySelector('.scan-frame');
 const _oUWBTE4dy = 'DOM';
 let _otyG3Z8d2 = false;
 let _p5lbknMnO = 'unknown';
@@ -4381,12 +4381,12 @@ window._scanStream = null;
 }
 const nv = document.getElementById('scannerNativeVideo');
 if (nv) { try { nv.srcObject = null; nv.remove(); } catch(e) {} }
-document.getElementById('camera-_pwHlRehfd').style.display = 'none';
-try { const me = document.getElementById('_oYKL5X7zN-_rKmr5rsUx'); if(me) me.style.display='none'; } catch(e) {}
+document.getElementById('camera-area').style.display = 'none';
+try { const me = document.getElementById('manual-entry'); if(me) me.style.display='none'; } catch(e) {}
 }
 async function showHome() {
 try{ clearToasts(); }catch(e){}
-document.getElementById('_luRfyGMd5').style.display='block';
+document.getElementById('mainView').style.display='block';
 document.getElementById('formView').style.display='none';
 renderHistory();
 renderStoreList();
@@ -4417,7 +4417,7 @@ const _rtzNQqRL9 = (document.getElementById('inputCategory')?.value || '').trim(
 try {
 const _mLlDEJfwB = await fetch('https://api.anthropic.com/v1/messages', {
 method: 'POST',
-headers: { 'Content-Type': 'application/_uAFilvM5Q' },
+headers: { 'Content-Type': 'application/json' },
 body: JSON.stringify({
 model: 'claude-sonnet-4-20250514',
 max_tokens: 100,
@@ -4643,7 +4643,7 @@ if (isDebug()) console.log('[Migrate] Merged:', mKey, '→', _eDOOf0jF8);
 });
 if (_afLl73Eg0 > 0) {
 saveLocalOnly();
-if (isDebug()) console.log('[Migrate] Total _b9DxKHd0O:', _afLl73Eg0);
+if (isDebug()) console.log('[Migrate] Total merged:', _afLl73Eg0);
 }
 }
 async function processBarcodeData(code) {
@@ -4652,7 +4652,7 @@ if (jan.length !== 13 && jan.length !== 8) {
 const _zArvA4wwY = `バーコードが不正です（8桁または13桁ではありません）: ${jan}（元: ${code}）`;
 showToast(_zArvA4wwY, 5000);
 if (isDebug()) {
-console.error("[ProcessBarcode] Invalid JAN length:", jan, "_cn32EtXTs:", code);
+console.error("[ProcessBarcode] Invalid JAN length:", jan, "original:", code);
 _nDCGV3rx8(`[JAN Invalid] ${_zArvA4wwY}`);
 }
 return;
@@ -4667,7 +4667,7 @@ _nDCGV3rx8(`[JAN Check Digit Error] ${_zArvA4wwY}`);
 return;
 }
 if (isDebug()) {
-console.log("[ProcessBarcode] Valid JAN:", jan, "_cn32EtXTs:", code);
+console.log("[ProcessBarcode] Valid JAN:", jan, "original:", code);
 }
 if (jan && _cLbs4mj1c.has(jan)) {
 if (isDebug()) {
@@ -4681,7 +4681,7 @@ const now = Date.now();
 const _un6Z8G9sb = _uU2fN3Ylx.get(jan);
 if (_un6Z8G9sb && (now - _un6Z8G9sb) < 1000) {
 if (isDebug()) {
-console.log("[ProcessBarcode] Cool down, skip:", jan, "_xf9bSQQHp:", _un6Z8G9sb, "now:", now);
+console.log("[ProcessBarcode] Cool down, skip:", jan, "last:", _un6Z8G9sb, "now:", now);
 showToast("同じコードを検出しました（クールダウン中）", 1500);
 }
 return;
@@ -4940,7 +4940,7 @@ if (mp.imageUrl && !p.imageUrl) {
 p.imageUrl = mp.imageUrl;
 }
 delete db.products[key];
-if (isDebug()) console.log('[Merge] M_ _mI91Mh5ic _b9DxKHd0O:', key, '→', jan);
+if (isDebug()) console.log('[Merge] M_ product merged:', key, '→', jan);
 }
 }
 });
@@ -5033,7 +5033,7 @@ async function _h2KWpjbV8(code) {
 try {
 await processBarcodeData(code);
 } catch(e) {
-if (isDebug()) console.warn('[_h2KWpjbV8]', e);
+if (isDebug()) console.warn('[manualBarcodeEntry]', e);
 showToast('読み込みに失敗したみたい。もう一度やってみてね', 8000);
 }
 }
@@ -5153,8 +5153,8 @@ showHome();
 window.confirmDeleteProduct = confirmDeleteProduct;
 async function startMigration() {
 const btn = document.getElementById('syncBtn');
-const _qaTmlRQif = document.getElementById('fb-url-_hCa5m8fL7');
-const _kEn0icBuj = document.getElementById('home-city-_hCa5m8fL7');
+const _qaTmlRQif = document.getElementById('fb-url-input');
+const _kEn0icBuj = document.getElementById('home-city-input');
 const u = (_qaTmlRQif ? _qaTmlRQif.value : '').trim();
 const _pZ1XTGPF7 = (_kEn0icBuj ? _kEn0icBuj.value : '').trim();
 if (btn) { btn.disabled = true; btn.innerText = "同期中…"; }
@@ -5198,7 +5198,7 @@ if (_b5f0yiHOB && _b5f0yiHOB.products) { db = _zdKTkglLh(db, _b5f0yiHOB); saveLo
 const _hPs3JSB08 = _jf3rl36hI(db);
 await _fyKKcE8q8(_bVIp4ygXr, {
 method: 'PUT',
-headers: { "Content-Type": "application/_uAFilvM5Q" },
+headers: { "Content-Type": "application/json" },
 body: JSON.stringify(_hPs3JSB08),
 _oDeGBoCBj: _dUVDStuEa._oDeGBoCBj
 }, 12000);
@@ -5240,7 +5240,7 @@ Object.keys(_pYtPd2eBV).forEach(function(key) {
 const el = document.getElementById(_pYtPd2eBV[key]);
 if (el) panels[key] = el;
 });
-titleEl = _xJ6gpqHmZ.querySelector('._xJ6gpqHmZ-title') || _xJ6gpqHmZ.querySelector('#settingsTitle') || _xJ6gpqHmZ.querySelector('h5');
+titleEl = _xJ6gpqHmZ.querySelector('.modal-title') || _xJ6gpqHmZ.querySelector('#settingsTitle') || _xJ6gpqHmZ.querySelector('h5');
 _je5EMGgC2();
 _iKNfs2FX4('Main');
 _ygjxSHpYc.initialized = true;
@@ -5249,16 +5249,16 @@ console.log('[Modal] COMPLETE FIX Loaded');
 function _je5EMGgC2() {
 if (_xJ6gpqHmZ._spListener) _xJ6gpqHmZ.removeEventListener('click', _xJ6gpqHmZ._spListener);
 _xJ6gpqHmZ._spListener = function(e) {
-const btn = e._t8RFM3dQ3.closest('button, [data-_oFUI3dwr8], [data-_t8RFM3dQ3], [data-panel]');
+const btn = e._t8RFM3dQ3.closest('button, [data-action], [data-target], [data-panel]');
 if (!btn) return;
-const _oFUI3dwr8 = btn.getAttribute('data-_oFUI3dwr8');
-const _t8RFM3dQ3 = btn.getAttribute('data-_t8RFM3dQ3') || btn.getAttribute('data-panel');
-const _ttMUsAK32 = btn.getAttribute('data-_u50IvRZFy');
+const _oFUI3dwr8 = btn.getAttribute('data-action');
+const _t8RFM3dQ3 = btn.getAttribute('data-target') || btn.getAttribute('data-panel');
+const _ttMUsAK32 = btn.getAttribute('data-back');
 if (_oFUI3dwr8 === 'close-settings' || btn.classList.contains('sp-close-btn')) {
 e.preventDefault(); e.stopPropagation(); close();
 } else if (btn.classList.contains('sp-menu-btn') && _t8RFM3dQ3) {
 e.preventDefault(); e.stopPropagation(); _iKNfs2FX4(_t8RFM3dQ3.replace(/^panel/, ''));
-} else if (btn.classList.contains('sp-_u50IvRZFy-btn')) {
+} else if (btn.classList.contains('sp-back-btn')) {
 e.preventDefault(); e.stopPropagation(); _u50IvRZFy(_ttMUsAK32);
 }
 };
@@ -5267,7 +5267,7 @@ if (!window._spEscListener) {
 window._spEscListener = function(e) { if (e.key === 'Escape' && _ygjxSHpYc.isOpen) close(); };
 document.addEventListener('keydown', window._spEscListener);
 }
-const _ubzoEHgcU = document.getElementById('_ubzoEHgcU');
+const _ubzoEHgcU = document.getElementById('settingsBtn');
 if (_ubzoEHgcU && !_ubzoEHgcU._spBound) {
 _ubzoEHgcU._spBound = true;
 _ubzoEHgcU.addEventListener('click', function(e) { e.preventDefault(); e.stopPropagation(); open(); });
@@ -5330,11 +5330,11 @@ const _of22d42kM = (_mVTa28Yi1 === 'Main');
 try{
 const _lUxbmzGar = document.getElementById('settingsCitySection');
 if(_lUxbmzGar) _lUxbmzGar.style.display = _of22d42kM ? 'block' : 'none';
-const _fUKwwxuCW = document.getElementById('_fUKwwxuCW');
+const _fUKwwxuCW = document.getElementById('syncBtn');
 if(_fUKwwxuCW) _fUKwwxuCW.style.display = _of22d42kM ? 'block' : 'none';
 const _gJ0k6VT5t = document.getElementById('clearCacheBtn');
 if(_gJ0k6VT5t) _gJ0k6VT5t.style.display = _of22d42kM ? 'block' : 'none';
-const _bHcl82N0H = document.getElementById('_bHcl82N0H');
+const _bHcl82N0H = document.getElementById('webBtn');
 if(_bHcl82N0H) _bHcl82N0H.style.display = _of22d42kM ? 'block' : 'none';
 }catch(e){}
 const _lVN1cstRd = _ygjxSHpYc.currentPanel;
@@ -5360,9 +5360,9 @@ function _upWUMLAtS() {
 try {
 if (typeof window.db !== 'undefined' && typeof window.normalizeDb === 'function') window.db = window.normalizeDb(window.db);
 if (typeof window.resetSyncBtn === 'function') window.resetSyncBtn();
-const _vkXqhKEiJ = document.getElementById('fb-url-_avbdmgkKE');
+const _vkXqhKEiJ = document.getElementById('fb-url-input');
 if (_vkXqhKEiJ && typeof window._c2Ehe3aAI !== 'undefined') _vkXqhKEiJ.value = window._c2Ehe3aAI;
-const _repuhCjjA = document.getElementById('home-city-_avbdmgkKE');
+const _repuhCjjA = document.getElementById('home-city-input');
 if (_repuhCjjA && window.db && window.db.config) _repuhCjjA.value = window.db.config.homeCity || '';
 try{ const b=document.getElementById('homeCityBtn'); const v=(window.db&&window.db.config? (window.db.config.homeCity||''):''); if(b){ b.textContent = v? (`生活圏：${v}`) : '生活圏を入力'; } }catch(e){}
 if (typeof window.renderCityChips === 'function') window.renderCityChips();
@@ -5411,7 +5411,7 @@ alert('❌ エラーが発生しました:\n' + error.message);
 }
 function openHomeCityModal() {
 const _xJ6gpqHmZ = document.getElementById('homeCityModal');
-const _avbdmgkKE = document.getElementById('home-city-_xJ6gpqHmZ-_avbdmgkKE');
+const _avbdmgkKE = document.getElementById('home-city-modal-input');
 const _ke1V5Vcpo = document.getElementById('gps-range-select');
 if (_xJ6gpqHmZ && _avbdmgkKE) {
 if (typeof db !== 'undefined' && db.config) {
@@ -5431,7 +5431,7 @@ _xJ6gpqHmZ.style.display = 'none';
 }
 }
 function saveHomeCityFromModal() {
-const _avbdmgkKE = document.getElementById('home-city-_xJ6gpqHmZ-_avbdmgkKE');
+const _avbdmgkKE = document.getElementById('home-city-modal-input');
 const _ke1V5Vcpo = document.getElementById('gps-range-select');
 if (_avbdmgkKE && typeof db !== 'undefined' && db.config) {
 db.config.homeCity = _avbdmgkKE.value;
@@ -5462,26 +5462,26 @@ function closeBarcodeManual() {
 document.getElementById('barcodeManualModal').style.display = 'none';
 }
 document.addEventListener('click', function(e) {
-if (e._t8RFM3dQ3.classList.contains('btn-_tJM6DNS50-type')) {
-const _rJVv6P0Rz = parseInt(e._t8RFM3dQ3.getAttribute('data-_rJVv6P0Rz'));
+if (e._t8RFM3dQ3.classList.contains('btn-barcode-type')) {
+const _rJVv6P0Rz = parseInt(e._t8RFM3dQ3.getAttribute('data-digits'));
 _k05iqJtrT = _rJVv6P0Rz;
-document.querySelectorAll('.btn-_tJM6DNS50-type').forEach(b => b.classList.remove('active'));
+document.querySelectorAll('.btn-barcode-type').forEach(b => b.classList.remove('active'));
 e._t8RFM3dQ3.classList.add('active');
 _vHKHMkRRn(_rJVv6P0Rz);
 }
 });
 function _vHKHMkRRn(_rJVv6P0Rz) {
-const _hKxngERpT = document.getElementById('_tJM6DNS50-_avbdmgkKE-_hKxngERpT');
+const _hKxngERpT = document.getElementById('barcode-input-container');
 _hKxngERpT.innerHTML = '';
 _hwMwg0yrK = 0;
 for (let i = 0; i < _rJVv6P0Rz; i++) {
-const _avbdmgkKE = document.createElement('_avbdmgkKE');
+const _avbdmgkKE = document.createElement('input');
 _avbdmgkKE.type = 'tel';
 _avbdmgkKE.maxLength = 1;
-_avbdmgkKE.className = '_tJM6DNS50-digit';
+_avbdmgkKE.className = 'barcode-digit';
 _avbdmgkKE.dataset.index = i;
 _avbdmgkKE.pattern = '[0-9]';
-_avbdmgkKE.addEventListener('_avbdmgkKE', function(e) {
+_avbdmgkKE.addEventListener('input', function(e) {
 this.value = this.value.replace(/[^0-9]/g, '');
 if (this.value.length === 1) {
 this.classList.add('filled');
@@ -5517,7 +5517,7 @@ _kSkfrRJpE.focus();
 }, 100);
 }
 function searchByManualBarcode() {
-const _onLkSAuhZ = document.querySelectorAll('._tJM6DNS50-digit');
+const _onLkSAuhZ = document.querySelectorAll('.barcode-digit');
 const _tJM6DNS50 = Array.from(_onLkSAuhZ).map(i => i.value).join('');
 if (_tJM6DNS50.length !== _k05iqJtrT) {
 alert(`${_k05iqJtrT}桁すべて入力してください`);
@@ -5529,8 +5529,8 @@ if (typeof processBarcodeData === 'function') processBarcodeData(_tJM6DNS50);
 window.openBarcodeManual = openBarcodeManual;
 let _hwMwg0yrK = 0;
 function inputBarcodeDigit(digit) {
-const _hKxngERpT = document.getElementById('_tJM6DNS50-_avbdmgkKE-_hKxngERpT');
-const _onLkSAuhZ = _hKxngERpT.querySelectorAll('._tJM6DNS50-digit');
+const _hKxngERpT = document.getElementById('barcode-input-container');
+const _onLkSAuhZ = _hKxngERpT.querySelectorAll('.barcode-digit');
 if (_hwMwg0yrK < _onLkSAuhZ.length) {
 _onLkSAuhZ[_hwMwg0yrK].value = digit;
 _onLkSAuhZ[_hwMwg0yrK].classList.add('filled');
@@ -5542,8 +5542,8 @@ _onLkSAuhZ[_hwMwg0yrK].classList.add('active');
 }
 }
 function deleteBarcodeDigit() {
-const _hKxngERpT = document.getElementById('_tJM6DNS50-_avbdmgkKE-_hKxngERpT');
-const _onLkSAuhZ = _hKxngERpT.querySelectorAll('._tJM6DNS50-digit');
+const _hKxngERpT = document.getElementById('barcode-input-container');
+const _onLkSAuhZ = _hKxngERpT.querySelectorAll('.barcode-digit');
 if (_hwMwg0yrK > 0) {
 _hwMwg0yrK--;
 _onLkSAuhZ[_hwMwg0yrK].value = '';
@@ -5555,8 +5555,8 @@ _onLkSAuhZ[_hwMwg0yrK + 1].classList.remove('active');
 }
 }
 function clearBarcodeDigits() {
-const _hKxngERpT = document.getElementById('_tJM6DNS50-_avbdmgkKE-_hKxngERpT');
-const _onLkSAuhZ = _hKxngERpT.querySelectorAll('._tJM6DNS50-digit');
+const _hKxngERpT = document.getElementById('barcode-input-container');
+const _onLkSAuhZ = _hKxngERpT.querySelectorAll('.barcode-digit');
 _onLkSAuhZ.forEach(_avbdmgkKE => {
 _avbdmgkKE.value = '';
 _avbdmgkKE.classList.remove('filled', 'active');
@@ -5580,7 +5580,7 @@ _q7JFJYxrD.style.display = 'block';
 _eXZSnxOMO.textContent = '✅ ロック解除しました';
 _eXZSnxOMO.style.color = '#28a745';
 _kvjyeDzp6.value = '';
-const _al1Ixc4Uq = document.getElementById('fb-url-_avbdmgkKE');
+const _al1Ixc4Uq = document.getElementById('fb-url-input');
 if (_al1Ixc4Uq) {
 _al1Ixc4Uq.value = 'https://smartpricedb-default-rtdb.firebaseio.com';
 }
@@ -5672,7 +5672,7 @@ return;
 _gwNAtJU2Q.innerHTML = `<div class="text-success">✅ 接続中 (UID: ${_soq9llZEC.uid.substring(0, 8)}...)</div>`;
 }
 if (firebaseDb && db && db.config && db.config.personalId) {
-const _q8AezPkBJ = firebaseDb.ref(`_tMVJJT0HI/${firebaseAuth.currentUser.uid}/test`);
+const _q8AezPkBJ = firebaseDb.ref(`users/${firebaseAuth.currentUser.uid}/test`);
 await _q8AezPkBJ.set({ timestamp: Date.now(), test: true });
 await _q8AezPkBJ.remove();
 const _suBqcD9mh = _gwNAtJU2Q.innerHTML;
@@ -5940,7 +5940,7 @@ try{ showToast('共有できないためコピーしました', 1500); }catch(e)
 async function spShareReferral(){
 try{
 const pid = (typeof getDeviceId === 'function') ? getDeviceId() : '';
-const _zJ35jva4h = document.getElementById('ref-_yoR5gvhwl');
+const _zJ35jva4h = document.getElementById('ref-link');
 const _yoR5gvhwl = _zJ35jva4h ? (_zJ35jva4h.value || '').trim() : '';
 const _aRb4KEXSv = `【Smart Price 友人紹介】\n紹介ID: ${pid}\nリンク: ${_yoR5gvhwl}`;
 const ok = await _t05PxKRly('Smart Price 友人紹介', _aRb4KEXSv);
@@ -6017,7 +6017,7 @@ showToast('バックアップを出力しました', 3000);
 function importBackup() {
 try {
 const inp = document.createElement('input');
-inp.type = '_sas6m21Cp'; inp.accept = '.json,application/json';
+inp.type = 'file'; inp.accept = '.json,application/json';
 inp.onchange = async (e) => {
 try {
 const _sas6m21Cp = e.target.files[0];
@@ -6050,10 +6050,10 @@ showToast('家族共有コードを保存しました', 2000);
 window.spSaveFamilyCode = spSaveFamilyCode;
 function spCopySupport() {
 try {
-const _nkPbvBu2h = (document.getElementById('support-_nkPbvBu2h')?.value || '').trim();
-const _zHi1KIli9 = (document.getElementById('support-_zHi1KIli9')?.value || '').trim();
+const _nkPbvBu2h = (document.getElementById('support-symptom')?.value || '').trim();
+const _zHi1KIli9 = (document.getElementById('support-device')?.value || '').trim();
 const os = (document.getElementById('support-os')?.value || '').trim();
-const _b3SaZmeNY = (document.getElementById('support-_b3SaZmeNY')?.value || '').trim();
+const _b3SaZmeNY = (document.getElementById('support-browser')?.value || '').trim();
 const _i4loIt8XU = `【Smart Price 不具合報告】\n症状: ${_nkPbvBu2h}\n機種: ${_zHi1KIli9}\nOS: ${os}\nブラウザ: ${_b3SaZmeNY}\nバージョン: ${window.FULL_VERSION || '不明'}`;
 if (navigator.clipboard && navigator.clipboard.writeText) {
 navigator.clipboard.writeText(_i4loIt8XU).then(() => { try { showToast('コピーしました', 1500); } catch(e) {} });
@@ -6066,10 +6066,10 @@ try { showToast('コピーしました', 1500); } catch(e) {}
 }
 async function spShareSupport() {
 try {
-const _nkPbvBu2h = (document.getElementById('support-_nkPbvBu2h')?.value || '').trim();
-const _zHi1KIli9 = (document.getElementById('support-_zHi1KIli9')?.value || '').trim();
+const _nkPbvBu2h = (document.getElementById('support-symptom')?.value || '').trim();
+const _zHi1KIli9 = (document.getElementById('support-device')?.value || '').trim();
 const os = (document.getElementById('support-os')?.value || '').trim();
-const _b3SaZmeNY = (document.getElementById('support-_b3SaZmeNY')?.value || '').trim();
+const _b3SaZmeNY = (document.getElementById('support-browser')?.value || '').trim();
 const _i4loIt8XU = `【Smart Price 不具合報告】\n症状: ${_nkPbvBu2h}\n機種: ${_zHi1KIli9}\nOS: ${os}\nブラウザ: ${_b3SaZmeNY}\nバージョン: ${window.FULL_VERSION || '不明'}`;
 if (navigator.share) {
 await navigator.share({ title: 'Smart Price 不具合報告', _i4loIt8XU });
