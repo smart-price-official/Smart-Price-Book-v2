@@ -13,7 +13,7 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.9.0";
+  const APP_VERSION = "v23.9.1";
   window.APP_VERSION = APP_VERSION;
   const BUILD_ID = "2026-03-11_scope-fix";
   window.BUILD_ID = BUILD_ID;
@@ -444,8 +444,26 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 
 
 /* === PATCH: settings modal visibility & stacking (settingsnav-r3) === */
-#settingsModal { z-index: 100500; }
-#settingsModal .modal-content { max-height: 80vh; overflow-y: auto; }
+#settingsModal {
+  z-index: 100500;
+  display: none;
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  background: rgba(0,0,0,0.85) !important;
+  justify-content: center !important;
+  align-items: center !important;
+}
+#settingsModal.show { display: flex !important; }
+#settingsModal .modal-content {
+  max-height: 85vh;
+  overflow-y: auto;
+  width: 95% !important;
+  max-width: 450px !important;
+  box-sizing: border-box;
+}
 #settingsModal .sp-settings-box { max-height: 70vh; overflow-y: auto; }
 #settingsModal .sp-settings-menu { position: sticky; top: 0; background: rgba(26,26,26,0.98); padding-top: 6px; z-index: 2; }
 
@@ -708,9 +726,10 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 
 
 /* UIFIX24: 設定モーダルのボタン間隔と高さを統一 */
-#settingsModal .modal-content { display:flex; flex-direction:column; gap:10px; }
+/* ※ modal-contentにdisplay:flexを当てると親のjustify-content:centerが崩れるため削除 */
 #settingsModal .modal-content .btn { min-height: 52px; }
 #settingsModal .modal-content .btn.btn-link { min-height: auto; }
+#settingsModal .d-grid { gap: 10px; }
 
 </style>
 
@@ -6426,7 +6445,8 @@ return true;
     try { if (typeof window.clearToasts === 'function') window.clearToasts(); } catch(e) {}
     
     state.isOpen = true; state.currentPanel = 'Main'; state.history = ['Main'];
-    modal.style.display = 'flex';
+    modal.style.display = 'flex'; // ← フォールバック（.showクラスが効かない環境用）
+    modal.classList.add('show');
     try{ if(typeof window.setHeaderVersionBadge==='function') window.setHeaderVersionBadge(); }catch(e){}
     // ✅ 個人ID表示（設定内の各画面にも表示）
     try{
@@ -6450,8 +6470,6 @@ return true;
       if(el2) el2.value = pid2 || '';
     }catch(e){}
 
-
-    setTimeout(function() { modal.classList.add('show'); }, 10);
     navigate('Main');
     syncSettings();
   }
@@ -6461,9 +6479,9 @@ return true;
     state.isOpen = false;
     try{ if(typeof window.setHeaderVersionBadge==='function') window.setHeaderVersionBadge(); }catch(e){}
     modal.classList.remove('show');
-    setTimeout(function() { modal.style.display = 'none'; }, 300);
+    modal.style.display = 'none';
     state.currentPanel = 'Main'; state.history = [];
-    setTimeout(function() { navigate('Main'); }, 400);
+    setTimeout(function() { navigate('Main'); }, 100);
   }
   
   function navigate(panelName) {
