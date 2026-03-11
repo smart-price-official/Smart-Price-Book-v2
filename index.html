@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.5.1";
+  const APP_VERSION = "v23.5.2";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-11_release";
+  const BUILD_ID = "2026-03-11_scope-fix";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -4845,8 +4845,6 @@ function startScanner() {
       { fps: 10 },
       async (code) => {
         await stopScanner();
-        ensureScanbarDom();
-        ensureManualEntryDom();
         try { await processBarcodeData(code); } catch(e) { showToast(`エラー: ${e.message}`, 8000); }
       }
     ).then(() => {
