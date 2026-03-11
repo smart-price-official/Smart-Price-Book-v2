@@ -13,7 +13,7 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.5.2";
+  const APP_VERSION = "v23.7.0";
   window.APP_VERSION = APP_VERSION;
   const BUILD_ID = "2026-03-11_scope-fix";
   window.BUILD_ID = BUILD_ID;
@@ -804,6 +804,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 
         <div class="d-flex gap-2 mb-3">
           <button id="delHistBtn" class="btn btn-outline-secondary py-3 fw-bold flex-grow-0 px-3 shadow" style="display:none;" onclick="confirmDeleteHist()">削除</button>
+          <button id="delProductBtn" class="btn btn-outline-danger py-3 fw-bold flex-grow-0 px-3 shadow" style="display:none;" onclick="confirmDeleteProduct()" title="この商品を完全削除">🗑</button>
           <button id="saveBtn" class="btn btn-danger py-3 fw-bold fs-5 shadow flex-grow-1" onclick="saveData()">保存</button>
         </div>
       </div>
@@ -2012,7 +2013,8 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   function parseInviteCode() {
     try {
       const params = new URL(location.href).searchParams;
-      const invite = params.get('invite');
+      // 'ref' パラメータ優先（紹介リンクで生成）、互換のため'invite'も読む
+      const invite = params.get('ref') || params.get('invite');
       if (invite && invite.trim().length > 0) {
         return invite.trim();
       }
@@ -3382,14 +3384,26 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         }
       }
 
+      // ✅ 統計計算（平均・最安・前回）
+      const allPrices = hlist.map(h => Number(h.price)).filter(p => !isNaN(p) && p > 0);
+      const avgP = allPrices.length ? Math.round(allPrices.reduce((a,b)=>a+b,0)/allPrices.length) : null;
+      const minP = allPrices.length ? Math.min(...allPrices) : null;
+      const lastP = last && last.price ? Number(last.price) : null;
+      const statsHtml = (allPrices.length >= 2) ? `
+        <div class="d-flex gap-2 mt-1" style="font-size:0.6rem; color:#aaa;">
+          <span>平均 <b style="color:#fff;">${avgP}円</b></span>
+          <span>最安 <b style="color:#e74c3c;">${minP}円</b></span>
+          <span>前回 <b style="color:#fff;">${lastP}円</b></span>
+        </div>` : '';
       div.innerHTML = `
         <div class="d-flex align-items-center">
           <img id="${imgId}" src="${imgSrc}" class="prod-thumb" referrerpolicy="no-referrer">
           <div class="flex-grow-1 overflow-hidden">
             <div class="fw-bold text-white small text-truncate">${it.name || ''}</div>
             <div class="text-secondary" style="font-size:0.6rem;">${last.store || '未設定'}</div>
+            ${statsHtml}
           </div>
-          <div class="text-end ms-2">
+          <div class="text-end ms-2 flex-shrink-0">
             <div class="price-main">${last.price}<span style="font-size:0.6rem;">円</span></div>
           </div>
         </div>`;
@@ -3482,9 +3496,11 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     const saveBtn = document.getElementById('saveBtn');
     const delBtn = document.getElementById('delHistBtn');
     const storeJumpBtn = document.getElementById('storeJumpBtn');
+    const delProdBtn = document.getElementById('delProductBtn');
     if(calcArea) calcArea.style.display = 'flex';
     if(saveBtn) saveBtn.innerText = '保存';
     if(delBtn) delBtn.style.display = 'none';
+    if(delProdBtn) delProdBtn.style.display = 'none';
     if(storeJumpBtn) storeJumpBtn.style.display = 'none';
 
     curBarcode = code; editingHistIdx = null;
@@ -3515,6 +3531,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       tempImgData = null;
       // ※ 商品情報取得は processBarcodeData に一本化（openForm では行わない）
     } else {
+      if(delProdBtn) delProdBtn.style.display = 'block';
       document.getElementById('inputName').value = p.name || "";
       document.getElementById('inputMaker').value = p.maker || "";
 
@@ -4699,6 +4716,13 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
   }
 
   // ========= 近隣店舗取得（YahooProxy経由でOSM検索） =========
+  // ✅ 買い物関係の店舗かどうか判定（病院・クリニック・銀行等を除外）
+  function isShoppingStore(name) {
+    if (!name || name.length === 0) return false;
+    const NG = ['クリニック','病院','医院','歯科','眼科','耳鼻','皮膚科','整形','内科','外科','小児科','産婦','精神','調剤','薬局','銀行','信用金庫','証券','保険','不動産','美容室','美容院','ヘアサロン','理容','床屋','学校','幼稚園','保育園','塾','教室','寺','神社','教会','ガソリン','駐車場','修理','整備','ホテル','旅館','宿','図書館','役所','市役所','区役所','町役場','郵便局','警察','消防','介護','デイサービス','福祉','ハローワーク','公民館','体育館','診療'];
+    return !NG.some(ng => name.includes(ng));
+  }
+
   async function fetchNearbyStores() {
     try {
       const proxyUrl = (window.SP_CONFIG && window.SP_CONFIG.yahooProxyExecUrl) ? window.SP_CONFIG.yahooProxyExecUrl.trim() : '';
@@ -4726,7 +4750,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         if (json && json.ok && Array.isArray(json.stores)) {
           if (isDebug()) console.log('[FetchStores] GPS result:', json.stores.length, 'stores');
           // ✅ trim() + 空要素除去
-          return json.stores.map(s => String(s.name || '').trim()).filter(n => n.length > 0);
+          return json.stores.map(s => String(s.name || '').trim()).filter(isShoppingStore);
         }
         return [];
       }
@@ -4747,7 +4771,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         if (json && json.ok && Array.isArray(json.stores)) {
           if (isDebug()) console.log('[FetchStores] Area result:', json.stores.length, 'stores');
           // ✅ trim() + 空要素除去
-          return json.stores.map(s => String(s.name || '').trim()).filter(n => n.length > 0);
+          return json.stores.map(s => String(s.name || '').trim()).filter(isShoppingStore);
         } else if (json && !json.ok) {
           // エラー時（例：使用できないアドレス）
           if (isDebug()) {
@@ -6215,6 +6239,20 @@ return true;
     showHome();
   }
 
+  // ✅ 商品を完全削除
+  async function confirmDeleteProduct() {
+    if(!curBarcode || !db.products[curBarcode]) return;
+    const name = db.products[curBarcode].name || curBarcode;
+    const ok = await customConfirm(`「${name}」を完全に削除しますか？\n購入履歴も全て消えます。`);
+    if(!ok) return;
+    delete db.products[curBarcode];
+    saveLocalOnly();
+    syncFirebasePut();
+    showToast('商品を削除しました', 2000);
+    showHome();
+  }
+  window.confirmDeleteProduct = confirmDeleteProduct;
+
   // ========= Settings / Sync =========
   async function startMigration() {
     const btn = document.getElementById('syncBtn');
@@ -6998,49 +7036,81 @@ document.addEventListener('DOMContentLoaded', function() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // v22.0: 紹介者利用状況確認
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-function showReferralStatus() {
+async function showReferralStatus() {
   const container = document.getElementById('referral-status-list');
   if (!container) return;
-  
-  // 仮データ（実際はFirebaseから取得）
-  const myId = (db && db.config && db.config.personalId) || 'UNKNOWN';
-  
-  // 本来はFirebaseクエリで「referredBy === myId」のユーザーを取得
-  const referredUsers = [
-    { id: 'USER001', qualified: true, stores: 7, products: 12, qualifiedDate: Date.now() - 86400000 * 3 },
-    { id: 'USER002', qualified: false, stores: 3, products: 8, qualifiedDate: null },
-    { id: 'USER003', qualified: true, stores: 5, products: 15, qualifiedDate: Date.now() - 86400000 * 7 }
-  ];
-  
-  let html = '<div class="card bg-dark p-3 mb-2">';
-  html += '<h6 class="text-white mb-3">あなたの紹介実績</h6>';
-  
-  if (referredUsers.length === 0) {
-    html += '<div class="small text-secondary">まだ紹介者はいません</div>';
-  } else {
-    const qualified = referredUsers.filter(u => u.qualified).length;
-    html += `<div class="mb-2"><span class="text-white fw-bold">${qualified}人</span> / ${referredUsers.length}人 が条件達成</div>`;
-    
-    referredUsers.forEach(user => {
-      const statusIcon = user.qualified ? '✅' : '⏳';
-      const statusText = user.qualified ? '条件達成' : '利用中';
-      const statusColor = user.qualified ? 'text-success' : 'text-warning';
-      
-      html += `
-        <div class="small border-top border-secondary pt-2 mt-2">
-          <div class="d-flex justify-content-between mb-1">
-            <span class="text-secondary">ID: ${user.id.slice(0,6)}...</span>
-            <span class="${statusColor}">${statusIcon} ${statusText}</span>
-          </div>
-          <div class="text-secondary">
-            店舗数: ${user.stores} / 5 | 商品数: ${user.products}
-          </div>
-          ${user.qualifiedDate ? `<div class="text-secondary" style="font-size: 0.75rem;">達成日: ${new Date(user.qualifiedDate).toLocaleDateString('ja-JP')}</div>` : ''}
-        </div>
-      `;
-    });
+
+  // 自分のID
+  const myId = (typeof getDeviceId === 'function') ? getDeviceId() : 
+               (db && db.config && db.config.personalId) || null;
+
+  if (!myId) {
+    container.innerHTML = '<div class="small text-secondary p-2">個人IDが取得できませんでした</div>';
+    container.style.display = 'block';
+    return;
   }
+
+  // Firebaseから紹介実績を取得
+  const fbUrl = (db && db.config && db.config.firebaseUrl) ? db.config.firebaseUrl.trim() : '';
   
+  let html = '<div class="card bg-dark border-secondary p-3 mb-2">';
+  html += '<h6 class="text-white mb-3">👥 あなたの紹介実績</h6>';
+
+  if (!fbUrl) {
+    // Firebase未設定でもローカルで確認できる情報を表示
+    const myInvitedBy = localStorage.getItem('smartPrice_invitedBy') || '';
+    html += `<div class="small text-secondary mb-2">紹介コード（あなたのID）:</div>
+      <div class="fw-bold text-white mb-3" style="font-size:0.85rem; word-break:break-all;">${myId}</div>`;
+    if (myInvitedBy) {
+      html += `<div class="small text-secondary">あなたを紹介した人のID:<br><span class="text-white">${myInvitedBy.slice(0,8)}…</span></div>`;
+    }
+    html += '<div class="small text-secondary mt-3 p-2 border border-secondary rounded">Firebase同期を設定すると、紹介した友人の利用状況が確認できます。</div>';
+  } else {
+    // Firebase設定済み：紹介先ユーザーの状況を取得
+    container.innerHTML = '<div class="small text-secondary p-2">⏳ 読み込み中…</div>';
+    container.style.display = 'block';
+
+    try {
+      // Firebaseの全ユーザー設定を取得してreferredBy===myIdを探す
+      const targetUrl = fbUrl.replace(/\.json$/, '') + '.json';
+      const res = await fetch(targetUrl.replace(/\/[^\/]+\.json$/, '/referrals/' + myId + '.json'), { cache: 'no-store' });
+      const data = await res.ok ? await res.json() : null;
+
+      if (data && typeof data === 'object') {
+        const users = Object.entries(data);
+        const qualified = users.filter(([, u]) => (u.products || 0) >= 5).length;
+        html = '<div class="card bg-dark border-secondary p-3 mb-2">';
+        html += '<h6 class="text-white mb-3">👥 あなたの紹介実績</h6>';
+        html += `<div class="mb-3"><span class="text-white fw-bold fs-5">${qualified}人</span><span class="text-secondary"> / ${users.length}人 が条件達成</span></div>`;
+        users.forEach(([uid, u]) => {
+          const ok = (u.products || 0) >= 5;
+          html += `<div class="small border-top border-secondary pt-2 mt-2 d-flex justify-content-between align-items-center">
+            <span class="text-secondary">${uid.slice(0,8)}…</span>
+            <span class="${ok ? 'text-success' : 'text-warning'}">${ok ? '✅ 達成' : '⏳ 利用中'}</span>
+          </div>`;
+        });
+      } else {
+        html += '<div class="small text-secondary">まだ紹介者はいません。<br>紹介リンクを友人に送りましょう！</div>';
+      }
+    } catch(e) {
+      html += `<div class="small text-secondary">紹介実績の取得に失敗しました<br><span style="font-size:0.7rem; opacity:0.7;">${e.message || ''}</span></div>`;
+    }
+    
+    html += '</div>';
+    container.innerHTML = html;
+    container.style.display = 'block';
+    return;
+  }
+
+  // 紹介コードが起動時に保存されているか確認（招待リンクから起動した場合）
+  const savedRef = localStorage.getItem('smartPrice_invitedBy');
+  const urlRef = (function(){ try{ return new URL(location.href).searchParams.get('ref'); }catch(e){ return null; } })();
+  if (urlRef && !savedRef) {
+    // 初回: 紹介者IDを保存
+    localStorage.setItem('smartPrice_invitedBy', urlRef);
+    html += `<div class="small text-success mt-2">✅ 紹介コードを登録しました（紹介者: ${urlRef.slice(0,8)}…）</div>`;
+  }
+
   html += '</div>';
   container.innerHTML = html;
   container.style.display = 'block';
