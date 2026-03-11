@@ -13,7 +13,7 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.8.0";
+  const APP_VERSION = "v23.9.0";
   window.APP_VERSION = APP_VERSION;
   const BUILD_ID = "2026-03-11_scope-fix";
   window.BUILD_ID = BUILD_ID;
@@ -888,30 +888,42 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
       </div>
 
       <div id="panelReferral" class="sp-panel mt-3" style="display:none;">
-        <div class="small text-secondary mb-2" style="opacity:.9;">個人ID：<span class="text-white fw-bold" id="sp-personal-id-panelReferral"></span></div>
 
-        <div class="small text-secondary mb-2">
-          この「紹介リンク」を友人に送ってください。友人が開くと、あなたの紹介IDが記録されます。
-        </div>
-        <div class="mt-2">
-        <div class="small text-secondary mb-1">あなたの紹介ID</div>
-        <div class="d-flex gap-2 mb-2">
-          <input id="ref-my-id" class="form-control bg-dark text-white border-secondary" readonly>
-          <button class="btn btn-dark" onclick="spCopy('ref-my-id')">コピー</button>
+        <!-- ハンドルネーム設定 -->
+        <div class="mb-3">
+          <div class="small text-secondary mb-1">あなたのハンドルネーム <span class="text-warning">※友人に表示される名前</span></div>
+          <div class="d-flex gap-2">
+            <input id="ref-handle-input" class="form-control bg-dark text-white border-secondary" placeholder="例: たろう、Taro123" maxlength="20">
+            <button class="btn btn-outline-light" onclick="saveHandle()">保存</button>
+          </div>
+          <div class="small text-secondary mt-1" style="opacity:.7;">※本名・メールアドレスは使わないでください</div>
         </div>
 
-        <div class="small text-secondary mb-1">紹介リンク</div>
-        <textarea id="ref-link" class="form-control bg-dark text-white border-secondary url-box mb-2" rows="2" readonly></textarea>
-
-        <div class="d-flex gap-2 mb-3">
-          <button class="btn btn-dark flex-grow-1" onclick="spCopy('ref-link')">コピー</button>
-          <button class="btn btn-danger flex-grow-1" onclick="spShareReferral()">共有</button>
+        <!-- 紹介の説明 -->
+        <div class="small text-secondary mb-3" style="line-height:1.6;">
+          友人に「紹介文＋リンク」を送るだけ。友人がリンクから開くと自動で紹介が記録されます。あなたのIDは外部に公開されません。
         </div>
-        
-        <button class="btn btn-primary w-100 py-2 mb-3" onclick="showReferralStatus()">
-          👥 紹介者の利用状況を確認
+
+        <!-- 紹介リンク（表示のみ・コピーは一括ボタンから） -->
+        <div class="small text-secondary mb-1">紹介リンク（内部用・自動生成）</div>
+        <textarea id="ref-link" class="form-control bg-dark text-secondary border-secondary url-box mb-3" rows="2" readonly style="font-size:0.7rem;opacity:0.7;"></textarea>
+
+        <!-- 一括アクションボタン -->
+        <div class="d-grid gap-2 mb-3">
+          <button class="btn btn-danger py-2" onclick="spShareReferral()">
+            📤 紹介文＋リンクを共有する
+          </button>
+          <button class="btn btn-outline-light" onclick="spCopyReferral()">
+            📋 紹介文＋リンクをコピー
+          </button>
+        </div>
+
+        <button class="btn btn-outline-secondary w-100 py-2 mb-3" onclick="showReferralStatus()">
+          👥 紹介した友人の利用状況を確認
         </button>
 
+        <!-- 隠しフィールド（内部処理用） -->
+        <input id="ref-my-id" type="hidden">
         <div id="ref-from-status" class="small text-secondary mt-2" style="opacity:.9;"></div>
         <div id="referral-status-list" class="mt-2" style="display:none;"></div>
       </div>
@@ -4040,7 +4052,10 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
           const nearbyStores = await fetchNearbyStores();
           if (nearbyStores && nearbyStores.length > 0) {
             window.nearbyStoreNames = nearbyStores;
+            showToast(`📍 近隣の店舗 ${nearbyStores.length}件 取得しました`, 3000);
             if (isDebug()) console.log('[GPS] Nearby stores loaded:', nearbyStores.length);
+          } else {
+            showToast('近隣の店舗が見つかりませんでした', 4000);
           }
         } catch(e) {
           if (isDebug()) console.warn('[GPS] fetchNearbyStores failed:', e);
@@ -4728,10 +4743,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       const proxyUrl = (window.SP_CONFIG && window.SP_CONFIG.yahooProxyExecUrl) ? window.SP_CONFIG.yahooProxyExecUrl.trim() : '';
       
       if (!proxyUrl) {
-        if (isDebug()) {
-          console.log('[FetchStores] Proxy URL not configured');
-          showToast('Yahoo Proxy URLが設定されていません', 10000);
-        }
+        if (isDebug()) console.log('[FetchStores] Proxy URL not configured');
+        showToast('店舗検索サーバーが未設定です（config.json）', 6000);
         return [];
       }
 
@@ -5670,15 +5683,14 @@ return true;
     
     curBarcode = jan; // ✅ P0: 正規化後のJANをセット（取得前）
 
-    // デバッグ: JAN確定をトーストで常時表示
-    showToast(`📷 JAN: ${jan}`, 2000);
+    if (isDebug()) showToast(`📷 JAN: ${jan}`, 2000);
     
     // ✅ P0: 対策A: openForm を先に出す（読めた瞬間に画面を動かす）
     await openForm(jan);
     
     // ✅ P0: JAN表示・取得中トースト・入力欄を触れる状態にする
     if (jan && /^\d{8,14}$/.test(jan)) {
-      showToast(`JAN: ${jan}`, 2000);
+      if (isDebug()) showToast(`JAN: ${jan}`, 2000);
       // ✅ 対策A: 「取得中…」表示
       const nameInput = document.getElementById('inputName');
       const makerInput = document.getElementById('inputMaker');
@@ -6430,20 +6442,12 @@ return true;
         if(el) el.textContent = pid || '-';
       });
     }catch(e){}
-    // ✅ 友人紹介/家族共有の表示値を更新
+    // ✅ 友人紹介パネル更新
     try{
-      const pid = (typeof getDeviceId === 'function') ? getDeviceId() : '';
-      const el1 = document.getElementById('ref-my-id');
-      if(el1) el1.value = pid || '';
+      if (typeof window.updateReferralPanel === 'function') window.updateReferralPanel();
       const el2 = document.getElementById('family-my-id');
-      if(el2) el2.value = pid || '';
-      const linkEl = document.getElementById('ref-link');
-      if(linkEl){
-        const u = new URL(location.href);
-        u.searchParams.set('ref', pid || '');
-        // build param (b) は維持
-        linkEl.value = u.toString();
-      }
+      const pid2 = (typeof getDeviceId === 'function') ? getDeviceId() : '';
+      if(el2) el2.value = pid2 || '';
     }catch(e){}
 
 
@@ -7263,16 +7267,170 @@ async function spCopyTextFallback(text){
   }catch(e){}
 }
 
-async function spShareReferral(){
-  try{
-    const pid = (typeof getDeviceId === 'function') ? getDeviceId() : '';
-    const linkEl = document.getElementById('ref-link');
-    const link = linkEl ? (linkEl.value || '').trim() : '';
-    const text = `【Smart Price 友人紹介】\n紹介ID: ${pid}\nリンク: ${link}`;
-    const ok = await spShareText('Smart Price 友人紹介', text);
-    if(!ok) spCopyTextFallback(text);
-  }catch(e){}
+// ========== ハンドルネーム管理 ==========
+function getHandle() {
+  return localStorage.getItem('smartPrice_handle') || '';
 }
+function saveHandle() {
+  const inp = document.getElementById('ref-handle-input');
+  if (!inp) return;
+  const v = inp.value.trim();
+  if (!v) { showToast('ハンドルネームを入力してください', 3000); return; }
+  if (v.length > 20) { showToast('20文字以内で入力してください', 3000); return; }
+  localStorage.setItem('smartPrice_handle', v);
+  showToast(`ハンドルネームを「${v}」に設定しました ✅`, 2500);
+  updateReferralPanel();
+}
+window.saveHandle = saveHandle;
+
+// ========== ワンタイム紹介トークン生成 ==========
+// IDを直接URLに入れず、専用トークンをFirebase referral_tokensに保存
+// トークン: tok_xxxxx（1回使用で無効化）
+function genReferralToken(pid) {
+  // クライアントサイドでのみ使う一時トークン（Firebase未使用時は単純ハッシュ）
+  const ts = Date.now().toString(36);
+  const rand = Math.random().toString(36).slice(2, 9);
+  return `r${ts}${rand}`;  // 例: r1abc2def3ghi
+}
+
+// ========== 紹介パネル表示更新 ==========
+function updateReferralPanel() {
+  const pid = (typeof getDeviceId === 'function') ? getDeviceId() : '';
+  const handle = getHandle();
+
+  // ハンドルネーム入力欄に現在値を反映
+  const handleInp = document.getElementById('ref-handle-input');
+  if (handleInp && !handleInp.value) handleInp.value = handle;
+
+  // 紹介リンク生成（IDをそのまま使わずトークン経由）
+  // トークンはセッション中固定（シェア時に毎回変えるとリンクが無効になるため）
+  let token = sessionStorage.getItem('sp_ref_token');
+  if (!token) {
+    token = genReferralToken(pid);
+    sessionStorage.setItem('sp_ref_token', token);
+    // Firebaseにtoken→pid のマッピングを保存（利用可能な場合）
+    try {
+      if (window.firebaseDb && pid) {
+        const { ref: fbRef, set } = window._fbFns || {};
+        if (fbRef && set) {
+          set(fbRef(window.firebaseDb, `referral_tokens/${token}`), {
+            uid: pid,
+            handle: handle || '',
+            createdAt: Date.now(),
+            used: false
+          });
+        }
+      }
+    } catch(e) {}
+  }
+
+  // 隠しフィールドにpidをセット（内部処理用）
+  const myIdEl = document.getElementById('ref-my-id');
+  if (myIdEl) myIdEl.value = pid;
+
+  // 紹介リンク（トークン使用・IDは含まない）
+  const u = new URL(location.href);
+  u.searchParams.set('ref', token);
+  u.searchParams.delete('debug');
+  const refLink = u.toString();
+
+  const linkEl = document.getElementById('ref-link');
+  if (linkEl) linkEl.value = refLink;
+}
+window.updateReferralPanel = updateReferralPanel;
+
+// ========== 紹介文生成 ==========
+function buildReferralText() {
+  const handle = getHandle();
+  const linkEl = document.getElementById('ref-link');
+  const link = linkEl ? linkEl.value.trim() : location.href;
+  const fromName = handle ? `「${handle}」` : 'あなたの友人';
+
+  return `📱 ${fromName}からSmartPriceをオススメされました！
+
+🛒 SmartPrice（スマートプライス）とは？
+・バーコードをスキャンするだけで価格を記録
+・どのスーパーが安いか一目でわかる
+・家族や友人と買い物情報を共有できる
+・完全無料・広告なし
+
+↓ このリンクから始めると自動でつながります
+${link}`;
+}
+
+// ========== 一括コピー ==========
+async function spCopyReferral() {
+  const text = buildReferralText();
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast('紹介文＋リンクをコピーしました 📋', 2500);
+  } catch(e) {
+    // fallback
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+    document.body.removeChild(ta);
+    showToast('コピーしました 📋', 2500);
+  }
+}
+window.spCopyReferral = spCopyReferral;
+
+// ========== 共有（Web Share API）==========
+async function spShareReferral() {
+  const text = buildReferralText();
+  const handle = getHandle();
+  try {
+    if (navigator.share) {
+      await navigator.share({
+        title: 'SmartPrice 友人紹介',
+        text: text
+      });
+    } else {
+      await spCopyReferral();
+    }
+  } catch(e) {
+    if (e.name !== 'AbortError') await spCopyReferral();
+  }
+}
+window.spShareReferral = spShareReferral;
+
+// ========== 招待リンク受信処理（起動時）==========
+// トークン受信 → Firebaseでtoken→uid解決 → invitedByに保存
+(function parseInviteCode() {
+  try {
+    const q = new URL(location.href).searchParams;
+    const token = q.get('ref');
+    if (!token) return;
+    const savedRef = localStorage.getItem('smartPrice_invitedBy');
+    if (savedRef) return; // 既に保存済み
+
+    // まずトークンをそのまま保存（Firebase解決は非同期）
+    localStorage.setItem('smartPrice_invitedBy_token', token);
+
+    // Firebaseが使えればtoken→uid解決
+    setTimeout(() => {
+      try {
+        if (window.firebaseDb) {
+          const { ref: fbRef, get } = window._fbFns || {};
+          if (fbRef && get) {
+            get(fbRef(window.firebaseDb, `referral_tokens/${token}`)).then(snap => {
+              const data = snap && snap.val ? snap.val() : null;
+              if (data && data.uid && !data.used) {
+                localStorage.setItem('smartPrice_invitedBy', data.uid);
+                localStorage.setItem('smartPrice_invitedBy_handle', data.handle || '');
+                // トークンを使用済みにする（使い回し防止）
+                const { set } = window._fbFns || {};
+                if (set) set(fbRef(window.firebaseDb, `referral_tokens/${token}/used`), true);
+                const fromName = data.handle ? `「${data.handle}」` : '友人';
+                showToast(`${fromName}の紹介で登録されました ✅`, 4000);
+              }
+            }).catch(() => {});
+          }
+        }
+      } catch(e) {}
+    }, 3000);
+  } catch(e) {}
+})();
 
 async function spShareFamilyId(){
   try{
@@ -7282,6 +7440,7 @@ async function spShareFamilyId(){
     if(!ok) spCopyTextFallback(text);
   }catch(e){}
 }
+window.spShareFamilyId = spShareFamilyId;
 
 </script>
 
