@@ -13,7 +13,7 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.9.2";
+  const APP_VERSION = "v23.9.3";
   window.APP_VERSION = APP_VERSION;
   const BUILD_ID = "2026-03-11_scope-fix";
   window.BUILD_ID = BUILD_ID;
@@ -291,9 +291,9 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
       } 
     }
 
-    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 3000; justify-content: center; align-items: center; }
-    .modal.show { display: flex !important; }
-    .modal-content { background: #1e1e1e; padding: 25px; border-radius: 20px; width: 95%; max-width: 450px; border: 1px solid #D50000; }
+    .sp-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 3000; justify-content: center; align-items: center; }
+    .sp-modal.show { display: flex !important; }
+    .sp-modal-content { background: #1e1e1e; padding: 25px; border-radius: 20px; width: 95%; max-width: 450px; border: 1px solid #D50000; }
 
     .toast-container{
   position: fixed;
@@ -447,7 +447,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 /* === 設定モーダル (settingsnav-r4) === */
 #settingsModal { z-index: 100500 !important; }
 #settingsModal.show { display: flex !important; }
-#settingsModal .modal-content {
+#settingsModal .sp-modal-content {
   max-height: 85vh;
   overflow-y: auto;
   width: 95% !important;
@@ -717,8 +717,8 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 
 /* UIFIX24: 設定モーダルのボタン間隔と高さを統一 */
 /* ※ modal-contentにdisplay:flexを当てると親のjustify-content:centerが崩れるため削除 */
-#settingsModal .modal-content .btn { min-height: 52px; }
-#settingsModal .modal-content .btn.btn-link { min-height: auto; }
+#settingsModal .sp-modal-content .btn { min-height: 52px; }
+#settingsModal .sp-modal-content .btn.btn-link { min-height: auto; }
 #settingsModal .d-grid { gap: 10px; }
 
 </style>
@@ -864,7 +864,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   <button onclick="stopScanner()" class="btn btn-danger position-absolute top-0 end-0 m-4 fs-3 shadow-lg">×</button>
 </div>
 
-<div id="dialogModal" class="modal">
+<div id="dialogModal" class="sp-modal">
   <div class="modal-content text-center">
     <h6 id="dialogTitle" class="text-secondary mb-3">Smart Price</h6>
     <p id="dialogMsg" class="text-white mb-4"></p>
@@ -876,8 +876,8 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   </div>
 </div>
 
-<div id="settingsModal" class="modal">
-  <div class="modal-content">
+<div id="settingsModal" class="sp-modal">
+  <div class="sp-modal-content">
     <h5 class="text-white mb-4 text-center" id="settingsTitle" onclick="handleSettingsTitleClick()" style="cursor: pointer;">設定</h5>
 
     <div class="mb-3" id="settingsCitySection">
@@ -1082,8 +1082,8 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 </div>
 
 <!-- 生活圏設定モーダル -->
-<div id="homeCityModal" class="modal" style="z-index: 10002;">
-  <div class="modal-content">
+<div id="homeCityModal" class="sp-modal" style="z-index: 10002;">
+  <div class="sp-modal-content">
     <h5 class="text-white mb-3 text-center">生活圏の設定</h5>
     
     <div class="mb-3">
@@ -1110,8 +1110,8 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 </div>
 
 <!-- バーコード手入力モーダル -->
-<div id="barcodeManualModal" class="modal" style="z-index: 10000;">
-  <div class="modal-content">
+<div id="barcodeManualModal" class="sp-modal" style="z-index: 10000;">
+  <div class="sp-modal-content">
     <h5 class="text-white mb-4 text-center">バーコード手入力</h5>
     
     <div class="btn-group w-100 mb-3" role="group">
@@ -1216,8 +1216,8 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 
 </style>
 
-<div id="webModal" class="modal">
-  <div class="modal-content">
+<div id="webModal" class="sp-modal">
+  <div class="sp-modal-content">
     <h5 class="text-white mb-3 text-center">ブラウザ版（URL）</h5>
     <div class="hint mb-3">
       ・PWA（ホーム追加）だとアドレスが見えないので、ここでURLをコピーしてChrome/Edgeで開けます。<br>
