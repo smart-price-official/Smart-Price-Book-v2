@@ -13,7 +13,7 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.9.8";
+  const APP_VERSION = "v23.9.9";
   window.APP_VERSION = APP_VERSION;
   const BUILD_ID = "2026-03-11_scope-fix";
   window.BUILD_ID = BUILD_ID;
@@ -7029,6 +7029,24 @@ function ensureUserIdInProducts() {
   if (updated && typeof saveLocalOnly === 'function') {
     saveLocalOnly();
   }
+}
+
+
+// === タップデバッグ（debug=1の時のみ） ===
+if (new URL(location.href).searchParams.get('debug') === '1') {
+  document.addEventListener('click', function(e) {
+    const el = e.target;
+    const info = (el.id ? '#'+el.id : '') + (el.className ? '.'+String(el.className).split(' ')[0] : '') + ' ' + el.tagName;
+    const rect = el.getBoundingClientRect();
+    // このタップ位置に他の要素が被っていないか確認
+    const top = document.elementFromPoint(e.clientX, e.clientY);
+    const topInfo = top ? ((top.id?'#'+top.id:'') + top.tagName) : '?';
+    console.log('[TAP]', info, '→ topEl:', topInfo, 'pos:', Math.round(e.clientX), Math.round(e.clientY));
+    if (typeof showToast === 'function') {
+      showToast('[TAP] ' + info.slice(0,30) + ' top:' + topInfo.slice(0,20), 2000);
+    }
+  }, true);
+  console.log('[DEBUG] タップデバッグ有効');
 }
 
 document.addEventListener('DOMContentLoaded', function() {
