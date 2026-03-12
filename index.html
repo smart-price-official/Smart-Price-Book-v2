@@ -729,6 +729,17 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 #settingsModal .modal-content .btn { min-height: 52px; }
 #settingsModal .modal-content .btn.btn-link { min-height: auto; }
 
+/* === PATCH v23.9.13: 設定モーダル幅の崩れ修正 === */
+/* .modal-content の flex-direction:column により align-self がデフォルトstretchになり
+   width:95%/max-width:450px が効かなくなる問題を修正 */
+#settingsModal .modal-content {
+  width: 92vw !important;
+  max-width: 450px !important;
+  min-width: 280px !important;
+  box-sizing: border-box !important;
+  align-self: center !important;
+}
+
 
 
 
