@@ -13,7 +13,7 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.9.9d";
+  const APP_VERSION = "v23.9.9e";
   window.APP_VERSION = APP_VERSION;
   const BUILD_ID = "2026-03-11_scope-fix";
   window.BUILD_ID = BUILD_ID;
@@ -6399,9 +6399,16 @@ return true;
   const TITLES = { Main: '設定', Referral: '友人紹介', Family: '家族共有', Support: '運営者へ質問', Operator: '管理メニュー' };
   
   function init() {
+    console.log('[init] called, initialized=', state.initialized);
+    try { if(typeof showToast==='function') showToast('[init] start initialized='+state.initialized, 2000); } catch(_) {}
     if (state.initialized) return;
     modal = document.getElementById('settingsModal');
-    if (!modal) { console.error('[Modal] settingsModal not found'); return; }
+    if (!modal) {
+      console.error('[Modal] settingsModal not found');
+      try { if(typeof showToast==='function') showToast('❌ settingsModal not found!', 5000); } catch(_) {}
+      return;
+    }
+    try { if(typeof showToast==='function') showToast('[init] modal found ✅', 1500); } catch(_) {}
     
     const duplicates = document.querySelectorAll('#settingsModal');
     if (duplicates.length > 1) {
@@ -6456,7 +6463,13 @@ return true;
   }
   
   function open() {
-    if (!modal) return;
+    // DBG
+    try { if(typeof showToast==='function') showToast('[open] modal='+!!modal+' init='+state.initialized, 3000); } catch(_) {}
+    console.log('[open] modal=', modal, 'state=', JSON.stringify(state));
+    if (!modal) {
+      try { if(typeof showToast==='function') showToast('❌ modal is null!', 5000); } catch(_) {}
+      return;
+    }
     try { const dp = document.getElementById('debug-panel'); if (dp && dp.classList.contains('show')) { dp.classList.remove('show'); dp.style.display = 'none'; } } catch(e) {}
     try { if (typeof window.clearToasts === 'function') window.clearToasts(); } catch(e) {}
     
@@ -6683,6 +6696,10 @@ window.saveHomeCityFromModal = saveHomeCityFromModal;
 let currentBarcodeType = 13;
 
 function openBarcodeManual() {
+  try { if(typeof showToast==='function') showToast('[openBarcodeManual] called', 2000); } catch(_) {}
+  console.log('[openBarcodeManual] called');
+  const bm = document.getElementById('barcodeManualModal');
+  try { if(typeof showToast==='function') showToast('[barcodeModal] el='+!!bm, 2000); } catch(_) {}
   document.getElementById('barcodeManualModal').style.display = 'flex';
   renderBarcodeInputs(13);
 }
