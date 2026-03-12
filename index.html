@@ -13,7 +13,7 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.9.9e";
+  const APP_VERSION = "v23.9.9f";
   window.APP_VERSION = APP_VERSION;
   const BUILD_ID = "2026-03-11_scope-fix";
   window.BUILD_ID = BUILD_ID;
@@ -715,38 +715,33 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 #settingsModal .modal-content .btn.btn-link { min-height: auto; }
 
 
-/* === TAP DEBUG PANEL === */
-#sp-tap-debug {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: rgba(0,0,0,0.92);
-  color: #0f0;
-  font-family: monospace;
-  font-size: 11px;
-  z-index: 9999999;
-  padding: 6px 10px;
-  max-height: 120px;
-  overflow-y: auto;
-  border-top: 2px solid #0f0;
-}
-#sp-tap-debug .sp-dbg-row { border-bottom: 1px solid #333; padding: 2px 0; }
-#sp-tap-debug .sp-dbg-blocked { color: #f66; }
-#sp-tap-debug .sp-dbg-ok { color: #6f6; }
-#sp-tap-debug-toggle {
-  position: fixed;
-  bottom: 0;
-  right: 0;
-  background: #0a0;
-  color: #fff;
-  font-size: 10px;
-  padding: 2px 6px;
-  z-index: 10000000;
-  border: none;
-  border-radius: 4px 0 0 0;
-}
 
+
+/* === SP DEBUG PANEL v2 === */
+#sp-dbg-panel {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  background: #111; color: #0f0; font: 10px/1.3 monospace;
+  z-index: 99999999; border-top: 2px solid #0f0;
+  max-height: 45vh; display: none; flex-direction: column;
+}
+#sp-dbg-log { flex: 1; overflow-y: auto; padding: 4px 6px; }
+#sp-dbg-log .e { color: #f44; }
+#sp-dbg-log .w { color: #fa0; }
+#sp-dbg-log .ok { color: #0f0; }
+#sp-dbg-bar {
+  display: flex; gap: 4px; padding: 4px 6px;
+  background: #222; border-top: 1px solid #444; flex-shrink: 0;
+}
+#sp-dbg-bar button {
+  font: 10px monospace; padding: 2px 8px; border: 1px solid #555;
+  background: #333; color: #fff; border-radius: 3px; cursor: pointer;
+}
+#sp-dbg-toggle {
+  position: fixed; bottom: 0; right: 60px;
+  background: #050; color: #0f0; font: bold 10px monospace;
+  padding: 3px 8px; z-index: 100000000; border: 1px solid #0f0;
+  border-radius: 4px 4px 0 0; cursor: pointer;
+}
 </style>
 
 <script>
@@ -6399,16 +6394,9 @@ return true;
   const TITLES = { Main: '設定', Referral: '友人紹介', Family: '家族共有', Support: '運営者へ質問', Operator: '管理メニュー' };
   
   function init() {
-    console.log('[init] called, initialized=', state.initialized);
-    try { if(typeof showToast==='function') showToast('[init] start initialized='+state.initialized, 2000); } catch(_) {}
     if (state.initialized) return;
     modal = document.getElementById('settingsModal');
-    if (!modal) {
-      console.error('[Modal] settingsModal not found');
-      try { if(typeof showToast==='function') showToast('❌ settingsModal not found!', 5000); } catch(_) {}
-      return;
-    }
-    try { if(typeof showToast==='function') showToast('[init] modal found ✅', 1500); } catch(_) {}
+    if (!modal) { console.error('[Modal] settingsModal not found'); return; }
     
     const duplicates = document.querySelectorAll('#settingsModal');
     if (duplicates.length > 1) {
@@ -6463,13 +6451,7 @@ return true;
   }
   
   function open() {
-    // DBG
-    try { if(typeof showToast==='function') showToast('[open] modal='+!!modal+' init='+state.initialized, 3000); } catch(_) {}
-    console.log('[open] modal=', modal, 'state=', JSON.stringify(state));
-    if (!modal) {
-      try { if(typeof showToast==='function') showToast('❌ modal is null!', 5000); } catch(_) {}
-      return;
-    }
+    if (!modal) return;
     try { const dp = document.getElementById('debug-panel'); if (dp && dp.classList.contains('show')) { dp.classList.remove('show'); dp.style.display = 'none'; } } catch(e) {}
     try { if (typeof window.clearToasts === 'function') window.clearToasts(); } catch(e) {}
     
@@ -6696,10 +6678,6 @@ window.saveHomeCityFromModal = saveHomeCityFromModal;
 let currentBarcodeType = 13;
 
 function openBarcodeManual() {
-  try { if(typeof showToast==='function') showToast('[openBarcodeManual] called', 2000); } catch(_) {}
-  console.log('[openBarcodeManual] called');
-  const bm = document.getElementById('barcodeManualModal');
-  try { if(typeof showToast==='function') showToast('[barcodeModal] el='+!!bm, 2000); } catch(_) {}
   document.getElementById('barcodeManualModal').style.display = 'flex';
   renderBarcodeInputs(13);
 }
@@ -7659,78 +7637,123 @@ window.importBackup   = importBackup;
 </script>
 
 
-<!-- TAP DEBUG PANEL -->
-<button id="sp-tap-debug-toggle" onclick="(function(){var p=document.getElementById('sp-tap-debug');p.style.display=p.style.display==='none'?'block':'none';})()">DBG</button>
-<div id="sp-tap-debug" style="display:none;">
-  <div style="color:#ff0;font-weight:bold;">🔍 タップデバッグ ON（DBGボタンで切替）</div>
 </div>
 
-<script>
-// === 常時タップデバッグ ===
-(function() {
-  function addDbgRow(html, cls) {
-    var p = document.getElementById('sp-tap-debug');
-    if (!p) return;
-    var d = document.createElement('div');
-    d.className = 'sp-dbg-row ' + (cls||'');
-    d.innerHTML = html;
-    p.appendChild(d);
-    // 最新を表示
-    p.scrollTop = p.scrollHeight;
-    // 20行以上は古いものを削除
-    var rows = p.querySelectorAll('.sp-dbg-row');
-    if (rows.length > 20) rows[0].remove();
-  }
 
-  document.addEventListener('click', function(e) {
-    var x = Math.round(e.clientX), y = Math.round(e.clientY);
-    
-    // タップ位置の最前面要素
-    var topEl = document.elementFromPoint(x, y);
-    var topInfo = topEl ? (topEl.id ? '#'+topEl.id : topEl.tagName + (topEl.className ? '.'+String(topEl.className).split(' ')[0] : '')) : 'null';
-    
-    // e.targetの情報
-    var tgt = e.target;
-    var tgtInfo = (tgt.id ? '#'+tgt.id : tgt.tagName) + (tgt.className ? '.'+String(tgt.className).split(' ')[0] : '');
-    
-    // onclick属性
-    var oc = tgt.getAttribute('onclick') || (tgt.closest('[onclick]') ? tgt.closest('[onclick]').getAttribute('onclick').slice(0,20) : '');
-    
-    // 被り判定
-    var blocked = (topEl !== tgt && topEl !== tgt.closest('button'));
-    
-    var msg = '(' + x + ',' + y + ') tgt=' + tgtInfo.slice(0,25) + ' top=' + topInfo.slice(0,25) + (oc ? ' fn='+oc.slice(0,20) : '');
-    addDbgRow(msg, blocked ? 'sp-dbg-blocked' : 'sp-dbg-ok');
-    
-    // 設定・手入力ボタン専用ログ
-    var btn = tgt.closest('#settingsBtn, #scanBtnTop, [onclick]');
-    if (btn) {
-      var btnId = btn.id || btn.getAttribute('onclick') || '?';
-      addDbgRow('→ BTN: ' + btnId.slice(0,30) + (blocked?' ⚠️BLOCKED':'✅OK'), blocked?'sp-dbg-blocked':'sp-dbg-ok');
-    }
-  }, true);
-  
-  // z-index調査: 全fixed要素のz-indexをログ
+<!-- SP DEBUG PANEL v2 -->
+<button id="sp-dbg-toggle" onclick="(function(){var p=document.getElementById('sp-dbg-panel');p.style.display=p.style.display==='flex'?'none':'flex';})()">🔍DBG</button>
+<div id="sp-dbg-panel">
+  <div id="sp-dbg-log"><div class="ok">== SP Debug Log ==</div></div>
+  <div id="sp-dbg-bar">
+    <button onclick="document.getElementById('sp-dbg-log').innerHTML='<div class=ok>cleared</div>'">CLR</button>
+    <button onclick="(function(){var t=document.createElement('textarea');t.value=Array.from(document.querySelectorAll('#sp-dbg-log div')).map(function(d){return d.textContent}).join('\n');t.style.cssText='position:fixed;top:-9999px';document.body.appendChild(t);t.select();document.execCommand('copy');t.remove();document.getElementById('sp-dbg-toggle').textContent='📋Copied!';setTimeout(function(){document.getElementById('sp-dbg-toggle').textContent='🔍DBG'},2000);})()">📋COPY LOG</button>
+    <button onclick="spDbgDump()">DUMP STATE</button>
+    <span id="sp-dbg-count" style="color:#fa0;margin-left:auto;"></span>
+  </div>
+</div>
+
+
+<script>
+// === SP DEBUG SYSTEM v2 ===
+(function() {
+  var logs = [];
+  var cnt = 0;
+
+  function spDbgLog(msg, cls) {
+    cnt++;
+    logs.push({t: new Date().toISOString().slice(11,23), m: msg, c: cls||'ok'});
+    var panel = document.getElementById('sp-dbg-log');
+    if (!panel) return;
+    var d = document.createElement('div');
+    d.className = cls || 'ok';
+    d.textContent = cnt + ' ' + new Date().toISOString().slice(11,19) + ' ' + msg;
+    panel.appendChild(d);
+    panel.scrollTop = panel.scrollHeight;
+    if (panel.children.length > 100) panel.children[0].remove();
+    var cntEl = document.getElementById('sp-dbg-count');
+    if (cntEl) cntEl.textContent = cnt + ' logs';
+  }
+  window.spDbgLog = spDbgLog;
+
+  window.spDbgDump = function() {
+    var state = '';
+    try {
+      var modal = document.getElementById('settingsModal');
+      var bm = document.getElementById('barcodeManualModal');
+      state += 'settingsModal: ' + (modal ? 'exists disp=' + modal.style.display : 'NULL') + '\n';
+      state += 'barcodeManualModal: ' + (bm ? 'exists disp=' + bm.style.display : 'NULL') + '\n';
+      state += 'window.openSettings: ' + typeof window.openSettings + '\n';
+      state += 'window.openBarcodeManual: ' + typeof window.openBarcodeManual + '\n';
+      state += 'window.SmartPriceModal: ' + typeof window.SmartPriceModal + '\n';
+      // IIFEのstateにアクセス試みる
+      if (window.SmartPriceModal) {
+        state += 'SmartPriceModal.keys: ' + Object.keys(window.SmartPriceModal).join(',') + '\n';
+      }
+    } catch(e) { state += 'ERROR: ' + e.message; }
+    spDbgLog('=== DUMP ===', 'w');
+    state.split('\n').forEach(function(l){ if(l) spDbgLog(l, 'w'); });
+  };
+
+  // window.openSettingsをラップして呼び出しをキャプチャ
   document.addEventListener('DOMContentLoaded', function() {
     setTimeout(function() {
+      // openSettingsをインターセプト
+      var origOpen = window.openSettings;
+      window.openSettings = function() {
+        spDbgLog('openSettings called! orig=' + typeof origOpen, 'ok');
+        if (!origOpen) { spDbgLog('❌ openSettings is undefined!', 'e'); return; }
+        try {
+          origOpen();
+          spDbgLog('openSettings returned OK', 'ok');
+        } catch(e) {
+          spDbgLog('❌ openSettings ERROR: ' + e.message, 'e');
+          spDbgLog('stack: ' + (e.stack||'').slice(0,100), 'e');
+        }
+      };
+      
+      // openBarcodeManualをインターセプト
+      var origBM = window.openBarcodeManual;
+      window.openBarcodeManual = function() {
+        spDbgLog('openBarcodeManual called! orig=' + typeof origBM, 'ok');
+        if (!origBM) { spDbgLog('❌ openBarcodeManual is undefined!', 'e'); return; }
+        try {
+          origBM();
+          spDbgLog('openBarcodeManual returned OK', 'ok');
+        } catch(e) {
+          spDbgLog('❌ openBarcodeManual ERROR: ' + e.message, 'e');
+          spDbgLog('stack: ' + (e.stack||'').slice(0,100), 'e');
+        }
+      };
+      
+      spDbgLog('interceptors set. openSettings=' + typeof window.openSettings, 'ok');
+      spDbgLog('SmartPriceModal=' + typeof window.SmartPriceModal, 'ok');
+      
+      // fixed要素一覧
       var fixedEls = [];
       document.querySelectorAll('*').forEach(function(el) {
-        var cs = window.getComputedStyle(el);
-        if (cs.position === 'fixed' && cs.display !== 'none') {
-          fixedEls.push(el.id + '|z=' + cs.zIndex + '|ptr=' + cs.pointerEvents);
+        var cs = getComputedStyle(el);
+        if (cs.position === 'fixed' && cs.display !== 'none' && cs.visibility !== 'hidden') {
+          fixedEls.push((el.id||el.tagName) + ':z=' + cs.zIndex);
         }
       });
-      var p = document.getElementById('sp-tap-debug');
-      if (p) {
-        var d = document.createElement('div');
-        d.style.color = '#ff0';
-        d.innerHTML = 'fixed要素: ' + fixedEls.join(', ').slice(0,200);
-        p.appendChild(d);
-      }
-      console.log('[DBG] fixed要素:', fixedEls);
-    }, 2000);
+      spDbgLog('fixed: ' + fixedEls.join(', '), 'w');
+      
+    }, 1500);
   });
+  
+  // タップログ
+  document.addEventListener('click', function(e) {
+    var top = document.elementFromPoint(e.clientX, e.clientY);
+    var tgt = e.target;
+    var btn = tgt.closest('button,[onclick]');
+    if (!btn) return;
+    var fn = btn.getAttribute('onclick') || btn.id || '?';
+    var topSame = (top === tgt || top === btn || btn.contains(top));
+    spDbgLog('TAP ' + fn.slice(0,30) + (topSame ? ' ✅' : ' ⚠️top=' + (top?top.tagName+top.id:'?')), topSame?'ok':'w');
+  }, true);
+
 })();
 </script>
+
 </body>
 </html>
