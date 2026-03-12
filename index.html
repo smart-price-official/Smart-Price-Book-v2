@@ -13,7 +13,7 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.9.9f";
+  const APP_VERSION = "v23.9.9g";
   window.APP_VERSION = APP_VERSION;
   const BUILD_ID = "2026-03-11_scope-fix";
   window.BUILD_ID = BUILD_ID;
@@ -6457,6 +6457,13 @@ return true;
     
     state.isOpen = true; state.currentPanel = 'Main'; state.history = ['Main'];
     modal.style.display = 'flex'; modal.style.zIndex = '999999'; modal.style.position = 'fixed'; modal.style.top = '0'; modal.style.left = '0'; modal.style.width = '100vw'; modal.style.height = '100vh'; modal.style.justifyContent = 'center'; modal.style.alignItems = 'center';
+    // DBG: セット直後の実際の表示状態を確認
+    setTimeout(function() {
+      var cs = window.getComputedStyle(modal);
+      var msg = 'modal after open: style.disp=' + modal.style.display + ' computed.disp=' + cs.display + ' z=' + cs.zIndex + ' w=' + cs.width + ' h=' + cs.height + ' vis=' + cs.visibility + ' op=' + cs.opacity;
+      if (typeof window.spDbgLog === 'function') window.spDbgLog(msg, cs.display === 'none' ? 'e' : 'ok');
+      console.log('[open DBG]', msg);
+    }, 50);
     try{ if(typeof window.setHeaderVersionBadge==='function') window.setHeaderVersionBadge(); }catch(e){}
     // ✅ 個人ID表示（設定内の各画面にも表示）
     try{
@@ -6678,7 +6685,24 @@ window.saveHomeCityFromModal = saveHomeCityFromModal;
 let currentBarcodeType = 13;
 
 function openBarcodeManual() {
-  document.getElementById('barcodeManualModal').style.display = 'flex';
+  const _bmEl = document.getElementById('barcodeManualModal');
+  if (_bmEl) {
+    _bmEl.style.display = 'flex';
+    _bmEl.style.zIndex = '999999';
+    _bmEl.style.position = 'fixed';
+    _bmEl.style.top = '0';
+    _bmEl.style.left = '0';
+    _bmEl.style.width = '100vw';
+    _bmEl.style.height = '100vh';
+    _bmEl.style.justifyContent = 'center';
+    _bmEl.style.alignItems = 'center';
+    setTimeout(function() {
+      var cs = window.getComputedStyle(_bmEl);
+      var msg = 'barcodeModal: style=' + _bmEl.style.display + ' computed=' + cs.display + ' z=' + cs.zIndex + ' vis=' + cs.visibility;
+      if (typeof window.spDbgLog === 'function') window.spDbgLog(msg, cs.display === 'none' ? 'e' : 'ok');
+      console.log('[barcodeModal DBG]', msg);
+    }, 50);
+  }
   renderBarcodeInputs(13);
 }
 
