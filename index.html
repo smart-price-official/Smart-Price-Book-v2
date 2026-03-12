@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.9.14";
+  const APP_VERSION = "v23.9.15";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-12_layout-diag";
+  const BUILD_ID = "2026-03-12_layout-fix2";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -728,6 +728,22 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 #settingsModal .modal-content { display:flex; flex-direction:column; gap:10px; }
 #settingsModal .modal-content .btn { min-height: 52px; }
 #settingsModal .modal-content .btn.btn-link { min-height: auto; }
+
+/* === PATCH v23.9.15: 設定モーダル幅崩れ修正 ===
+   診断結果: alignSelf=auto のため modal-content が左端0pxに張り付く
+   競合: .modal-content{width:95%} と .sp-settings-menu button{width:100%} が干渉
+   対策: align-self:center + overflow:hidden で封じ込める */
+#settingsModal .modal-content {
+  width: 92vw !important;
+  max-width: 450px !important;
+  min-width: 280px !important;
+  box-sizing: border-box !important;
+  align-self: center !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
 
 
 
