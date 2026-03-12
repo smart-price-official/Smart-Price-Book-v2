@@ -13,7 +13,7 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.9.9";
+  const APP_VERSION = "v23.9.9d";
   window.APP_VERSION = APP_VERSION;
   const BUILD_ID = "2026-03-11_scope-fix";
   window.BUILD_ID = BUILD_ID;
@@ -713,6 +713,39 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 #settingsModal .modal-content { display:flex; flex-direction:column; gap:10px; }
 #settingsModal .modal-content .btn { min-height: 52px; }
 #settingsModal .modal-content .btn.btn-link { min-height: auto; }
+
+
+/* === TAP DEBUG PANEL === */
+#sp-tap-debug {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(0,0,0,0.92);
+  color: #0f0;
+  font-family: monospace;
+  font-size: 11px;
+  z-index: 9999999;
+  padding: 6px 10px;
+  max-height: 120px;
+  overflow-y: auto;
+  border-top: 2px solid #0f0;
+}
+#sp-tap-debug .sp-dbg-row { border-bottom: 1px solid #333; padding: 2px 0; }
+#sp-tap-debug .sp-dbg-blocked { color: #f66; }
+#sp-tap-debug .sp-dbg-ok { color: #6f6; }
+#sp-tap-debug-toggle {
+  position: fixed;
+  bottom: 0;
+  right: 0;
+  background: #0a0;
+  color: #fff;
+  font-size: 10px;
+  padding: 2px 6px;
+  z-index: 10000000;
+  border: none;
+  border-radius: 4px 0 0 0;
+}
 
 </style>
 
@@ -7032,23 +7065,6 @@ function ensureUserIdInProducts() {
 }
 
 
-// === タップデバッグ（debug=1の時のみ） ===
-if (new URL(location.href).searchParams.get('debug') === '1') {
-  document.addEventListener('click', function(e) {
-    const el = e.target;
-    const info = (el.id ? '#'+el.id : '') + (el.className ? '.'+String(el.className).split(' ')[0] : '') + ' ' + el.tagName;
-    const rect = el.getBoundingClientRect();
-    // このタップ位置に他の要素が被っていないか確認
-    const top = document.elementFromPoint(e.clientX, e.clientY);
-    const topInfo = top ? ((top.id?'#'+top.id:'') + top.tagName) : '?';
-    console.log('[TAP]', info, '→ topEl:', topInfo, 'pos:', Math.round(e.clientX), Math.round(e.clientY));
-    if (typeof showToast === 'function') {
-      showToast('[TAP] ' + info.slice(0,30) + ' top:' + topInfo.slice(0,20), 2000);
-    }
-  }, true);
-  console.log('[DEBUG] タップデバッグ有効');
-}
-
 document.addEventListener('DOMContentLoaded', function() {
   setTimeout(() => {
     ensureUserIdInProducts();
@@ -7625,5 +7641,79 @@ window.importBackup   = importBackup;
 
 </script>
 
+
+<!-- TAP DEBUG PANEL -->
+<button id="sp-tap-debug-toggle" onclick="(function(){var p=document.getElementById('sp-tap-debug');p.style.display=p.style.display==='none'?'block':'none';})()">DBG</button>
+<div id="sp-tap-debug" style="display:none;">
+  <div style="color:#ff0;font-weight:bold;">🔍 タップデバッグ ON（DBGボタンで切替）</div>
+</div>
+
+<script>
+// === 常時タップデバッグ ===
+(function() {
+  function addDbgRow(html, cls) {
+    var p = document.getElementById('sp-tap-debug');
+    if (!p) return;
+    var d = document.createElement('div');
+    d.className = 'sp-dbg-row ' + (cls||'');
+    d.innerHTML = html;
+    p.appendChild(d);
+    // 最新を表示
+    p.scrollTop = p.scrollHeight;
+    // 20行以上は古いものを削除
+    var rows = p.querySelectorAll('.sp-dbg-row');
+    if (rows.length > 20) rows[0].remove();
+  }
+
+  document.addEventListener('click', function(e) {
+    var x = Math.round(e.clientX), y = Math.round(e.clientY);
+    
+    // タップ位置の最前面要素
+    var topEl = document.elementFromPoint(x, y);
+    var topInfo = topEl ? (topEl.id ? '#'+topEl.id : topEl.tagName + (topEl.className ? '.'+String(topEl.className).split(' ')[0] : '')) : 'null';
+    
+    // e.targetの情報
+    var tgt = e.target;
+    var tgtInfo = (tgt.id ? '#'+tgt.id : tgt.tagName) + (tgt.className ? '.'+String(tgt.className).split(' ')[0] : '');
+    
+    // onclick属性
+    var oc = tgt.getAttribute('onclick') || (tgt.closest('[onclick]') ? tgt.closest('[onclick]').getAttribute('onclick').slice(0,20) : '');
+    
+    // 被り判定
+    var blocked = (topEl !== tgt && topEl !== tgt.closest('button'));
+    
+    var msg = '(' + x + ',' + y + ') tgt=' + tgtInfo.slice(0,25) + ' top=' + topInfo.slice(0,25) + (oc ? ' fn='+oc.slice(0,20) : '');
+    addDbgRow(msg, blocked ? 'sp-dbg-blocked' : 'sp-dbg-ok');
+    
+    // 設定・手入力ボタン専用ログ
+    var btn = tgt.closest('#settingsBtn, #scanBtnTop, [onclick]');
+    if (btn) {
+      var btnId = btn.id || btn.getAttribute('onclick') || '?';
+      addDbgRow('→ BTN: ' + btnId.slice(0,30) + (blocked?' ⚠️BLOCKED':'✅OK'), blocked?'sp-dbg-blocked':'sp-dbg-ok');
+    }
+  }, true);
+  
+  // z-index調査: 全fixed要素のz-indexをログ
+  document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(function() {
+      var fixedEls = [];
+      document.querySelectorAll('*').forEach(function(el) {
+        var cs = window.getComputedStyle(el);
+        if (cs.position === 'fixed' && cs.display !== 'none') {
+          fixedEls.push(el.id + '|z=' + cs.zIndex + '|ptr=' + cs.pointerEvents);
+        }
+      });
+      var p = document.getElementById('sp-tap-debug');
+      if (p) {
+        var d = document.createElement('div');
+        d.style.color = '#ff0';
+        d.innerHTML = 'fixed要素: ' + fixedEls.join(', ').slice(0,200);
+        p.appendChild(d);
+      }
+      console.log('[DBG] fixed要素:', fixedEls);
+    }, 2000);
+  });
+})();
+</script>
 </body>
 </html>
