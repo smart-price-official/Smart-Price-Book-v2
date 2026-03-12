@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.9.13";
+  const APP_VERSION = "v23.9.14";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-11_scope-fix";
+  const BUILD_ID = "2026-03-12_layout-diag";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -728,17 +728,6 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 #settingsModal .modal-content { display:flex; flex-direction:column; gap:10px; }
 #settingsModal .modal-content .btn { min-height: 52px; }
 #settingsModal .modal-content .btn.btn-link { min-height: auto; }
-
-/* === PATCH v23.9.13: 設定モーダル幅の崩れ修正 === */
-/* .modal-content の flex-direction:column により align-self がデフォルトstretchになり
-   width:95%/max-width:450px が効かなくなる問題を修正 */
-#settingsModal .modal-content {
-  width: 92vw !important;
-  max-width: 450px !important;
-  min-width: 280px !important;
-  box-sizing: border-box !important;
-  align-self: center !important;
-}
 
 
 
@@ -7707,6 +7696,7 @@ window.importBackup   = importBackup;
     <button onclick="document.getElementById('sp-dbg-log').innerHTML='<div class=ok>cleared</div>'">CLR</button>
     <button onclick="(function(){var t=document.createElement('textarea');t.value=Array.from(document.querySelectorAll('#sp-dbg-log div')).map(function(d){return d.textContent}).join('\n');t.style.cssText='position:fixed;top:-9999px';document.body.appendChild(t);t.select();document.execCommand('copy');t.remove();document.getElementById('sp-dbg-toggle').textContent='📋Copied!';setTimeout(function(){document.getElementById('sp-dbg-toggle').textContent='🔍DBG'},2000);})()">📋COPY LOG</button>
     <button onclick="spDbgDump()">DUMP STATE</button>
+    <button onclick="spDbgLayoutDiag()" style="background:#055a9e;color:#fff;font-weight:bold;">🔬LAYOUT</button>
     <span id="sp-dbg-count" style="color:#fa0;margin-left:auto;"></span>
   </div>
 </div>
@@ -7812,6 +7802,89 @@ window.importBackup   = importBackup;
   }, true);
 
 })();
+
+// === SP LAYOUT DIAGNOSE v1 ===
+window.spDbgLayoutDiag = function() {
+  var L = window.spDbgLog;
+  L('=== 🔬 LAYOUT DIAG START ===', 'w');
+
+  // 1. settingsModal 本体
+  var modal = document.getElementById('settingsModal');
+  if (!modal) { L('❌ settingsModal が見つからない', 'e'); return; }
+  var mcs = getComputedStyle(modal);
+  L('--- [1] settingsModal (.modal) ---', 'w');
+  L('display   : ' + mcs.display, mcs.display === 'flex' ? 'ok' : 'e');
+  L('position  : ' + mcs.position, mcs.position === 'fixed' ? 'ok' : 'e');
+  L('width     : ' + mcs.width + ' (期待: 100vw=' + window.innerWidth + 'px)', 
+    parseInt(mcs.width) >= window.innerWidth - 2 ? 'ok' : 'e');
+  L('height    : ' + mcs.height, 'ok');
+  L('justifyContent: ' + mcs.justifyContent, mcs.justifyContent === 'center' ? 'ok' : 'e');
+  L('alignItems: ' + mcs.alignItems, mcs.alignItems === 'center' ? 'ok' : 'e');
+  L('zIndex    : ' + mcs.zIndex, 'ok');
+  L('top/left  : ' + mcs.top + ' / ' + mcs.left, 'ok');
+
+  // 2. modal-content
+  var content = modal.querySelector('.modal-content');
+  if (!content) { L('❌ .modal-content が見つからない', 'e'); return; }
+  var ccs = getComputedStyle(content);
+  var cRect = content.getBoundingClientRect();
+  L('--- [2] .modal-content ---', 'w');
+  L('display       : ' + ccs.display, 'ok');
+  L('flexDirection : ' + ccs.flexDirection, 'ok');
+  L('width(computed): ' + ccs.width + ' / maxWidth: ' + ccs.maxWidth, 'ok');
+  L('実測幅(rect)  : ' + Math.round(cRect.width) + 'px (画面幅: ' + window.innerWidth + 'px)',
+    cRect.width > 200 && cRect.width <= window.innerWidth ? 'ok' : 'e');
+  L('left(rect)    : ' + Math.round(cRect.left) + 'px',
+    cRect.left > 0 ? 'ok' : 'e');
+  L('alignSelf     : ' + ccs.alignSelf, 'ok');
+  L('boxSizing     : ' + ccs.boxSizing, 'ok');
+  L('overflow      : ' + ccs.overflow, 'ok');
+
+  // 3. はみ出しボタン検査
+  L('--- [3] ボタン幅チェック ---', 'w');
+  var btns = modal.querySelectorAll('button');
+  var overflow = false;
+  btns.forEach(function(btn) {
+    var r = btn.getBoundingClientRect();
+    if (r.right > window.innerWidth + 1) {
+      L('⚠️ はみ出し: #' + (btn.id||'?') + ' right=' + Math.round(r.right) + 'px', 'e');
+      overflow = true;
+    }
+  });
+  if (!overflow) L('✅ はみ出しボタンなし', 'ok');
+
+  // 4. show-modal クラス確認
+  L('--- [4] クラス/スタイル確認 ---', 'w');
+  L('show-modal class: ' + modal.classList.contains('show-modal'), 
+    modal.classList.contains('show-modal') ? 'ok' : 'e');
+  L('inlineStyle: ' + (modal.getAttribute('style') || '(none)').slice(0, 80), 'ok');
+
+  // 5. 競合CSS検出（.modal-content に width を上書きしている可能性）
+  L('--- [5] CSS競合チェック ---', 'w');
+  var sheets = document.styleSheets;
+  var suspects = [];
+  try {
+    Array.from(sheets).forEach(function(sheet) {
+      try {
+        Array.from(sheet.cssRules || []).forEach(function(rule) {
+          if (!rule.selectorText) return;
+          var sel = rule.selectorText;
+          if ((sel.indexOf('modal-content') > -1 || sel.indexOf('settingsModal') > -1) &&
+              rule.style && (rule.style.width || rule.style.maxWidth)) {
+            suspects.push(sel + ' { width:' + rule.style.width + ' max-width:' + rule.style.maxWidth + ' }');
+          }
+        });
+      } catch(e) {}
+    });
+  } catch(e) { L('styleSheet読み取りエラー: ' + e.message, 'e'); }
+  if (suspects.length === 0) {
+    L('競合ルールなし', 'ok');
+  } else {
+    suspects.forEach(function(s) { L('競合候補: ' + s, 'w'); });
+  }
+
+  L('=== 🔬 LAYOUT DIAG END ===', 'w');
+};
 </script>
 
 </body>
