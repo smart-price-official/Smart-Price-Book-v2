@@ -13,7 +13,7 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.9.10";
+  const APP_VERSION = "v23.9.11";
   window.APP_VERSION = APP_VERSION;
   const BUILD_ID = "2026-03-11_scope-fix";
   window.BUILD_ID = BUILD_ID;
@@ -292,10 +292,22 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
       } 
     }
 
-    /* モーダル基本: デフォルト非表示 */
-    .modal { display: none; position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; background: rgba(0,0,0,0.85) !important; z-index: 3000 !important; justify-content: center !important; align-items: center !important; overflow: hidden !important; }
-    /* show-modal クラスで表示 */
-    .modal.show-modal { display: flex !important; }
+    /* モーダル基本 */
+    .modal { display: none; }
+    /* show-modal クラスで全画面オーバーレイ表示 */
+    .modal.show-modal {
+      display: flex !important;
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      width: 100vw !important;
+      height: 100vh !important;
+      background: rgba(0,0,0,0.85) !important;
+      z-index: 99000 !important;
+      justify-content: center !important;
+      align-items: center !important;
+      overflow: hidden !important;
+    }
     .modal-content { background: #1e1e1e; padding: 25px; border-radius: 20px; width: 95%; max-width: 450px; border: 1px solid #D50000; }
 
     .toast-container{
@@ -448,7 +460,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 
 
 /* === PATCH: settings modal visibility & stacking (settingsnav-r3) === */
-#settingsModal { z-index: 100500; }
+#settingsModal.show-modal { z-index: 100500 !important; }
 #settingsModal .modal-content { max-height: 80vh; overflow-y: auto; }
 #settingsModal .sp-settings-box { max-height: 70vh; overflow-y: auto; }
 #settingsModal .sp-settings-menu { position: sticky; top: 0; background: rgba(26,26,26,0.98); padding-top: 6px; z-index: 2; }
@@ -900,7 +912,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   </div>
 </div>
 
-<div id="settingsModal" class="modal" style="z-index: 9999;">
+<div id="settingsModal" class="modal">
   <div class="modal-content">
     <h5 class="text-white mb-4 text-center" id="settingsTitle" onclick="handleSettingsTitleClick()" style="cursor: pointer;">設定</h5>
 
@@ -1106,7 +1118,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 </div>
 
 <!-- 生活圏設定モーダル -->
-<div id="homeCityModal" class="modal" style="z-index: 10002;">
+<div id="homeCityModal" class="modal">
   <div class="modal-content">
     <h5 class="text-white mb-3 text-center">生活圏の設定</h5>
     
@@ -1134,7 +1146,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 </div>
 
 <!-- バーコード手入力モーダル -->
-<div id="barcodeManualModal" class="modal" style="z-index: 10000;">
+<div id="barcodeManualModal" class="modal">
   <div class="modal-content">
     <h5 class="text-white mb-4 text-center">バーコード手入力</h5>
     
