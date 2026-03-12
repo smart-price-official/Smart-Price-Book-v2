@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.9.17";
+  const APP_VERSION = "v23.9.18";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-12_layout-fix4";
+  const BUILD_ID = "2026-03-12_flex-shrink-fix";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -6502,23 +6502,22 @@ return true;
       'overflow:hidden'
     ].join(';') + ';');
     modal.classList.add('show-modal');
-    // PATCH v23.9.17: modal-contentの幅をJSで強制セット
-    // cssText追記では既存widthに負けるため setAttribute で完全上書き
+    // PATCH v23.9.18: flex-shrink:0 で縮み防止（Cursorアドバイスに基づく）
+    // 原因: flex子要素のデフォルト flex-shrink:1 により 280px（min-width値）に縮んでいた
     (function() {
       var mc = modal.querySelector('.modal-content');
       if (!mc) return;
-      var vw = window.innerWidth;
-      var w = Math.min(Math.round(vw * 0.92), 450);
-      // 既存のインラインstyleを保持しつつwidthだけ強制上書き
-      mc.setAttribute('style',
-        'width:' + w + 'px !important;' +
-        'max-width:450px !important;' +
-        'min-width:280px !important;' +
-        'box-sizing:border-box !important;' +
-        'position:relative !important;' +
-        'overflow-x:hidden !important;' +
-        'overflow-y:auto !important;'
-      );
+      mc.style.cssText = [
+        'flex-shrink:0',
+        'width:450px',
+        'min-width:450px',
+        'max-width:450px',
+        'position:relative',
+        'box-sizing:border-box',
+        'overflow-x:hidden',
+        'overflow-y:auto',
+        'max-height:80vh'
+      ].join(' !important;') + ' !important;';
     })();
     // DBG: セット直後の実際の表示状態を確認
 
