@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.9.18";
+  const APP_VERSION = "v23.9.19";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-12_flex-shrink-fix";
+  const BUILD_ID = "2026-03-12_force-center";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -6502,9 +6502,27 @@ return true;
       'overflow:hidden'
     ].join(';') + ';');
     modal.classList.add('show-modal');
-    // PATCH v23.9.18: flex-shrink:0 で縮み防止（Cursorアドバイスに基づく）
-    // 原因: flex子要素のデフォルト flex-shrink:1 により 280px（min-width値）に縮んでいた
-    (function() {
+    // PATCH v23.9.19: modal+contentを navigate後に強制セット
+    // 診断結果: width:450px ✅ だが left:0px ❌
+    // → modalのjustify-contentが効いていない可能性
+    // → navigate()/syncSettings()後に両方を再セットする
+    (function patchLayout() {
+      // modal本体を再強制（show-modalクラスが上書きしている可能性に対応）
+      modal.style.cssText = [
+        'display:flex',
+        'position:fixed',
+        'top:0',
+        'left:0',
+        'width:100vw',
+        'height:100vh',
+        'background:rgba(0,0,0,0.85)',
+        'z-index:100500',
+        'justify-content:center',
+        'align-items:center',
+        'overflow:hidden'
+      ].join(' !important;') + ' !important;';
+
+      // modal-content
       var mc = modal.querySelector('.modal-content');
       if (!mc) return;
       mc.style.cssText = [
@@ -6512,7 +6530,6 @@ return true;
         'width:450px',
         'min-width:450px',
         'max-width:450px',
-        'position:relative',
         'box-sizing:border-box',
         'overflow-x:hidden',
         'overflow-y:auto',
