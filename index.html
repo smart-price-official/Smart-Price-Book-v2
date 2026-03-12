@@ -13,7 +13,7 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.9.11";
+  const APP_VERSION = "v23.9.12";
   window.APP_VERSION = APP_VERSION;
   const BUILD_ID = "2026-03-11_scope-fix";
   window.BUILD_ID = BUILD_ID;
@@ -6471,6 +6471,20 @@ return true;
     try { if (typeof window.clearToasts === 'function') window.clearToasts(); } catch(e) {}
     
     state.isOpen = true; state.currentPanel = 'Main'; state.history = ['Main'];
+    // インラインstyleで確実に全画面オーバーレイを設定
+    modal.setAttribute('style', [
+      'display:flex',
+      'position:fixed',
+      'top:0',
+      'left:0',
+      'width:100vw',
+      'height:100vh',
+      'background:rgba(0,0,0,0.85)',
+      'z-index:100500',
+      'justify-content:center',
+      'align-items:center',
+      'overflow:hidden'
+    ].join(';') + ';');
     modal.classList.add('show-modal');
     // DBG: セット直後の実際の表示状態を確認
 
@@ -6506,8 +6520,8 @@ return true;
     if (!modal) return;
     state.isOpen = false;
     try{ if(typeof window.setHeaderVersionBadge==='function') window.setHeaderVersionBadge(); }catch(e){}
-    modal.classList.remove('show'); modal.classList.remove('show-modal');
-    setTimeout(function() { modal.style.display = 'none'; }, 300);
+    modal.classList.remove('show'); modal.classList.remove('show-modal'); modal.removeAttribute('style');
+    setTimeout(function() { modal.setAttribute('style','display:none'); }, 300);
     state.currentPanel = 'Main'; state.history = [];
     setTimeout(function() { navigate('Main'); }, 400);
   }
@@ -6697,6 +6711,19 @@ let currentBarcodeType = 13;
 function openBarcodeManual() {
   const _bmEl = document.getElementById('barcodeManualModal');
   if (_bmEl) {
+    _bmEl.setAttribute('style', [
+      'display:flex',
+      'position:fixed',
+      'top:0',
+      'left:0',
+      'width:100vw',
+      'height:100vh',
+      'background:rgba(0,0,0,0.85)',
+      'z-index:100500',
+      'justify-content:center',
+      'align-items:center',
+      'overflow:hidden'
+    ].join(';') + ';');
     _bmEl.classList.add('show-modal');
 
   }
@@ -6704,7 +6731,7 @@ function openBarcodeManual() {
 }
 
 function closeBarcodeManual() {
-  const _cbm = document.getElementById('barcodeManualModal'); if(_cbm){_cbm.classList.remove('show-modal'); _cbm.style.display='none';}
+  const _cbm = document.getElementById('barcodeManualModal'); if(_cbm){_cbm.classList.remove('show-modal'); _cbm.setAttribute('style','display:none');}
 }
 
 document.addEventListener('click', function(e) {
