@@ -13,7 +13,7 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.9.7";
+  const APP_VERSION = "v23.9.8";
   window.APP_VERSION = APP_VERSION;
   const BUILD_ID = "2026-03-11_scope-fix";
   window.BUILD_ID = BUILD_ID;
@@ -237,6 +237,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
     }
 
     #camera-area { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100dvh; background: black; z-index: 2000; }
+    #camera-area[style*="display: none"], #camera-area[style*="display:none"] { pointer-events: none !important; }
     #interactive { width: 100%; height: 100%; position: relative; }
     #interactive video { width: 100%; height: 100%; object-fit: cover; }
     /* ✅ スキャナ画面：合わせ窓（角丸ガイド枠）- 既存UIと統一 */
@@ -734,7 +735,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 <body>
 <header class="header d-flex justify-content-between align-items-center">
    <h5 class="m-0 fw-bold text-white"><i class="bi bi-cart4"></i> Smart Price <span class="v-badge" id="versionBadge">…</span></h5>
-  <button class="btn btn-sm btn-outline-light" id="settingsBtn"><i class="bi bi-gear-fill"></i></button>
+  <button class="btn btn-sm btn-outline-light" id="settingsBtn" onclick="window.openSettings && window.openSettings()"><i class="bi bi-gear-fill"></i></button>
 </header>
 
 <div class="store-area"><div id="store-list" class="store-list"></div></div>
@@ -743,7 +744,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   <div id="mainView">
     <div class="row g-2 mb-4">
       <div class="col-7"><button id="scanBtnTop" class="btn btn-danger w-100 py-3 rounded-4 shadow" onclick="startScanner()"><i class="bi bi-upc-scan fs-1"></i><br>スキャン</button></div>
-      <div class="col-5"><button class="btn btn-dark w-100 py-3 rounded-4 border-secondary shadow" onclick="openBarcodeManual()"><i class="bi bi-keyboard fs-1"></i><br>手入力</button></div>
+      <div class="col-5"><button class="btn btn-dark w-100 py-3 rounded-4 border-secondary shadow" onclick="window.openBarcodeManual && window.openBarcodeManual()"><i class="bi bi-keyboard fs-1"></i><br>手入力</button></div>
     </div>
     <div id="historyList"></div>
   </div>
@@ -4845,7 +4846,7 @@ function openManualEntryOnly(){
       const manual = document.getElementById('manual-entry');
 
       // 手入力モード: カメラ枠は使わず、手入力UIだけを確実に表示
-      if(ca) ca.style.display = 'block';
+      if(ca){ca.style.display='block';ca.style.pointerEvents='auto';}
 
       // 走査枠/走査ラインは隠す（手入力では不要）
       try{ document.querySelectorAll('.scan-frame,.scan-laser').forEach(el=>el.style.display='none'); }catch(e){}
@@ -4903,7 +4904,7 @@ function startScanner() {
     } catch(e) {
       showToast(`スキャナー初期化失敗: ${e.message}`, 8000);
       isScanning = false;
-      document.getElementById('camera-area').style.display = 'none';
+      const _ca=document.getElementById('camera-area'); if(_ca){_ca.style.display='none';_ca.style.pointerEvents='none';}
       return;
     }
 
@@ -4923,7 +4924,7 @@ function startScanner() {
       showToast(`カメラ起動失敗: ${err && (err.message || String(err))}`, 8000);
       isScanning = false;
       scanner = null;
-      document.getElementById('camera-area').style.display = 'none';
+      const _ca=document.getElementById('camera-area'); if(_ca){_ca.style.display='none';_ca.style.pointerEvents='none';}
     });
   }
   window.startScanner = startScanner; // ← windowに登録
@@ -5272,7 +5273,7 @@ return true;
     }
     const nv = document.getElementById('scannerNativeVideo');
     if (nv) { try { nv.srcObject = null; nv.remove(); } catch(e) {} }
-    document.getElementById('camera-area').style.display = 'none';
+    const _ca=document.getElementById('camera-area'); if(_ca){_ca.style.display='none';_ca.style.pointerEvents='none';}
     try { const me = document.getElementById('manual-entry'); if(me) me.style.display='none'; } catch(e) {}
   }
 
