@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.9.15";
+  const APP_VERSION = "v23.9.16";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-12_layout-fix2";
+  const BUILD_ID = "2026-03-12_layout-fix3";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -6502,6 +6502,21 @@ return true;
       'overflow:hidden'
     ].join(';') + ';');
     modal.classList.add('show-modal');
+    // PATCH v23.9.16: modal-contentの幅をJSで直接セット（CSS競合を完全回避）
+    (function() {
+      var mc = modal.querySelector('.modal-content');
+      if (!mc) return;
+      var w = Math.min(Math.round(window.innerWidth * 0.92), 450);
+      mc.style.cssText = mc.style.cssText +
+        ';width:' + w + 'px' +
+        ';max-width:450px' +
+        ';min-width:280px' +
+        ';box-sizing:border-box' +
+        ';margin-left:auto' +
+        ';margin-right:auto' +
+        ';overflow-x:hidden' +
+        ';overflow-y:auto';
+    })();
     // DBG: セット直後の実際の表示状態を確認
 
     try{ if(typeof window.setHeaderVersionBadge==='function') window.setHeaderVersionBadge(); }catch(e){}
