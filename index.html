@@ -13,7 +13,7 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.9.3";
+  const APP_VERSION = "v23.9.7";
   window.APP_VERSION = APP_VERSION;
   const BUILD_ID = "2026-03-11_scope-fix";
   window.BUILD_ID = BUILD_ID;
@@ -291,9 +291,8 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
       } 
     }
 
-    .sp-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 3000; justify-content: center; align-items: center; }
-    .sp-modal.show { display: flex !important; }
-    .sp-modal-content { background: #1e1e1e; padding: 25px; border-radius: 20px; width: 95%; max-width: 450px; border: 1px solid #D50000; }
+    .modal { display: none !important; position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; background: rgba(0,0,0,0.85) !important; z-index: 3000 !important; justify-content: center !important; align-items: center !important; overflow: hidden !important; }
+    .modal-content { background: #1e1e1e; padding: 25px; border-radius: 20px; width: 95%; max-width: 450px; border: 1px solid #D50000; }
 
     .toast-container{
   position: fixed;
@@ -444,16 +443,9 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   }
 
 
-/* === 設定モーダル (settingsnav-r4) === */
-#settingsModal { z-index: 100500 !important; }
-#settingsModal.show { display: flex !important; }
-#settingsModal .sp-modal-content {
-  max-height: 85vh;
-  overflow-y: auto;
-  width: 95% !important;
-  max-width: 450px !important;
-  box-sizing: border-box;
-}
+/* === PATCH: settings modal visibility & stacking (settingsnav-r3) === */
+#settingsModal { z-index: 100500; }
+#settingsModal .modal-content { max-height: 80vh; overflow-y: auto; }
 #settingsModal .sp-settings-box { max-height: 70vh; overflow-y: auto; }
 #settingsModal .sp-settings-menu { position: sticky; top: 0; background: rgba(26,26,26,0.98); padding-top: 6px; z-index: 2; }
 
@@ -716,10 +708,10 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 
 
 /* UIFIX24: 設定モーダルのボタン間隔と高さを統一 */
-/* ※ modal-contentにdisplay:flexを当てると親のjustify-content:centerが崩れるため削除 */
-#settingsModal .sp-modal-content .btn { min-height: 52px; }
-#settingsModal .sp-modal-content .btn.btn-link { min-height: auto; }
-#settingsModal .d-grid { gap: 10px; }
+/* UIFIX24: 設定モーダルのボタン間隔と高さを統一 */
+#settingsModal .modal-content { display:flex; flex-direction:column; gap:10px; }
+#settingsModal .modal-content .btn { min-height: 52px; }
+#settingsModal .modal-content .btn.btn-link { min-height: auto; }
 
 </style>
 
@@ -864,7 +856,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   <button onclick="stopScanner()" class="btn btn-danger position-absolute top-0 end-0 m-4 fs-3 shadow-lg">×</button>
 </div>
 
-<div id="dialogModal" class="sp-modal">
+<div id="dialogModal" class="modal">
   <div class="modal-content text-center">
     <h6 id="dialogTitle" class="text-secondary mb-3">Smart Price</h6>
     <p id="dialogMsg" class="text-white mb-4"></p>
@@ -876,8 +868,8 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   </div>
 </div>
 
-<div id="settingsModal" class="sp-modal">
-  <div class="sp-modal-content">
+<div id="settingsModal" class="modal" style="z-index: 9999;">
+  <div class="modal-content">
     <h5 class="text-white mb-4 text-center" id="settingsTitle" onclick="handleSettingsTitleClick()" style="cursor: pointer;">設定</h5>
 
     <div class="mb-3" id="settingsCitySection">
@@ -1082,8 +1074,8 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 </div>
 
 <!-- 生活圏設定モーダル -->
-<div id="homeCityModal" class="sp-modal" style="z-index: 10002;">
-  <div class="sp-modal-content">
+<div id="homeCityModal" class="modal" style="z-index: 10002;">
+  <div class="modal-content">
     <h5 class="text-white mb-3 text-center">生活圏の設定</h5>
     
     <div class="mb-3">
@@ -1110,8 +1102,8 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 </div>
 
 <!-- バーコード手入力モーダル -->
-<div id="barcodeManualModal" class="sp-modal" style="z-index: 10000;">
-  <div class="sp-modal-content">
+<div id="barcodeManualModal" class="modal" style="z-index: 10000;">
+  <div class="modal-content">
     <h5 class="text-white mb-4 text-center">バーコード手入力</h5>
     
     <div class="btn-group w-100 mb-3" role="group">
@@ -1216,8 +1208,8 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 
 </style>
 
-<div id="webModal" class="sp-modal">
-  <div class="sp-modal-content">
+<div id="webModal" class="modal">
+  <div class="modal-content">
     <h5 class="text-white mb-3 text-center">ブラウザ版（URL）</h5>
     <div class="hint mb-3">
       ・PWA（ホーム追加）だとアドレスが見えないので、ここでURLをコピーしてChrome/Edgeで開けます。<br>
@@ -6435,7 +6427,7 @@ return true;
     try { if (typeof window.clearToasts === 'function') window.clearToasts(); } catch(e) {}
     
     state.isOpen = true; state.currentPanel = 'Main'; state.history = ['Main'];
-    modal.classList.add('show');
+    modal.style.display = 'flex'; modal.style.zIndex = '999999'; modal.style.position = 'fixed'; modal.style.top = '0'; modal.style.left = '0'; modal.style.width = '100vw'; modal.style.height = '100vh'; modal.style.justifyContent = 'center'; modal.style.alignItems = 'center';
     try{ if(typeof window.setHeaderVersionBadge==='function') window.setHeaderVersionBadge(); }catch(e){}
     // ✅ 個人ID表示（設定内の各画面にも表示）
     try{
@@ -6459,6 +6451,7 @@ return true;
       if(el2) el2.value = pid2 || '';
     }catch(e){}
 
+    setTimeout(function() { modal.classList.add('show'); }, 10);
     navigate('Main');
     syncSettings();
   }
@@ -6468,8 +6461,9 @@ return true;
     state.isOpen = false;
     try{ if(typeof window.setHeaderVersionBadge==='function') window.setHeaderVersionBadge(); }catch(e){}
     modal.classList.remove('show');
+    setTimeout(function() { modal.style.display = 'none'; }, 300);
     state.currentPanel = 'Main'; state.history = [];
-    setTimeout(function() { navigate('Main'); }, 100);
+    setTimeout(function() { navigate('Main'); }, 400);
   }
   
   function navigate(panelName) {
