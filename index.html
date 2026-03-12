@@ -13,7 +13,7 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.9.9g";
+  const APP_VERSION = "v23.9.10";
   window.APP_VERSION = APP_VERSION;
   const BUILD_ID = "2026-03-11_scope-fix";
   window.BUILD_ID = BUILD_ID;
@@ -292,7 +292,10 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
       } 
     }
 
-    .modal { display: none !important; position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; background: rgba(0,0,0,0.85) !important; z-index: 3000 !important; justify-content: center !important; align-items: center !important; overflow: hidden !important; }
+    /* モーダル基本: デフォルト非表示 */
+    .modal { display: none; position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; background: rgba(0,0,0,0.85) !important; z-index: 3000 !important; justify-content: center !important; align-items: center !important; overflow: hidden !important; }
+    /* show-modal クラスで表示 */
+    .modal.show-modal { display: flex !important; }
     .modal-content { background: #1e1e1e; padding: 25px; border-radius: 20px; width: 95%; max-width: 450px; border: 1px solid #D50000; }
 
     .toast-container{
@@ -6254,9 +6257,9 @@ return true;
       const i = document.getElementById('dialogInput');
       i.value = def;
       document.getElementById('dialogCancel').style.display="block";
-      document.getElementById('dialogModal').style.display="flex";
-      document.getElementById('dialogOk').onclick = () => { document.getElementById('dialogModal').style.display="none"; res(i.value); };
-      document.getElementById('dialogCancel').onclick = () => { document.getElementById('dialogModal').style.display="none"; res(null); };
+      const _dm=document.getElementById('dialogModal'); if(_dm){_dm.classList.add('show-modal');}
+      document.getElementById('dialogOk').onclick = () => { const _dmc=document.getElementById('dialogModal'); if(_dmc){_dmc.classList.remove('show-modal'); _dmc.style.display='none';} res(i.value); };
+      document.getElementById('dialogCancel').onclick = () => { const _dmc=document.getElementById('dialogModal'); if(_dmc){_dmc.classList.remove('show-modal'); _dmc.style.display='none';} res(null); };
     });
   }
 
@@ -6265,9 +6268,9 @@ return true;
       document.getElementById('dialogMsg').innerText = msg;
       document.getElementById('dialogInputArea').style.display="none";
       document.getElementById('dialogCancel').style.display="block";
-      document.getElementById('dialogModal').style.display="flex";
-      document.getElementById('dialogOk').onclick = () => { document.getElementById('dialogModal').style.display="none"; res(true); };
-      document.getElementById('dialogCancel').onclick = () => { document.getElementById('dialogModal').style.display="none"; res(false); };
+      const _dm=document.getElementById('dialogModal'); if(_dm){_dm.classList.add('show-modal');}
+      document.getElementById('dialogOk').onclick = () => { const _dmc=document.getElementById('dialogModal'); if(_dmc){_dmc.classList.remove('show-modal'); _dmc.style.display='none';} res(true); };
+      document.getElementById('dialogCancel').onclick = () => { const _dmc=document.getElementById('dialogModal'); if(_dmc){_dmc.classList.remove('show-modal'); _dmc.style.display='none';} res(false); };
     });
   }
 
@@ -6456,14 +6459,9 @@ return true;
     try { if (typeof window.clearToasts === 'function') window.clearToasts(); } catch(e) {}
     
     state.isOpen = true; state.currentPanel = 'Main'; state.history = ['Main'];
-    modal.style.display = 'flex'; modal.style.zIndex = '999999'; modal.style.position = 'fixed'; modal.style.top = '0'; modal.style.left = '0'; modal.style.width = '100vw'; modal.style.height = '100vh'; modal.style.justifyContent = 'center'; modal.style.alignItems = 'center';
+    modal.classList.add('show-modal');
     // DBG: セット直後の実際の表示状態を確認
-    setTimeout(function() {
-      var cs = window.getComputedStyle(modal);
-      var msg = 'modal after open: style.disp=' + modal.style.display + ' computed.disp=' + cs.display + ' z=' + cs.zIndex + ' w=' + cs.width + ' h=' + cs.height + ' vis=' + cs.visibility + ' op=' + cs.opacity;
-      if (typeof window.spDbgLog === 'function') window.spDbgLog(msg, cs.display === 'none' ? 'e' : 'ok');
-      console.log('[open DBG]', msg);
-    }, 50);
+
     try{ if(typeof window.setHeaderVersionBadge==='function') window.setHeaderVersionBadge(); }catch(e){}
     // ✅ 個人ID表示（設定内の各画面にも表示）
     try{
@@ -6496,7 +6494,7 @@ return true;
     if (!modal) return;
     state.isOpen = false;
     try{ if(typeof window.setHeaderVersionBadge==='function') window.setHeaderVersionBadge(); }catch(e){}
-    modal.classList.remove('show');
+    modal.classList.remove('show'); modal.classList.remove('show-modal');
     setTimeout(function() { modal.style.display = 'none'; }, 300);
     state.currentPanel = 'Main'; state.history = [];
     setTimeout(function() { navigate('Main'); }, 400);
@@ -6687,27 +6685,14 @@ let currentBarcodeType = 13;
 function openBarcodeManual() {
   const _bmEl = document.getElementById('barcodeManualModal');
   if (_bmEl) {
-    _bmEl.style.display = 'flex';
-    _bmEl.style.zIndex = '999999';
-    _bmEl.style.position = 'fixed';
-    _bmEl.style.top = '0';
-    _bmEl.style.left = '0';
-    _bmEl.style.width = '100vw';
-    _bmEl.style.height = '100vh';
-    _bmEl.style.justifyContent = 'center';
-    _bmEl.style.alignItems = 'center';
-    setTimeout(function() {
-      var cs = window.getComputedStyle(_bmEl);
-      var msg = 'barcodeModal: style=' + _bmEl.style.display + ' computed=' + cs.display + ' z=' + cs.zIndex + ' vis=' + cs.visibility;
-      if (typeof window.spDbgLog === 'function') window.spDbgLog(msg, cs.display === 'none' ? 'e' : 'ok');
-      console.log('[barcodeModal DBG]', msg);
-    }, 50);
+    _bmEl.classList.add('show-modal');
+
   }
   renderBarcodeInputs(13);
 }
 
 function closeBarcodeManual() {
-  document.getElementById('barcodeManualModal').style.display = 'none';
+  const _cbm = document.getElementById('barcodeManualModal'); if(_cbm){_cbm.classList.remove('show-modal'); _cbm.style.display='none';}
 }
 
 document.addEventListener('click', function(e) {
