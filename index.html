@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.9.22";
+  const APP_VERSION = "v23.9.26";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-12_settimeout-patch";
+  const BUILD_ID = "2026-03-13_no-bs-modal";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -294,8 +294,9 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 
     /* モーダル基本 */
     .modal { display: none; }
+    .sp-modal { display: none; }
     /* show-modal クラスで全画面オーバーレイ表示 */
-    .modal.show-modal {
+    .modal.show-modal, .sp-modal.show-modal {
       display: flex !important;
       position: fixed !important;
       top: 0 !important;
@@ -460,7 +461,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 
 
 /* === PATCH: settings modal visibility & stacking (settingsnav-r3) === */
-#settingsModal.show-modal { z-index: 100500 !important; }
+#settingsModal.show-modal { z-index: 100500 !important; display:flex !important; }
 #settingsModal .modal-content { max-height: 80vh; overflow-y: auto; }
 #settingsModal .sp-settings-box { max-height: 70vh; overflow-y: auto; }
 #settingsModal .sp-settings-menu { position: sticky; top: 0; background: rgba(26,26,26,0.98); padding-top: 6px; z-index: 2; }
@@ -729,22 +730,6 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 #settingsModal .modal-content .btn { min-height: 52px; }
 #settingsModal .modal-content .btn.btn-link { min-height: auto; }
 
-/* === PATCH v23.9.15: 設定モーダル幅崩れ修正 ===
-   診断結果: alignSelf=auto のため modal-content が左端0pxに張り付く
-   競合: .modal-content{width:95%} と .sp-settings-menu button{width:100%} が干渉
-   対策: align-self:center + overflow:hidden で封じ込める */
-#settingsModal .modal-content {
-  width: 92vw !important;
-  max-width: 450px !important;
-  min-width: 280px !important;
-  box-sizing: border-box !important;
-  align-self: center !important;
-  overflow-x: hidden !important;
-  overflow-y: auto !important;
-  margin-left: auto !important;
-  margin-right: auto !important;
-}
-
 
 
 
@@ -928,7 +913,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   </div>
 </div>
 
-<div id="settingsModal" class="modal">
+<div id="settingsModal" class="sp-modal">
   <div class="modal-content">
     <h5 class="text-white mb-4 text-center" id="settingsTitle" onclick="handleSettingsTitleClick()" style="cursor: pointer;">設定</h5>
 
@@ -6502,24 +6487,6 @@ return true;
       'overflow:hidden'
     ].join(';') + ';');
     modal.classList.add('show-modal');
-    // PATCH v23.9.22: setTimeout(0)でレイアウト確定後にmc幅を強制セット
-    // modal本体のjustify-content:centerはshow-modalクラスのCSSで正常に効いている
-    // mc.widthをレイアウト計算後に上書きすることで中央配置を確定させる
-    setTimeout(function patchLayout() {
-      var mc = modal.querySelector('.modal-content');
-      if (!mc) return;
-      var w = Math.min(Math.round(window.innerWidth * 0.92), 450);
-      mc.setAttribute('style',
-        'flex-shrink:0;' +
-        'width:' + w + 'px;' +
-        'min-width:' + w + 'px;' +
-        'max-width:450px;' +
-        'box-sizing:border-box;' +
-        'overflow-x:hidden;' +
-        'overflow-y:auto;' +
-        'max-height:80vh;'
-      );
-    }, 0);
     // DBG: セット直後の実際の表示状態を確認
 
     try{ if(typeof window.setHeaderVersionBadge==='function') window.setHeaderVersionBadge(); }catch(e){}
@@ -7730,7 +7697,6 @@ window.importBackup   = importBackup;
     <button onclick="document.getElementById('sp-dbg-log').innerHTML='<div class=ok>cleared</div>'">CLR</button>
     <button onclick="(function(){var t=document.createElement('textarea');t.value=Array.from(document.querySelectorAll('#sp-dbg-log div')).map(function(d){return d.textContent}).join('\n');t.style.cssText='position:fixed;top:-9999px';document.body.appendChild(t);t.select();document.execCommand('copy');t.remove();document.getElementById('sp-dbg-toggle').textContent='📋Copied!';setTimeout(function(){document.getElementById('sp-dbg-toggle').textContent='🔍DBG'},2000);})()">📋COPY LOG</button>
     <button onclick="spDbgDump()">DUMP STATE</button>
-    <button onclick="spDbgLayoutDiag()" style="background:#055a9e;color:#fff;font-weight:bold;">🔬LAYOUT</button>
     <span id="sp-dbg-count" style="color:#fa0;margin-left:auto;"></span>
   </div>
 </div>
@@ -7836,91 +7802,6 @@ window.importBackup   = importBackup;
   }, true);
 
 })();
-
-// === SP LAYOUT DIAGNOSE v1 ===
-window.spDbgLayoutDiag = function() {
-  var L = window.spDbgLog;
-  L('=== 🔬 LAYOUT DIAG START ===', 'w');
-
-  // 1. settingsModal 本体
-  var modal = document.getElementById('settingsModal');
-  if (!modal) { L('❌ settingsModal が見つからない', 'e'); return; }
-  var mcs = getComputedStyle(modal);
-  L('--- [1] settingsModal (.modal) ---', 'w');
-  L('display   : ' + mcs.display, mcs.display === 'flex' ? 'ok' : 'e');
-  L('position  : ' + mcs.position, mcs.position === 'fixed' ? 'ok' : 'e');
-  L('width     : ' + mcs.width + ' (期待: 100vw=' + window.innerWidth + 'px)', 
-    parseInt(mcs.width) >= window.innerWidth - 2 ? 'ok' : 'e');
-  L('height    : ' + mcs.height, 'ok');
-  L('justifyContent: ' + mcs.justifyContent, mcs.justifyContent === 'center' ? 'ok' : 'e');
-  L('alignItems: ' + mcs.alignItems, mcs.alignItems === 'center' ? 'ok' : 'e');
-  L('zIndex    : ' + mcs.zIndex, 'ok');
-  L('top/left  : ' + mcs.top + ' / ' + mcs.left, 'ok');
-  L('justifyContent(再確認): [' + mcs.justifyContent + ']', mcs.justifyContent === 'center' ? 'ok' : 'e');
-  L('inlineStyle全文: ' + (modal.getAttribute('style')||'').replace(/;/g,'\n  '), 'w');
-
-  // 2. modal-content
-  var content = modal.querySelector('.modal-content');
-  if (!content) { L('❌ .modal-content が見つからない', 'e'); return; }
-  var ccs = getComputedStyle(content);
-  var cRect = content.getBoundingClientRect();
-  L('--- [2] .modal-content ---', 'w');
-  L('display       : ' + ccs.display, 'ok');
-  L('flexDirection : ' + ccs.flexDirection, 'ok');
-  L('width(computed): ' + ccs.width + ' / maxWidth: ' + ccs.maxWidth, 'ok');
-  L('実測幅(rect)  : ' + Math.round(cRect.width) + 'px (画面幅: ' + window.innerWidth + 'px)',
-    cRect.width > 200 && cRect.width <= window.innerWidth ? 'ok' : 'e');
-  L('left(rect)    : ' + Math.round(cRect.left) + 'px',
-    cRect.left > 0 ? 'ok' : 'e');
-  L('alignSelf     : ' + ccs.alignSelf, 'ok');
-  L('boxSizing     : ' + ccs.boxSizing, 'ok');
-  L('overflow      : ' + ccs.overflow, 'ok');
-
-  // 3. はみ出しボタン検査
-  L('--- [3] ボタン幅チェック ---', 'w');
-  var btns = modal.querySelectorAll('button');
-  var overflow = false;
-  btns.forEach(function(btn) {
-    var r = btn.getBoundingClientRect();
-    if (r.right > window.innerWidth + 1) {
-      L('⚠️ はみ出し: #' + (btn.id||'?') + ' right=' + Math.round(r.right) + 'px', 'e');
-      overflow = true;
-    }
-  });
-  if (!overflow) L('✅ はみ出しボタンなし', 'ok');
-
-  // 4. show-modal クラス確認
-  L('--- [4] クラス/スタイル確認 ---', 'w');
-  L('show-modal class: ' + modal.classList.contains('show-modal'), 
-    modal.classList.contains('show-modal') ? 'ok' : 'e');
-  L('inlineStyle: ' + (modal.getAttribute('style') || '(none)').slice(0, 80), 'ok');
-
-  // 5. 競合CSS検出（.modal-content に width を上書きしている可能性）
-  L('--- [5] CSS競合チェック ---', 'w');
-  var sheets = document.styleSheets;
-  var suspects = [];
-  try {
-    Array.from(sheets).forEach(function(sheet) {
-      try {
-        Array.from(sheet.cssRules || []).forEach(function(rule) {
-          if (!rule.selectorText) return;
-          var sel = rule.selectorText;
-          if ((sel.indexOf('modal-content') > -1 || sel.indexOf('settingsModal') > -1) &&
-              rule.style && (rule.style.width || rule.style.maxWidth)) {
-            suspects.push(sel + ' { width:' + rule.style.width + ' max-width:' + rule.style.maxWidth + ' }');
-          }
-        });
-      } catch(e) {}
-    });
-  } catch(e) { L('styleSheet読み取りエラー: ' + e.message, 'e'); }
-  if (suspects.length === 0) {
-    L('競合ルールなし', 'ok');
-  } else {
-    suspects.forEach(function(s) { L('競合候補: ' + s, 'w'); });
-  }
-
-  L('=== 🔬 LAYOUT DIAG END ===', 'w');
-};
 </script>
 
 </body>
