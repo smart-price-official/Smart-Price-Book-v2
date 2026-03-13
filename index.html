@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.9.20";
+  const APP_VERSION = "v23.9.21";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-12_responsive-width";
+  const BUILD_ID = "2026-03-12_debug-justify";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -7870,6 +7870,8 @@ window.spDbgLayoutDiag = function() {
   L('alignItems: ' + mcs.alignItems, mcs.alignItems === 'center' ? 'ok' : 'e');
   L('zIndex    : ' + mcs.zIndex, 'ok');
   L('top/left  : ' + mcs.top + ' / ' + mcs.left, 'ok');
+  L('justifyContent(再確認): [' + mcs.justifyContent + ']', mcs.justifyContent === 'center' ? 'ok' : 'e');
+  L('inlineStyle全文: ' + (modal.getAttribute('style')||'').replace(/;/g,'\n  '), 'w');
 
   // 2. modal-content
   var content = modal.querySelector('.modal-content');
