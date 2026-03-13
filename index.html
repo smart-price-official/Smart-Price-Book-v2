@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--APP: Smart Price
-AUTHOR: Claude
+AUTHOR: Carsor
 POLICY: UI_FREEZE / 単一HTML / VERSION SSOT
 NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-->
 <html lang="ja">
@@ -12,10 +12,10 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
-  // Author: Claude
-  const APP_VERSION = "v23.9.28";
+  // Author: Carsor
+  const APP_VERSION = "v23.9.39";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-13_inset";
+  const BUILD_ID = "2026-03-11_scope-fix";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -294,9 +294,8 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 
     /* モーダル基本 */
     .modal { display: none; }
-    .sp-modal { display: none; }
     /* show-modal クラスで全画面オーバーレイ表示 */
-    .modal.show-modal, .sp-modal.show-modal {
+    .modal.show-modal {
       display: flex !important;
       position: fixed !important;
       top: 0 !important;
@@ -309,7 +308,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
       align-items: center !important;
       overflow: hidden !important;
     }
-    .modal-content { background: #1e1e1e; padding: 25px; border-radius: 20px; width: 450px; max-width: min(92vw, 450px); min-width: 0; border: 1px solid #D50000; box-sizing: border-box; flex-shrink: 0; }
+    .modal-content { background: #1e1e1e; padding: 25px; border-radius: 20px; width: 95%; max-width: 450px; border: 1px solid #D50000; }
 
     .toast-container{
   position: fixed;
@@ -461,8 +460,9 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 
 
 /* === PATCH: settings modal visibility & stacking (settingsnav-r3) === */
-#settingsModal.show-modal { z-index: 100500 !important; display:flex !important; }
-#settingsModal .modal-content { max-height: 80vh; overflow-y: auto; }
+#settingsModal.show-modal { z-index: 100500 !important; }
+#settingsModal .modal-content { max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; }
+#settingsModal .sp-settings-body { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 #settingsModal .sp-settings-box { max-height: 70vh; overflow-y: auto; }
 #settingsModal .sp-settings-menu { position: sticky; top: 0; background: rgba(26,26,26,0.98); padding-top: 6px; z-index: 2; }
 
@@ -774,6 +774,45 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 };
 </script>
 
+
+<style id="modal-override">
+/* Bootstrap .modal-content上書き */
+#settingsModal { display:none; }
+#settingsModal.show-modal {
+  display:flex !important;
+  position:fixed !important;
+  inset:0 !important;
+  background:rgba(0,0,0,0.85) !important;
+  z-index:100500 !important;
+  justify-content:center !important;
+  align-items:center !important;
+  overflow:hidden !important;
+}
+#settingsModal > .modal-content {
+  width:450px !important;
+  max-width:92vw !important;
+  max-height:90vh !important;
+  min-width:0 !important;
+  box-sizing:border-box !important;
+  position:relative !important;
+  flex-shrink:0 !important;
+  align-self:center !important;
+  display:flex !important;
+  flex-direction:column !important;
+  overflow:hidden !important;
+}
+#settingsModal .sp-settings-body {
+  flex:1 !important;
+  min-height:0 !important;
+  overflow-y:auto !important;
+  -webkit-overflow-scrolling:touch;
+}
+#settingsModal .sp-settings-footer {
+  flex-shrink:0 !important;
+  padding-top:8px !important;
+  border-top:1px solid rgba(255,255,255,0.1) !important;
+}
+</style>
 </head>
 
 <body>
@@ -913,8 +952,9 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   </div>
 </div>
 
-<div id="settingsModal" class="sp-modal">
+<div id="settingsModal" class="modal">
   <div class="modal-content">
+    <div class="sp-settings-body">
     <h5 class="text-white mb-4 text-center" id="settingsTitle" onclick="handleSettingsTitleClick()" style="cursor: pointer;">設定</h5>
 
     <div class="mb-3" id="settingsCitySection">
@@ -1101,7 +1141,8 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
           </div>
         </div>
     </div>
-    
+    </div>
+    <div class="sp-settings-footer">
     <button id="syncBtn" class="btn btn-primary w-100 py-2 fw-bold mb-2" onclick="startMigration()">設定保存と同期</button>
     <button id="clearCacheBtn" class="btn btn-danger w-100 py-2 fw-bold mb-2" onclick="clearAllCache()">🔄 キャッシュクリア（表示崩れ修正）</button>
     <button id="webBtn" class="btn btn-outline-secondary w-100 py-2 fw-bold mb-2" onclick="openWebModal()">ブラウザ版へ（URL表示）</button>
@@ -1111,6 +1152,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
       <button class="btn btn-info w-100 py-2 fw-bold mb-2" onclick="importBackup()">バックアップ読み込み</button>
     </div>
     <button class="btn btn-link text-secondary w-100" data-action="close-settings">閉じる</button>
+    </div>
   </div>
 </div>
 
@@ -6473,7 +6515,19 @@ return true;
     
     state.isOpen = true; state.currentPanel = 'Main'; state.history = ['Main'];
     // インラインstyleで確実に全画面オーバーレイを設定
-    modal.setAttribute('style', 'display:flex;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:100500;justify-content:center;align-items:center;overflow:hidden;');
+    modal.setAttribute('style', [
+      'display:flex',
+      'position:fixed',
+      'top:0',
+      'left:0',
+      'width:100vw',
+      'height:100vh',
+      'background:rgba(0,0,0,0.85)',
+      'z-index:100500',
+      'justify-content:center',
+      'align-items:center',
+      'overflow:hidden'
+    ].join(';') + ';');
     modal.classList.add('show-modal');
     // DBG: セット直後の実際の表示状態を確認
 
