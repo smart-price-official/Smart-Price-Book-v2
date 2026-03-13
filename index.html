@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.9.19";
+  const APP_VERSION = "v23.9.20";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-12_force-center";
+  const BUILD_ID = "2026-03-12_responsive-width";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -6502,12 +6502,10 @@ return true;
       'overflow:hidden'
     ].join(';') + ';');
     modal.classList.add('show-modal');
-    // PATCH v23.9.19: modal+contentを navigate後に強制セット
-    // 診断結果: width:450px ✅ だが left:0px ❌
-    // → modalのjustify-contentが効いていない可能性
-    // → navigate()/syncSettings()後に両方を再セットする
+    // PATCH v23.9.20: 画面幅に応じたレスポンシブ幅（スマホ対応）
+    // 診断結果: 450px固定がスマホ(411px)より大きくleft:-40pxになっていた
     (function patchLayout() {
-      // modal本体を再強制（show-modalクラスが上書きしている可能性に対応）
+      // modal本体を再強制
       modal.style.cssText = [
         'display:flex',
         'position:fixed',
@@ -6522,19 +6520,19 @@ return true;
         'overflow:hidden'
       ].join(' !important;') + ' !important;';
 
-      // modal-content
+      // modal-content: 画面幅の92%と450pxの小さい方
       var mc = modal.querySelector('.modal-content');
       if (!mc) return;
-      mc.style.cssText = [
-        'flex-shrink:0',
-        'width:450px',
-        'min-width:450px',
-        'max-width:450px',
-        'box-sizing:border-box',
-        'overflow-x:hidden',
-        'overflow-y:auto',
-        'max-height:80vh'
-      ].join(' !important;') + ' !important;';
+      var w = Math.min(Math.round(window.innerWidth * 0.92), 450);
+      mc.style.cssText =
+        'flex-shrink:0 !important;' +
+        'width:' + w + 'px !important;' +
+        'min-width:' + w + 'px !important;' +
+        'max-width:450px !important;' +
+        'box-sizing:border-box !important;' +
+        'overflow-x:hidden !important;' +
+        'overflow-y:auto !important;' +
+        'max-height:80vh !important;';
     })();
     // DBG: セット直後の実際の表示状態を確認
 
