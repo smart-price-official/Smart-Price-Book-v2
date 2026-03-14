@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.9.51";
+  const APP_VERSION = "v23.9.52";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-14_img-url";
+  const BUILD_ID = "2026-03-14_ai-fill";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -771,29 +771,6 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 };
 </script>
 
-
-<style id="img-hover-zoom">
-#previewImg {
-  cursor: zoom-in;
-  transition: transform 0.2s;
-}
-#imgZoomOverlay {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.9);
-  z-index: 300000;
-  justify-content: center;
-  align-items: center;
-  cursor: zoom-out;
-}
-#imgZoomOverlay img {
-  max-width: 90vw;
-  max-height: 90vh;
-  border-radius: 12px;
-  object-fit: contain;
-}
-</style>
 </head>
 
 <body>
@@ -5374,16 +5351,17 @@ return true;
   // ========= AI商品名補助 =========
   async function aiRefineName() {
     const nameInput = document.getElementById('inputName');
+    const makerInput = document.getElementById('inputMaker');
+    const catSelect = document.getElementById('inputCategory');
     const btn = document.getElementById('aiNameBtn');
     const rawName = (nameInput?.value || '').trim();
     if (!rawName) { showToast('商品名を入力してください', 2000); return; }
 
-    // ローディング表示
     btn.textContent = '⏳';
     btn.style.pointerEvents = 'none';
 
-    const makerVal = (document.getElementById('inputMaker')?.value || '').trim();
-    const catVal = (document.getElementById('inputCategory')?.value || '').trim();
+    // カテゴリ選択肢を取得
+    const catOptions = catSelect ? Array.from(catSelect.options).map(o => o.value).filter(v => v).join('、') : '';
 
     try {
       const resp = await fetch('https://api.anthropic.com/v1/messages', {
@@ -5391,32 +5369,36 @@ return true;
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: 'claude-sonnet-4-20250514',
-          max_tokens: 100,
-          system: `あなたはスーパーの価格比較アプリの商品名整形アシスタントです。
-ルール：
-- 「24本入り」「6本セット」「ケース」などまとめ売り表記を削除する
-- 「送料無料」「ポイント10倍」などEC販促情報を削除する
-- メーカー名が先頭に重複していれば1つにする
-- 内容量（例: 500ml, 1kg）は残す
-- ブランド名・商品シリーズ名・フレーバーは残す
-- 結果は商品名のみ、余計な説明なしで1行で返す`,
+          max_tokens: 200,
+          system: `あなたはスーパーの価格比較アプリのアシスタントです。
+商品名から以下をJSON形式で返してください：
+- name: 整形済み商品名（まとめ売り表記・EC販促情報を除去、内容量は残す）
+- maker: メーカー名（不明なら空文字）
+- category: カテゴリ（選択肢から最も近いものを1つ選ぶ。選択肢にない場合は空文字）
+必ずJSON only、余計な説明なし。`,
           messages: [{
             role: 'user',
-            content: `商品名: ${rawName}${makerVal ? '\nメーカー: ' + makerVal : ''}${catVal ? '\nカテゴリ: ' + catVal : ''}\n\n→ 整形後の商品名:`
+            content: `商品名: ${rawName}
+カテゴリ選択肢: ${catOptions}
+
+→ JSON:`
           }]
         })
       });
       const data = await resp.json();
-      const refined = (data?.content?.[0]?.text || '').trim().replace(/^→\s*/, '');
-      if (refined && refined !== rawName) {
-        nameInput.value = refined;
-        btn.textContent = '✅';
-        setTimeout(() => { btn.textContent = '✨'; }, 2000);
-        showToast('商品名を整えました', 1500);
-      } else {
-        btn.textContent = '✨';
-        showToast('変更なし（既に整った名前です）', 2000);
+      const text = (data?.content?.[0]?.text || '').trim().replace(/```json|```/g, '').trim();
+      const result = JSON.parse(text);
+
+      if (result.name) nameInput.value = result.name;
+      if (result.maker && makerInput) makerInput.value = result.maker;
+      if (result.category && catSelect) {
+        for (let opt of catSelect.options) {
+          if (opt.value === result.category) { catSelect.value = result.category; break; }
+        }
       }
+      btn.textContent = '✅';
+      setTimeout(() => { btn.textContent = '✨'; }, 2000);
+      showToast('商品名・カテゴリ・メーカーを入力しました', 2000);
     } catch(e) {
       btn.textContent = '✨';
       showToast('AI補助に失敗しました', 2000);
@@ -6217,56 +6199,8 @@ return true;
 
     const url = `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(q)}`;
     window.open(url, '_blank', 'noopener');
-
-    // URLモーダルを開く
-    const modal = document.getElementById('imgUrlModal');
-    if (modal) {
-      modal.style.display = 'flex';
-      document.getElementById('imgUrlInput').value = '';
-      document.getElementById('imgUrlInput').focus();
-    }
+    showToast('画像検索を開いたよ。画像を保存して「フォルダ」から選んでね', 7000);
   }
-
-  // 画像URLから読み込む
-  async function loadImgFromUrl() {
-    const urlInput = document.getElementById('imgUrlInput');
-    const imgUrl = (urlInput?.value || '').trim();
-    if (!imgUrl) { showToast('URLを入力してください', 2000); return; }
-
-    try {
-      const prev = document.getElementById('previewImg');
-      if (prev) {
-        prev.src = imgUrl;
-        prev.referrerPolicy = 'no-referrer';
-        prev.crossOrigin = 'anonymous';
-      }
-      document.getElementById('imgUrlModal').style.display = 'none';
-      showToast('画像を読み込みました', 1500);
-    } catch(e) {
-      showToast('画像の読み込みに失敗しました', 2000);
-    }
-  }
-
-  // 画像ホバー/タップで拡大
-  (function setupImgZoom() {
-    document.addEventListener('DOMContentLoaded', function() {
-      const prev = document.getElementById('previewImg');
-      const overlay = document.getElementById('imgZoomOverlay');
-      const zoomImg = document.getElementById('imgZoomImg');
-      if (!prev || !overlay || !zoomImg) return;
-
-      function showZoom() {
-        if (!prev.src || prev.src === window.location.href) return;
-        zoomImg.src = prev.src;
-        overlay.style.display = 'flex';
-      }
-      prev.addEventListener('click', showZoom);
-      prev.addEventListener('mouseenter', showZoom);
-      prev.addEventListener('mouseleave', function() {
-        overlay.style.display = 'none';
-      });
-    });
-  })();
 
   // ✅ 画像をアップロード（SNS共有用：Firebaseに保存）
   async function handleImage(input) {
@@ -7869,22 +7803,5 @@ window.importBackup   = importBackup;
 })();
 </script>
 
-
-<!-- 画像URL貼り付けモーダル -->
-<div id="imgUrlModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:200000; justify-content:center; align-items:center; padding:16px; box-sizing:border-box;">
-  <div style="background:#1e1e1e; border-radius:16px; border:1px solid #D50000; padding:20px; width:100%; max-width:400px;">
-    <div style="color:#fff; font-weight:bold; font-size:16px; margin-bottom:12px; text-align:center;">🖼️ 画像URLを貼り付け</div>
-    <div style="color:#aaa; font-size:13px; margin-bottom:12px;">ブラウザで画像を長押し→「画像アドレスをコピー」してここに貼り付けてください</div>
-    <input id="imgUrlInput" type="url" placeholder="https://..." style="width:100%; padding:10px; border-radius:8px; border:1px solid #555; background:#2a2a2a; color:#fff; font-size:14px; box-sizing:border-box; margin-bottom:12px;">
-    <div style="display:flex; gap:8px;">
-      <button onclick="loadImgFromUrl()" style="flex:1; background:#D50000; color:#fff; border:none; border-radius:8px; padding:12px; font-weight:bold; font-size:14px; cursor:pointer;">読み込む</button>
-      <button onclick="document.getElementById('imgUrlModal').style.display='none'" style="flex:1; background:#444; color:#fff; border:none; border-radius:8px; padding:12px; font-size:14px; cursor:pointer;">閉じる</button>
-    </div>
-  </div>
-</div>
-
-<div id="imgZoomOverlay" onclick="this.style.display='none'">
-  <img id="imgZoomImg" src="">
-</div>
 </body>
 </html>
