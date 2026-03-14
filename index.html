@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.9.50";
+  const APP_VERSION = "v23.9.51";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-14_html-close-fix";
+  const BUILD_ID = "2026-03-14_img-url";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -771,6 +771,29 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 };
 </script>
 
+
+<style id="img-hover-zoom">
+#previewImg {
+  cursor: zoom-in;
+  transition: transform 0.2s;
+}
+#imgZoomOverlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.9);
+  z-index: 300000;
+  justify-content: center;
+  align-items: center;
+  cursor: zoom-out;
+}
+#imgZoomOverlay img {
+  max-width: 90vw;
+  max-height: 90vh;
+  border-radius: 12px;
+  object-fit: contain;
+}
+</style>
 </head>
 
 <body>
@@ -6194,8 +6217,56 @@ return true;
 
     const url = `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(q)}`;
     window.open(url, '_blank', 'noopener');
-    showToast('画像検索を開いたよ。画像を保存して「フォルダ」から選んでね', 7000);
+
+    // URLモーダルを開く
+    const modal = document.getElementById('imgUrlModal');
+    if (modal) {
+      modal.style.display = 'flex';
+      document.getElementById('imgUrlInput').value = '';
+      document.getElementById('imgUrlInput').focus();
+    }
   }
+
+  // 画像URLから読み込む
+  async function loadImgFromUrl() {
+    const urlInput = document.getElementById('imgUrlInput');
+    const imgUrl = (urlInput?.value || '').trim();
+    if (!imgUrl) { showToast('URLを入力してください', 2000); return; }
+
+    try {
+      const prev = document.getElementById('previewImg');
+      if (prev) {
+        prev.src = imgUrl;
+        prev.referrerPolicy = 'no-referrer';
+        prev.crossOrigin = 'anonymous';
+      }
+      document.getElementById('imgUrlModal').style.display = 'none';
+      showToast('画像を読み込みました', 1500);
+    } catch(e) {
+      showToast('画像の読み込みに失敗しました', 2000);
+    }
+  }
+
+  // 画像ホバー/タップで拡大
+  (function setupImgZoom() {
+    document.addEventListener('DOMContentLoaded', function() {
+      const prev = document.getElementById('previewImg');
+      const overlay = document.getElementById('imgZoomOverlay');
+      const zoomImg = document.getElementById('imgZoomImg');
+      if (!prev || !overlay || !zoomImg) return;
+
+      function showZoom() {
+        if (!prev.src || prev.src === window.location.href) return;
+        zoomImg.src = prev.src;
+        overlay.style.display = 'flex';
+      }
+      prev.addEventListener('click', showZoom);
+      prev.addEventListener('mouseenter', showZoom);
+      prev.addEventListener('mouseleave', function() {
+        overlay.style.display = 'none';
+      });
+    });
+  })();
 
   // ✅ 画像をアップロード（SNS共有用：Firebaseに保存）
   async function handleImage(input) {
@@ -7798,5 +7869,22 @@ window.importBackup   = importBackup;
 })();
 </script>
 
+
+<!-- 画像URL貼り付けモーダル -->
+<div id="imgUrlModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:200000; justify-content:center; align-items:center; padding:16px; box-sizing:border-box;">
+  <div style="background:#1e1e1e; border-radius:16px; border:1px solid #D50000; padding:20px; width:100%; max-width:400px;">
+    <div style="color:#fff; font-weight:bold; font-size:16px; margin-bottom:12px; text-align:center;">🖼️ 画像URLを貼り付け</div>
+    <div style="color:#aaa; font-size:13px; margin-bottom:12px;">ブラウザで画像を長押し→「画像アドレスをコピー」してここに貼り付けてください</div>
+    <input id="imgUrlInput" type="url" placeholder="https://..." style="width:100%; padding:10px; border-radius:8px; border:1px solid #555; background:#2a2a2a; color:#fff; font-size:14px; box-sizing:border-box; margin-bottom:12px;">
+    <div style="display:flex; gap:8px;">
+      <button onclick="loadImgFromUrl()" style="flex:1; background:#D50000; color:#fff; border:none; border-radius:8px; padding:12px; font-weight:bold; font-size:14px; cursor:pointer;">読み込む</button>
+      <button onclick="document.getElementById('imgUrlModal').style.display='none'" style="flex:1; background:#444; color:#fff; border:none; border-radius:8px; padding:12px; font-size:14px; cursor:pointer;">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<div id="imgZoomOverlay" onclick="this.style.display='none'">
+  <img id="imgZoomImg" src="">
+</div>
 </body>
 </html>
