@@ -7907,6 +7907,109 @@ window.importBackup   = importBackup;
     }
   }
 })();
+  /* ================================
+   Chatgpt_yui DEBUG TOOL
+   ================================ */
+
+(function(){
+
+const dbg = [];
+
+function dbgLog(msg){
+  const t = new Date().toLocaleTimeString();
+  dbg.push(`${dbg.length+1} ${t} ${msg}`);
+  console.log("[SPDBG]",msg);
+  renderDbg();
+}
+
+function renderDbg(){
+
+  if(!location.search.includes("debug=1")) return;
+
+  let box = document.getElementById("sp-debug-box");
+
+  if(!box){
+    box = document.createElement("div");
+    box.id="sp-debug-box";
+    box.style.position="fixed";
+    box.style.bottom="0";
+    box.style.left="0";
+    box.style.right="0";
+    box.style.height="200px";
+    box.style.background="#111";
+    box.style.color="#0f0";
+    box.style.fontSize="12px";
+    box.style.zIndex="100000000";
+    box.style.overflow="auto";
+    box.style.padding="6px";
+    document.body.appendChild(box);
+  }
+
+  box.innerHTML = "== SP Debug Log ==<br>"+dbg.join("<br>");
+}
+
+window.spDbg = dbgLog;
+
+/* intercept sparkle */
+
+const oldAi = window.aiRefineName;
+
+window.aiRefineName = async function(){
+
+  const jan = window.curBarcode || "";
+
+  dbgLog("✨ CLICK aiRefineName()");
+  dbgLog("JAN="+jan);
+
+  if(oldAi){
+    try{
+      await oldAi();
+    }catch(e){
+      dbgLog("aiRefineName ERROR "+e.message);
+    }
+  }
+
+};
+
+/* intercept yahoo */
+
+const oldYahoo = window.lookupYahooByJan;
+
+if(oldYahoo){
+
+  window.lookupYahooByJan = async function(jan){
+
+    dbgLog("YAHOO REQUEST "+jan);
+
+    const res = await oldYahoo(jan);
+
+    dbgLog("YAHOO RESULT "+JSON.stringify(res));
+
+    return res;
+  }
+
+}
+
+/* intercept rakuten */
+
+const oldRakuten = window.lookupRakutenByJan;
+
+if(oldRakuten){
+
+  window.lookupRakutenByJan = async function(jan){
+
+    dbgLog("RAKUTEN REQUEST "+jan);
+
+    const res = await oldRakuten(jan);
+
+    dbgLog("RAKUTEN RESULT "+JSON.stringify(res));
+
+    return res;
+  }
+
+}
+
+})();
 </script>
 
 </body>
