@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.9.56";
+  const APP_VERSION = "v23.9.57";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-15_ai-toast-sparkle-fix";
+  const BUILD_ID = "2026-03-15_ai-toast-sparkle-fix-r2";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -110,7 +110,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#D50000">
-  <title>Smart Price v23.9.56</title>
+  <title>Smart Price v22.7.0</title>
   <!-- ✅ SW RESET TOOL (v22.7.0) : ?reset=sw -->
   <script>
   (function() {
@@ -5354,83 +5354,79 @@ return true;
     const makerInput = document.getElementById('inputMaker');
     const catSelect = document.getElementById('inputCategory');
     const btn = document.getElementById('aiNameBtn');
-    const rawName = (nameInput?.value || '').trim();
-    const rawMaker = (makerInput?.value || '').trim();
-    const jan = String(curBarcode || '').trim();
-
-    const proxyBase =
-      (window.SP_CONFIG && window.SP_CONFIG.yahooProxyExecUrl)
-        ? window.SP_CONFIG.yahooProxyExecUrl.trim()
-        : '';
-
     if (!btn) return;
 
-    const setIdle = () => {
-      btn.textContent = '✨';
-      btn.style.pointerEvents = 'auto';
-    };
+    const jan = String(curBarcode || '').trim();
+    const rawName = (nameInput?.value || '').trim();
+
+    if (btn.style.pointerEvents === 'none') return;
 
     btn.textContent = '⏳';
     btn.style.pointerEvents = 'none';
 
     try {
-      let candidates = [];
+      const candidates = [];
+      const fallbackNames = [];
 
       if (rawName) {
         candidates.push(rawName);
-        if (rawMaker) candidates.push(`${rawMaker} ${rawName}`);
-      } else if (jan && /^\d{8,14}$/.test(jan)) {
-        showToast(`JAN: ${jan}\n候補を集めています…`, 2500);
-
-        let yahooInfo = null;
-        let rakutenInfo = null;
-        let offInfo = null;
-
-        try { yahooInfo = await lookupYahooByJan(jan); } catch(e) {}
-        try { rakutenInfo = await lookupRakutenByJan(jan); } catch(e) {}
-        try { offInfo = await lookupOffByJan(jan); } catch(e) {}
-
-        if (yahooInfo && yahooInfo.name) {
-          candidates.push(yahooInfo.name);
-          if (yahooInfo.maker) candidates.push(`${yahooInfo.maker} ${yahooInfo.name}`);
-        }
-        if (rakutenInfo && rakutenInfo.name) {
-          candidates.push(rakutenInfo.name);
-          if (rakutenInfo.maker) candidates.push(`${rakutenInfo.maker} ${rakutenInfo.name}`);
-        }
-        if (offInfo && offInfo.name) {
-          candidates.push(offInfo.name);
-          if (offInfo.maker) candidates.push(`${offInfo.maker} ${offInfo.name}`);
-        }
-
-        const firstName = (yahooInfo && yahooInfo.name) || (rakutenInfo && rakutenInfo.name) || (offInfo && offInfo.name) || '';
-        const firstMaker = (yahooInfo && yahooInfo.maker) || (rakutenInfo && rakutenInfo.maker) || (offInfo && offInfo.maker) || '';
-        if (nameInput && !nameInput.value && firstName) nameInput.value = cleanProductName(firstName);
-        if (makerInput && !makerInput.value && firstMaker) makerInput.value = validateMakerName(firstMaker);
+        fallbackNames.push(rawName);
       }
 
-      candidates = [...new Set(candidates.map(v => String(v || '').trim()).filter(Boolean))];
+      if (jan && /^\d{8,14}$/.test(jan)) {
+        const p = (db && db.products && db.products[jan]) ? db.products[jan] : null;
+        if (p && p.name) {
+          candidates.push(String(p.name).trim());
+          fallbackNames.push(String(p.name).trim());
+        }
 
-      if (!candidates.length) {
-        showToast(`JAN: ${jan || '(なし)'}\n追加できる情報がまだあります\n✨ を押して商品名を取得してください`, 5000);
-        setIdle();
+        let yahooInfo = null, rakutenInfo = null, offInfo = null;
+
+        try { yahooInfo = await lookupYahooByJan(jan); } catch(e) { if (isDebug()) console.warn('[AI Refine] Yahoo lookup failed:', e); }
+        try { rakutenInfo = await lookupRakutenByJan(jan); } catch(e) { if (isDebug()) console.warn('[AI Refine] Rakuten lookup failed:', e); }
+        try { offInfo = await lookupOffByJan(jan); } catch(e) { if (isDebug()) console.warn('[AI Refine] OFF lookup failed:', e); }
+
+        [yahooInfo, rakutenInfo, offInfo].forEach(info => {
+          if (!info) return;
+          if (info.name) {
+            const nm = String(info.name).trim();
+            if (nm) {
+              candidates.push(nm);
+              fallbackNames.push(nm);
+            }
+          }
+          if (info.maker || info.name) {
+            const mix = `${String(info.maker || '').trim()} ${String(info.name || '').trim()}`.trim();
+            if (mix) candidates.push(mix);
+          }
+          if (!makerInput?.value && info.maker) {
+            makerInput.value = validateMakerName(info.maker || '');
+          }
+          if (!nameInput?.value && info.name) {
+            nameInput.value = cleanProductName(info.name || '');
+          }
+        });
+      }
+
+      const cleaned = [...new Set(candidates.map(v => String(v || '').trim()).filter(Boolean))];
+
+      if (!cleaned.length) {
+        showToast(`JAN: ${jan || 'なし'}\n追加できる情報がまだあります\n✨ を押して商品名を取得してください`, 5000);
         return;
       }
 
+      const proxyBase = (window.SP_CONFIG && window.SP_CONFIG.yahooProxyExecUrl) ? window.SP_CONFIG.yahooProxyExecUrl.trim() : '';
       if (!proxyBase) {
-        if (nameInput && !nameInput.value && candidates[0]) {
-          nameInput.value = cleanProductName(candidates[0]);
-        }
-        showToast('候補を見つけました。必要ならそのまま修正してください', 3000);
-        setIdle();
+        showToast('AI補助URLが未設定です', 4000);
         return;
       }
 
       const url =
-        `${proxyBase}?action=ai_filter` +
-        `&jan=${encodeURIComponent(jan || '')}` +
-        `&names=${encodeURIComponent(candidates.join('|||'))}` +
-        `&fallback=${encodeURIComponent(rawName || candidates[0] || '')}` +
+        `${proxyBase}` +
+        `?action=ai_filter` +
+        `&jan=${encodeURIComponent(jan)}` +
+        `&names=${encodeURIComponent(cleaned.join('|||'))}` +
+        `&fallback=${encodeURIComponent((fallbackNames[0] || cleaned[0] || '').trim())}` +
         `&v=${Date.now()}`;
 
       const resp = await fetch(url, { method: 'GET', cache: 'no-store' });
@@ -5439,29 +5435,34 @@ return true;
       const result = await resp.json();
 
       if (result && result.ok) {
-        if (result.name && nameInput) nameInput.value = cleanProductName(result.name);
-        if (result.maker && makerInput) makerInput.value = validateMakerName(result.maker);
+        if (result.name && nameInput) nameInput.value = cleanProductName(result.name || '');
+        if (result.maker && makerInput) makerInput.value = validateMakerName(result.maker || '');
+
         if (result.category && catSelect) {
           for (let opt of catSelect.options) {
             if (opt.value === result.category) { catSelect.value = result.category; break; }
           }
         }
-        btn.textContent = '✅';
-        setTimeout(() => { if (btn) btn.textContent = '✨'; }, 2000);
-        showToast('商品名を整えました', 2500);
-      } else {
-        throw new Error((result && (result.error || result._reason)) || 'AI整形失敗');
-      }
 
+        btn.textContent = '✅';
+        setTimeout(() => {
+          try { btn.textContent = '✨'; } catch(e){}
+        }, 1500);
+
+        showToast('商品名・メーカーを入力しました', 2500);
+      } else {
+        showToast(`JAN: ${jan || 'なし'}\n追加できる情報がまだあります\n✨ を押して商品名を取得してください`, 5000);
+      }
     } catch(e) {
-      if (isDebug()) console.error('[aiRefineName]', e);
-      showToast('✨ での取得に失敗しました。もう一度試してください', 3500);
-      setIdle();
+      if (isDebug()) console.error('[AI Refine] Error:', e);
+      showToast('AI補助に失敗しました', 3000);
+      btn.textContent = '✨';
     } finally {
       btn.style.pointerEvents = 'auto';
       if (btn.textContent === '⏳') btn.textContent = '✨';
     }
   }
+
   window.aiRefineName = aiRefineName;
 
   function cleanProductName(name) {
@@ -6200,7 +6201,7 @@ return true;
         }
       } catch(e) {
         // ✅ P0: 取得失敗時のメッセージ（常に表示）
-        showToast(`JAN: ${jan}\n追加できる情報がまだあります\n✨ を押して商品名を取得してください`, 5000);
+        showToast(`商品情報を取得できませんでした`, 5000);
         if (isDebug()) {
           showToast(`情報取得エラー: ${e.message}`, 5000);
           console.error('[ProcessBarcode] Error:', e);
