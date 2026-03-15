@@ -8010,6 +8010,39 @@ if(oldRakuten){
 }
 
 })();
+  function autoDetectCategory(name, maker) {
+  try {
+    const text = `${name || ''} ${maker || ''}`.trim();
+
+    if (!text) {
+      return { category: '', subCategory: '' };
+    }
+
+    // 飲み物
+    if (/お茶|緑茶|麦茶|烏龍茶|ウーロン|コーヒー|紅茶|ジュース|炭酸|水|ミネラルウォーター|スポーツドリンク/.test(text)) {
+      return { category: '水・お茶', subCategory: 'その他' };
+    }
+
+    // 即席麺
+    if (/ラーメン|カップ麺|焼そば|焼きそば|うどん|そば/.test(text)) {
+      return { category: '麺類', subCategory: '即席ラーメン' };
+    }
+
+    // お菓子
+    if (/カステーラ|カステラ|せんべい|チョコ|キャンディ|グミ|クッキー|ビスケット|ポテトチップス|スナック/.test(text)) {
+      return { category: 'お菓子', subCategory: 'その他' };
+    }
+
+    // 調味料
+    if (/しょうゆ|醤油|みそ|味噌|ソース|ケチャップ|マヨネーズ|ドレッシング|油|オイル/.test(text)) {
+      return { category: '基本調味料', subCategory: 'その他' };
+    }
+
+    return { category: '', subCategory: '' };
+  } catch (e) {
+    return { category: '', subCategory: '' };
+  }
+}
 </script>
 
 </body>
