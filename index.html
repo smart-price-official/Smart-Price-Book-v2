@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.9.62";
+  const APP_VERSION = "v23.9.63";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-15_yui-fix-save-sparkle";
+  const BUILD_ID = "2026-03-15_yui-debug-fix-r1";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -110,7 +110,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#D50000">
-  <title>Smart Price v23.9.62</title>
+  <title>Smart Price v23.9.63</title>
   <!-- ✅ SW RESET TOOL (v22.7.0) : ?reset=sw -->
   <script>
   (function() {
@@ -3944,7 +3944,18 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         return;
       }
 
-      const cat = document.getElementById('inputCategory').value;
+      const catEl = document.getElementById('inputCategory');
+      let cat = catEl ? catEl.value : "__NONE__";
+      const nameNow = document.getElementById('inputName').value || '';
+      const makerNow = document.getElementById('inputMaker').value || '';
+      if (cat === "__NONE__") {
+        const detected = autoDetectCategory(nameNow, makerNow);
+        if (detected.category && catEl && Array.from(catEl.options || []).some(o => o.value === detected.category)) {
+          catEl.value = detected.category;
+          cat = detected.category;
+          initSubCategorySelect(detected.category);
+        }
+      }
       if (cat === "__NONE__") {
         showToast("カテゴリを選んでください", 4000);
         if (saveBtn) saveBtn.disabled = false;
@@ -3953,7 +3964,14 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
 
       const subSel = document.getElementById('inputSubCategory');
       const needsSub = (subSel && subSel.style.display !== 'none');
-      const sub = needsSub ? subSel.value : "__NONE__";
+      let sub = needsSub ? subSel.value : "__NONE__";
+      if (needsSub && sub === "__NONE__") {
+        const detectedSub = autoDetectCategory(nameNow, makerNow);
+        if (detectedSub.subCategory && subSel && Array.from(subSel.options || []).some(o => o.value === detectedSub.subCategory)) {
+          subSel.value = detectedSub.subCategory;
+          sub = detectedSub.subCategory;
+        }
+      }
       if (needsSub && sub === "__NONE__") {
         showToast("サブカテゴリを選んでください", 4000);
         if (saveBtn) saveBtn.disabled = false;
@@ -5347,32 +5365,28 @@ return true;
     manualBarcodeEntry(code);
   }
 
-  function getProductImageElement() {
-    return document.getElementById('previewImg') || getProductImageElement();
-  }
+  // ✅ P0: 商品名クリーニング（箱売り情報・不要な情報を除去）
 
-  function showJanFallbackToast(jan) {
-    if (!jan) return;
-    showToast(`JAN: ${jan}\n追加できる情報がまだあります\n✨ を押して商品名を取得してください`, 6000);
+  function getProductImageElement() {
+    return document.getElementById('previewImg') || document.getElementById('productImage') || null;
   }
 
   function autoDetectCategory(name, maker) {
     try {
       const text = `${name || ''} ${maker || ''}`.trim();
       if (!text) return { category: '', subCategory: '' };
-      const rules = [
-        [/カステーラ|カステラ|せんべい|チョコ|キャンディ|グミ|クッキー|ビスケット|ポテトチップス|スナック/, ['お菓子','その他']],
-        [/ラーメン|カップ麺|焼そば|焼きそば|うどん|そば/, ['麺類','即席ラーメン']],
-        [/お茶|緑茶|麦茶|烏龍茶|ウーロン|コーヒー|紅茶|ジュース|炭酸|水|ミネラルウォーター|スポーツドリンク/, ['水・お茶','その他']],
-        [/しょうゆ|醤油|みそ|味噌|ソース|ケチャップ|マヨネーズ|ドレッシング|油|オイル/, ['基本調味料','その他']],
-      ];
-      for (const [pat, vals] of rules) {
-        if (pat.test(text)) return { category: vals[0], subCategory: vals[1] };
-      }
+      if (/お茶|緑茶|麦茶|烏龍茶|ウーロン|コーヒー|紅茶|ジュース|炭酸|水|ミネラルウォーター|スポーツドリンク/.test(text)) return { category: '水・お茶', subCategory: 'その他' };
+      if (/ラーメン|カップ麺|焼そば|焼きそば|うどん|そば|カステーラ|カステラ|せんべい|チョコ|キャンディ|グミ|クッキー|ビスケット|ポテトチップス|スナック/.test(text)) return { category: 'お菓子', subCategory: 'その他' };
+      if (/しょうゆ|醤油|みそ|味噌|ソース|ケチャップ|マヨネーズ|ドレッシング|油|オイル/.test(text)) return { category: '基本調味料', subCategory: 'その他' };
       return { category: '', subCategory: '' };
-    } catch (e) {
+    } catch(e) {
       return { category: '', subCategory: '' };
     }
+  }
+
+  function showJanFallbackToast(jan){
+    if(!jan) return;
+    showToast(`JAN: ${jan}\n追加できる情報がまだあります\n✨ を押して商品名を取得してください`, 4000);
   }
 
   async function callAiFilterForProduct(jan, candidates, fallback = '') {
@@ -5380,21 +5394,19 @@ return true;
       const proxyBase = (window.SP_CONFIG && window.SP_CONFIG.yahooProxyExecUrl) ? window.SP_CONFIG.yahooProxyExecUrl.trim() : '';
       if (!proxyBase || !jan) return null;
       const cleaned = (Array.isArray(candidates) ? candidates : []).map(v => String(v || '').trim()).filter(Boolean);
-      if (!cleaned.length) return null;
       const url = `${proxyBase}?action=ai_filter&jan=${encodeURIComponent(jan)}&names=${encodeURIComponent(cleaned.join('|||'))}&fallback=${encodeURIComponent(fallback || cleaned[0] || '')}&v=${Date.now()}`;
-      if (window.spDbg) window.spDbg(`AI Filter request: ${jan} / candidates=${cleaned.length}`);
-      const res = await fetch(url, { method: 'GET', cache: 'no-store' });
+      if (isDebug()) console.log('[AI Filter] request', url);
+      const res = await fetch(url, { method:'GET', cache:'no-store' });
       if (!res.ok) return null;
       const data = await res.json();
-      if (window.spDbg) window.spDbg(`AI Filter response: ${JSON.stringify(data)}`);
-      return (data && data.ok) ? data : null;
-    } catch (e) {
-      if (window.spDbg) window.spDbg(`AI Filter error: ${e.message || e}`);
+      if (!data || !data.ok) return null;
+      return data;
+    } catch(e) {
+      if (isDebug()) console.warn('[AI Filter] error', e);
       return null;
     }
   }
 
-  // ✅ P0: 商品名クリーニング（箱売り情報・不要な情報を除去）
   // ========= AI商品名補助 =========
   async function aiRefineName() {
     const nameInput = document.getElementById('inputName');
@@ -5402,89 +5414,76 @@ return true;
     const catSelect = document.getElementById('inputCategory');
     const subSelect = document.getElementById('inputSubCategory');
     const btn = document.getElementById('aiNameBtn');
+    const jan = String(curBarcode || '').trim();
     const rawName = (nameInput?.value || '').trim();
-    const jan = String(window.curBarcode || '').trim();
 
-    if (!jan && !rawName) { showToast('JANコードか商品名が必要です', 3000); return; }
-    if (window.spDbg) window.spDbg(`✨ click / jan=${jan || '(none)'} / rawName=${rawName || '(empty)'}`);
+    if (!jan && !rawName) { showToast('商品コードか商品名が必要です', 2500); return; }
 
-    const oldText = btn ? btn.textContent : '✨';
-    if (btn) { btn.textContent = '⏳'; btn.style.pointerEvents = 'none'; }
+    btn.textContent = '⏳';
+    btn.style.pointerEvents = 'none';
 
     try {
-      let yahooInfo = {};
-      let rakutenInfo = {};
-      let offInfo = {};
-      try { if (jan) yahooInfo = await lookupYahooByJan(jan) || {}; } catch(e) {}
-      if (window.spDbg) window.spDbg(`✨ yahooInfo: ${JSON.stringify(yahooInfo)}`);
-      try { if (jan) rakutenInfo = await lookupRakutenByJan(jan) || {}; } catch(e) {}
-      if (window.spDbg) window.spDbg(`✨ rakutenInfo: ${JSON.stringify(rakutenInfo)}`);
-      try { if (jan) offInfo = await lookupOffByJan(jan) || {}; } catch(e) {}
-      if (window.spDbg) window.spDbg(`✨ offInfo: ${JSON.stringify(offInfo)}`);
+      let yahooInfo = jan ? await lookupYahooByJan(jan) : null;
+      let rakutenInfo = jan ? await lookupRakutenByJan(jan) : null;
+      let offInfo = jan ? await lookupOffByJan(jan) : null;
 
-      let candidates = [
-        rawName,
-        yahooInfo.name || '',
-        rakutenInfo.name || '',
-        offInfo.name || '',
-        (yahooInfo.maker && yahooInfo.name) ? `${yahooInfo.maker} ${yahooInfo.name}` : '',
-        (rakutenInfo.maker && rakutenInfo.name) ? `${rakutenInfo.maker} ${rakutenInfo.name}` : ''
-      ].map(v => String(v || '').trim()).filter(Boolean);
-      candidates = [...new Set(candidates)];
-      if (window.spDbg) window.spDbg(`✨ candidates: ${JSON.stringify(candidates)}`);
+      const candidates = [];
+      const push = (v) => { const s = String(v || '').trim(); if (s && !candidates.includes(s)) candidates.push(s); };
+      push(rawName);
+      push(yahooInfo && yahooInfo.name);
+      push(rakutenInfo && rakutenInfo.name);
+      push(offInfo && offInfo.name);
+      if (yahooInfo && yahooInfo.maker && yahooInfo.name) push(`${yahooInfo.maker} ${yahooInfo.name}`);
+      if (rakutenInfo && rakutenInfo.maker && rakutenInfo.name) push(`${rakutenInfo.maker} ${rakutenInfo.name}`);
 
-      if (!candidates.length) {
+      if (!candidates.length && jan) {
         showJanFallbackToast(jan);
-        if (window.spDbg) window.spDbg('✨ stop: 候補ゼロ');
+        btn.textContent = '✨';
         return;
       }
 
-      const ai = await callAiFilterForProduct(jan, candidates, rawName || yahooInfo.name || rakutenInfo.name || offInfo.name || '');
+      const ai = await callAiFilterForProduct(jan, candidates, rawName || candidates[0] || '');
       if (!ai) {
-        showToast('商品名の補助に失敗しました', 3000);
+        showToast('AI補助に失敗しました', 2500);
+        btn.textContent = '✨';
         return;
       }
 
-      if (nameInput && ai.name) nameInput.value = ai.name;
-      const makerVal = ai.maker || yahooInfo.maker || rakutenInfo.maker || offInfo.maker || lookupMakerByJan(jan) || '';
-      if (makerInput && makerVal) makerInput.value = validateMakerName(makerVal);
+      if (ai.name && nameInput) nameInput.value = cleanProductName(ai.name || '');
+      if (ai.maker && makerInput) makerInput.value = validateMakerName(ai.maker || '');
 
-      const pickedImage = yahooInfo.imageUrl || rakutenInfo.imageUrl || offInfo.imageUrl || '';
-      const imgEl = getProductImageElement();
-      if (imgEl && pickedImage) imgEl.src = pickedImage;
-
-      const detected = autoDetectCategory(ai.name || rawName, makerVal);
+      const detected = autoDetectCategory(ai.name || rawName || '', ai.maker || '');
       if (detected.category && catSelect) {
-        const has = Array.from(catSelect.options).some(o => o.value === detected.category);
+        const has = Array.from(catSelect.options || []).some(o => o.value === detected.category);
         if (has) {
           catSelect.value = detected.category;
           initSubCategorySelect(detected.category);
           if (subSelect && detected.subCategory) {
-            const hasSub = Array.from(subSelect.options).some(o => o.value === detected.subCategory);
+            const hasSub = Array.from(subSelect.options || []).some(o => o.value === detected.subCategory);
             if (hasSub) subSelect.value = detected.subCategory;
           }
         }
       }
 
-      const p = db.products[jan] || { history: [] };
-      if (ai.name) p.name = ai.name;
-      if (makerVal) p.maker = validateMakerName(makerVal);
-      if (pickedImage && (!p.imageUrl || !String(p.imageUrl).startsWith('http'))) p.imageUrl = pickedImage;
-      if (detected.category) p.category = detected.category;
-      if (detected.subCategory) p.subCategory = detected.subCategory;
-      db.products[jan] = p;
-      saveLocalOnly();
+      if (jan) {
+        const p = db.products[jan] || { history: [] };
+        if (ai.name) p.name = cleanProductName(ai.name || '');
+        if (ai.maker) p.maker = validateMakerName(ai.maker || '');
+        if (!p.category && detected.category) p.category = detected.category;
+        if (!p.subCategory && detected.subCategory) p.subCategory = detected.subCategory;
+        db.products[jan] = p;
+        saveLocalOnly();
+      }
 
-      showToast('商品名・メーカーを取得しました', 2500);
-      if (window.spDbg) window.spDbg('✨ success');
-      if (btn) btn.textContent = '✅';
-      setTimeout(() => { if (btn) btn.textContent = '✨'; }, 1200);
+      btn.textContent = '✅';
+      setTimeout(() => { btn.textContent = '✨'; }, 1500);
+      showToast('商品名・メーカーを更新しました', 2500);
     } catch(e) {
-      if (window.spDbg) window.spDbg(`✨ fatal error: ${e.message || e}`);
+      console.error('[aiRefineName]', e);
+      btn.textContent = '✨';
       showToast('AI補助に失敗しました', 2500);
-      if (btn) btn.textContent = '✨';
     } finally {
-      if (btn) btn.style.pointerEvents = 'auto';
+      btn.style.pointerEvents = 'auto';
     }
   }
   window.aiRefineName = aiRefineName;
@@ -6234,6 +6233,10 @@ return true;
         // エラー時もplaceholderを戻す
         if (nameInput) {
           nameInput.placeholder = originalPlaceholder;
+        }
+
+        if (!finalInfo.name && !finalInfo.maker) {
+          showJanFallbackToast(jan);
         }
       } finally {
         // ✅ P0: 処理完了時にフラグを解除
@@ -7882,6 +7885,43 @@ window.importBackup   = importBackup;
   }, true);
 
 })();
+
+
+  // ==== Chatgpt_yui mobile debug helpers ====
+  function yuiDebugLog(msg) {
+    if (!isDebug()) return;
+    try {
+      const host = document.getElementById('sp-dbg-log');
+      if (host) {
+        const row = document.createElement('div');
+        row.textContent = `${new Date().toLocaleTimeString()} ${msg}`;
+        host.appendChild(row);
+        host.scrollTop = host.scrollHeight;
+      }
+      console.log('[YUI DBG]', msg);
+    } catch(e) {}
+  }
+
+  window.addEventListener('load', () => {
+    if (!isDebug()) return;
+    try {
+      const toggle = document.getElementById('sp-dbg-toggle');
+      const panel = document.getElementById('sp-dbg-panel');
+      if (toggle && panel) {
+        toggle.style.display = 'block';
+        toggle.onclick = () => { panel.style.display = (panel.style.display === 'flex' ? 'none' : 'flex'); };
+      }
+      const aiBtn = document.getElementById('aiNameBtn');
+      if (aiBtn) {
+        aiBtn.addEventListener('click', () => yuiDebugLog(`CLICK aiNameBtn JAN=${curBarcode || '(none)'} name=${(document.getElementById('inputName')?.value || '').trim() || '(empty)'}`));
+      }
+      const saveBtn = document.getElementById('saveBtn');
+      if (saveBtn) {
+        saveBtn.addEventListener('click', () => yuiDebugLog(`CLICK saveData store=${curStore} category=${document.getElementById('inputCategory')?.value || ''}`));
+      }
+    } catch(e) {}
+  });
+
 </script>
 
 </body>
