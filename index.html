@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.9.53";
+  const APP_VERSION = "v23.9.54";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-15_ai-filter-html";
+  const BUILD_ID = "2026-03-15_ai-image-preview-fix";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -110,7 +110,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#D50000">
-  <title>Smart Price v23.9.53</title>
+  <title>Smart Price v23.9.54</title>
   <!-- ✅ SW RESET TOOL (v22.7.0) : ?reset=sw -->
   <script>
   (function() {
@@ -3319,6 +3319,15 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
   }
 
   // ========= Home History =========
+
+  function getProductImageElement() {
+    try {
+      return document.getElementById('previewImg') || getProductImageElement() || null;
+    } catch(e) {
+      return null;
+    }
+  }
+
   function placeholderImg() {
     return 'https://placehold.jp/24/333/ccc/68x68.png?text=NoImage';
   }
@@ -5814,7 +5823,7 @@ return true;
             if (makerInput && makerInput.value === makerAtStart && finalInfo.maker) {
               makerInput.value = finalInfo.maker;
             }
-            const imgEl = document.getElementById('productImage');
+            const imgEl = getProductImageElement();
             if (imgEl && finalInfo.imageUrl && !imgEl.src) {
               imgEl.src = finalInfo.imageUrl;
             }
@@ -5881,7 +5890,7 @@ return true;
                 makerInput.value = finalInfo.maker;
               }
               // 画像も即座に更新（可能な場合）
-              const imgEl = document.getElementById('productImage');
+              const imgEl = getProductImageElement();
               if (imgEl && finalInfo.imageUrl && !imgEl.src) {
                 imgEl.src = finalInfo.imageUrl;
               }
@@ -5938,7 +5947,7 @@ return true;
                   makerInput.value = finalInfo.maker;
                 }
                 // 画像も即座に更新（可能な場合）
-                const imgEl = document.getElementById('productImage');
+                const imgEl = getProductImageElement();
                 if (imgEl && finalInfo.imageUrl && (!imgEl.src || imgEl.src.includes('placeholder'))) {
                   imgEl.src = finalInfo.imageUrl;
                 }
@@ -6025,7 +6034,7 @@ return true;
                 makerInput.value = finalInfo.maker;
               }
               // 画像も即座に更新（可能な場合）
-              const imgEl = document.getElementById('productImage');
+              const imgEl = getProductImageElement();
               if (imgEl && finalInfo.imageUrl && !imgEl.src) {
                 imgEl.src = finalInfo.imageUrl;
               }
@@ -6072,7 +6081,7 @@ return true;
                   makerInput.value = finalInfo.maker;
                 }
                 // 画像も即座に更新（可能な場合）
-                const imgEl = document.getElementById('productImage');
+                const imgEl = getProductImageElement();
                 if (imgEl && finalInfo.imageUrl && (!imgEl.src || imgEl.src.includes('placeholder'))) {
                   imgEl.src = finalInfo.imageUrl;
                 }
