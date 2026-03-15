@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.9.55";
+  const APP_VERSION = "v23.9.56";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-15_missing-image-list";
+  const BUILD_ID = "2026-03-15_ai-toast-sparkle-fix";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -110,7 +110,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#D50000">
-  <title>Smart Price v23.9.55</title>
+  <title>Smart Price v23.9.56</title>
   <!-- ✅ SW RESET TOOL (v22.7.0) : ?reset=sw -->
   <script>
   (function() {
@@ -1090,15 +1090,6 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
             <summary class="small text-secondary" style="cursor:pointer;">📈 統計情報</summary>
             <div class="mt-2" id="stats-info"></div>
             <button class="btn btn-info w-100 py-2 fw-bold mt-2" onclick="loadStats()">統計を計算</button>
-          </details>
-          
-          <!-- 画像未登録商品 -->
-          <details class="mb-2">
-            <summary class="small text-secondary" style="cursor:pointer;">🖼 画像未登録商品</summary>
-            <div class="mt-2">
-              <div id="missing-image-list" class="small"></div>
-              <button class="btn btn-warning w-100 py-2 fw-bold mt-2" onclick="loadMissingImageProducts()">一覧を表示</button>
-            </div>
           </details>
           
           <div class="mt-3 d-grid">
@@ -5364,55 +5355,111 @@ return true;
     const catSelect = document.getElementById('inputCategory');
     const btn = document.getElementById('aiNameBtn');
     const rawName = (nameInput?.value || '').trim();
-    if (!rawName) { showToast('商品名を入力してください', 2000); return; }
+    const rawMaker = (makerInput?.value || '').trim();
+    const jan = String(curBarcode || '').trim();
+
+    const proxyBase =
+      (window.SP_CONFIG && window.SP_CONFIG.yahooProxyExecUrl)
+        ? window.SP_CONFIG.yahooProxyExecUrl.trim()
+        : '';
+
+    if (!btn) return;
+
+    const setIdle = () => {
+      btn.textContent = '✨';
+      btn.style.pointerEvents = 'auto';
+    };
 
     btn.textContent = '⏳';
     btn.style.pointerEvents = 'none';
 
-    // カテゴリ選択肢を取得
-    const catOptions = catSelect ? Array.from(catSelect.options).map(o => o.value).filter(v => v).join('、') : '';
-
     try {
-      const resp = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 200,
-          system: `あなたはスーパーの価格比較アプリのアシスタントです。
-商品名から以下をJSON形式で返してください：
-- name: 整形済み商品名（まとめ売り表記・EC販促情報を除去、内容量は残す）
-- maker: メーカー名（不明なら空文字）
-- category: カテゴリ（選択肢から最も近いものを1つ選ぶ。選択肢にない場合は空文字）
-必ずJSON only、余計な説明なし。`,
-          messages: [{
-            role: 'user',
-            content: `商品名: ${rawName}
-カテゴリ選択肢: ${catOptions}
+      let candidates = [];
 
-→ JSON:`
-          }]
-        })
-      });
-      const data = await resp.json();
-      const text = (data?.content?.[0]?.text || '').trim().replace(/```json|```/g, '').trim();
-      const result = JSON.parse(text);
+      if (rawName) {
+        candidates.push(rawName);
+        if (rawMaker) candidates.push(`${rawMaker} ${rawName}`);
+      } else if (jan && /^\d{8,14}$/.test(jan)) {
+        showToast(`JAN: ${jan}\n候補を集めています…`, 2500);
 
-      if (result.name) nameInput.value = result.name;
-      if (result.maker && makerInput) makerInput.value = result.maker;
-      if (result.category && catSelect) {
-        for (let opt of catSelect.options) {
-          if (opt.value === result.category) { catSelect.value = result.category; break; }
+        let yahooInfo = null;
+        let rakutenInfo = null;
+        let offInfo = null;
+
+        try { yahooInfo = await lookupYahooByJan(jan); } catch(e) {}
+        try { rakutenInfo = await lookupRakutenByJan(jan); } catch(e) {}
+        try { offInfo = await lookupOffByJan(jan); } catch(e) {}
+
+        if (yahooInfo && yahooInfo.name) {
+          candidates.push(yahooInfo.name);
+          if (yahooInfo.maker) candidates.push(`${yahooInfo.maker} ${yahooInfo.name}`);
         }
+        if (rakutenInfo && rakutenInfo.name) {
+          candidates.push(rakutenInfo.name);
+          if (rakutenInfo.maker) candidates.push(`${rakutenInfo.maker} ${rakutenInfo.name}`);
+        }
+        if (offInfo && offInfo.name) {
+          candidates.push(offInfo.name);
+          if (offInfo.maker) candidates.push(`${offInfo.maker} ${offInfo.name}`);
+        }
+
+        const firstName = (yahooInfo && yahooInfo.name) || (rakutenInfo && rakutenInfo.name) || (offInfo && offInfo.name) || '';
+        const firstMaker = (yahooInfo && yahooInfo.maker) || (rakutenInfo && rakutenInfo.maker) || (offInfo && offInfo.maker) || '';
+        if (nameInput && !nameInput.value && firstName) nameInput.value = cleanProductName(firstName);
+        if (makerInput && !makerInput.value && firstMaker) makerInput.value = validateMakerName(firstMaker);
       }
-      btn.textContent = '✅';
-      setTimeout(() => { btn.textContent = '✨'; }, 2000);
-      showToast('商品名・カテゴリ・メーカーを入力しました', 2000);
+
+      candidates = [...new Set(candidates.map(v => String(v || '').trim()).filter(Boolean))];
+
+      if (!candidates.length) {
+        showToast(`JAN: ${jan || '(なし)'}\n追加できる情報がまだあります\n✨ を押して商品名を取得してください`, 5000);
+        setIdle();
+        return;
+      }
+
+      if (!proxyBase) {
+        if (nameInput && !nameInput.value && candidates[0]) {
+          nameInput.value = cleanProductName(candidates[0]);
+        }
+        showToast('候補を見つけました。必要ならそのまま修正してください', 3000);
+        setIdle();
+        return;
+      }
+
+      const url =
+        `${proxyBase}?action=ai_filter` +
+        `&jan=${encodeURIComponent(jan || '')}` +
+        `&names=${encodeURIComponent(candidates.join('|||'))}` +
+        `&fallback=${encodeURIComponent(rawName || candidates[0] || '')}` +
+        `&v=${Date.now()}`;
+
+      const resp = await fetch(url, { method: 'GET', cache: 'no-store' });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+      const result = await resp.json();
+
+      if (result && result.ok) {
+        if (result.name && nameInput) nameInput.value = cleanProductName(result.name);
+        if (result.maker && makerInput) makerInput.value = validateMakerName(result.maker);
+        if (result.category && catSelect) {
+          for (let opt of catSelect.options) {
+            if (opt.value === result.category) { catSelect.value = result.category; break; }
+          }
+        }
+        btn.textContent = '✅';
+        setTimeout(() => { if (btn) btn.textContent = '✨'; }, 2000);
+        showToast('商品名を整えました', 2500);
+      } else {
+        throw new Error((result && (result.error || result._reason)) || 'AI整形失敗');
+      }
+
     } catch(e) {
-      btn.textContent = '✨';
-      showToast('AI補助に失敗しました', 2000);
+      if (isDebug()) console.error('[aiRefineName]', e);
+      showToast('✨ での取得に失敗しました。もう一度試してください', 3500);
+      setIdle();
     } finally {
       btn.style.pointerEvents = 'auto';
+      if (btn.textContent === '⏳') btn.textContent = '✨';
     }
   }
   window.aiRefineName = aiRefineName;
@@ -5789,7 +5836,7 @@ return true;
             if (makerInput && makerInput.value === makerAtStart && finalInfo.maker) {
               makerInput.value = finalInfo.maker;
             }
-            const imgEl = getProductImageElement();
+            const imgEl = document.getElementById('productImage');
             if (imgEl && finalInfo.imageUrl && !imgEl.src) {
               imgEl.src = finalInfo.imageUrl;
             }
@@ -5856,7 +5903,7 @@ return true;
                 makerInput.value = finalInfo.maker;
               }
               // 画像も即座に更新（可能な場合）
-              const imgEl = getProductImageElement();
+              const imgEl = document.getElementById('productImage');
               if (imgEl && finalInfo.imageUrl && !imgEl.src) {
                 imgEl.src = finalInfo.imageUrl;
               }
@@ -5908,7 +5955,7 @@ return true;
                   makerInput.value = finalInfo.maker;
                 }
                 // 画像も即座に更新（可能な場合）
-                const imgEl = getProductImageElement();
+                const imgEl = document.getElementById('productImage');
                 if (imgEl && finalInfo.imageUrl && (!imgEl.src || imgEl.src.includes('placeholder'))) {
                   imgEl.src = finalInfo.imageUrl;
                 }
@@ -5943,7 +5990,7 @@ return true;
                 makerInput.value = finalInfo.maker;
               }
               // 画像も即座に更新（可能な場合）
-              const imgEl = getProductImageElement();
+              const imgEl = document.getElementById('productImage');
               if (imgEl && finalInfo.imageUrl && !imgEl.src) {
                 imgEl.src = finalInfo.imageUrl;
               }
@@ -5990,7 +6037,7 @@ return true;
                   makerInput.value = finalInfo.maker;
                 }
                 // 画像も即座に更新（可能な場合）
-                const imgEl = getProductImageElement();
+                const imgEl = document.getElementById('productImage');
                 if (imgEl && finalInfo.imageUrl && (!imgEl.src || imgEl.src.includes('placeholder'))) {
                   imgEl.src = finalInfo.imageUrl;
                 }
@@ -6122,7 +6169,7 @@ return true;
           showToast("商品情報を取得しました", 3000);
         } else {
           // 全API失敗 → JANコードをフォームに表示して手動入力を促す
-          showToast(`商品情報が見つかりませんでした\nJAN: ${jan}\n商品名・メーカーを手入力してください`, 8000);
+          showToast(`JAN: ${jan}\n追加できる情報がまだあります\n✨ を押して商品名を取得してください`, 5000);
           const nameInput = document.getElementById('inputName');
           if (nameInput && !nameInput.value) {
             nameInput.placeholder = `JAN: ${jan} （商品名を入力）`;
@@ -6153,7 +6200,7 @@ return true;
         }
       } catch(e) {
         // ✅ P0: 取得失敗時のメッセージ（常に表示）
-        showToast(`商品情報を取得できませんでした`, 5000);
+        showToast(`JAN: ${jan}\n追加できる情報がまだあります\n✨ を押して商品名を取得してください`, 5000);
         if (isDebug()) {
           showToast(`情報取得エラー: ${e.message}`, 5000);
           console.error('[ProcessBarcode] Error:', e);
@@ -6186,65 +6233,6 @@ return true;
       showToast('読み込みに失敗したみたい。もう一度やってみてね', 8000);
     }
   }
-
-  function getProductImageElement() {
-    return document.getElementById('previewImg') || document.getElementById('productImage') || null;
-  }
-
-  function showJanFallbackToast(jan) {
-    if (!jan) return;
-    showToast(`JAN: ${jan}
-追加できる情報がまだあります
-✨ を押して商品名を取得してください`, 5000);
-  }
-
-  function getMissingImageProducts() {
-    const out = [];
-    const products = (window.db && db.products) ? db.products : {};
-    Object.entries(products).forEach(([jan, p]) => {
-      if (!p || typeof p !== 'object') return;
-      const name = String(p.name || '').trim();
-      const maker = String(p.maker || '').trim();
-      const imageUrl = String(p.imageUrl || '').trim();
-      const imageKey = String(p.imageKey || '').trim();
-      if (!/^\d{8,14}$/.test(String(jan || '').trim())) return;
-      if (!name) return;
-      if (imageUrl || imageKey) return;
-      const hist = Array.isArray(p.history) ? p.history : [];
-      const lastTs = hist.length ? histTs(hist[hist.length - 1]) : 0;
-      out.push({ jan, name, maker, lastTs });
-    });
-    out.sort((a, b) => (b.lastTs || 0) - (a.lastTs || 0));
-    return out;
-  }
-
-  function renderMissingImageProducts() {
-    const host = document.getElementById('missing-image-list');
-    if (!host) return;
-    const esc = (v) => String(v || '').replace(/[&<>"']/g, (m) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[m]));
-    const list = getMissingImageProducts();
-    if (!list.length) {
-      host.innerHTML = '<div class="text-secondary">画像未登録の商品はありません</div>';
-      return;
-    }
-    host.innerHTML = list.slice(0, 100).map(item => {
-      const dateText = item.lastTs ? new Date(item.lastTs).toLocaleDateString() : '日付なし';
-      return `
-        <div class="border rounded p-2 mb-2" style="border-color:#444 !important; background:#161616;">
-          <div class="fw-bold text-white">${esc(item.name)}</div>
-          <div class="small text-secondary">JAN: ${esc(item.jan)}</div>
-          <div class="small text-secondary">${esc(item.maker || 'メーカー未登録')}</div>
-          <div class="small text-secondary">最終更新: ${esc(dateText)}</div>
-        </div>`;
-    }).join('');
-  }
-
-  function loadMissingImageProducts() {
-    renderMissingImageProducts();
-    const count = getMissingImageProducts().length;
-    showToast(count ? `画像未登録商品 ${count}件` : '画像未登録の商品はありません', 3000);
-  }
-  window.loadMissingImageProducts = loadMissingImageProducts;
 
   function setupFocusGuides() {
     const gs = { 'inputName': "例：コーラ 500ml", 'inputPrice': "価格を入力" };
