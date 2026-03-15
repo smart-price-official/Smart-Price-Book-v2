@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.9.57";
+  const APP_VERSION = "v23.9.58";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-15_ai-toast-sparkle-fix-r3";
+  const BUILD_ID = "2026-03-15_ai-toast-sparkle-fix-r4";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -110,7 +110,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#D50000">
-  <title>Smart Price v23.9.57</title>
+  <title>Smart Price v23.9.58</title>
   <!-- ✅ SW RESET TOOL (v22.7.0) : ?reset=sw -->
   <script>
   (function() {
@@ -5347,9 +5347,9 @@ return true;
     manualBarcodeEntry(code);
   }
 
-  // ✅ 画像表示先を統一（previewImg優先）
+  // ✅ P0: 商品名クリーニング（箱売り情報・不要な情報を除去）
   function getProductImageElement() {
-    return document.getElementById('previewImg') || getProductImageElement();
+    return document.getElementById('previewImg') || document.getElementById('productImage');
   }
 
   async function callAiFilterForProduct(jan, candidates, fallback = '') {
@@ -5358,82 +5358,100 @@ return true;
         (window.SP_CONFIG && window.SP_CONFIG.yahooProxyExecUrl)
           ? window.SP_CONFIG.yahooProxyExecUrl.trim()
           : '';
-      if (!proxyBase || !jan) return null;
+      if (!proxyBase) return null;
+      if (!jan) return null;
       const cleaned = (Array.isArray(candidates) ? candidates : [])
         .map(v => String(v || '').trim())
         .filter(Boolean);
       if (!cleaned.length) return null;
-      const sep = proxyBase.includes('?') ? '&' : '?';
-      const url = `${proxyBase}${sep}action=ai_filter&jan=${encodeURIComponent(jan)}&names=${encodeURIComponent(cleaned.join('|||'))}&fallback=${encodeURIComponent(fallback || cleaned[0] || '')}&v=${Date.now()}`;
+      const url =
+        `${proxyBase}?action=ai_filter` +
+        `&jan=${encodeURIComponent(jan)}` +
+        `&names=${encodeURIComponent(cleaned.join('|||'))}` +
+        `&fallback=${encodeURIComponent(fallback || cleaned[0] || '')}` +
+        `&v=${Date.now()}`;
       const res = await fetch(url, { method: 'GET', cache: 'no-store' });
       if (!res.ok) return null;
       const data = await res.json();
-      return (data && data.ok) ? data : null;
+      if (!data || !data.ok) return null;
+      return data;
     } catch (e) {
-      if (isDebug()) console.warn('[AI Filter]', e);
+      if (isDebug()) console.warn('[AI Filter] error:', e);
       return null;
     }
   }
 
-  // ✅ P0: 商品名クリーニング（箱売り情報・不要な情報を除去）
+  function showJanFallbackToast(jan) {
+    if (!jan) return;
+    showToast(`JAN: ${jan}
+追加できる情報がまだあります
+✨ を押して商品名を取得してください`, 5000);
+  }
+
+  function checkJanFallback(jan, info) {
+    const hasName = !!(info && info.name && String(info.name).trim());
+    const hasMaker = !!(info && info.maker && String(info.maker).trim());
+    if (!hasName && !hasMaker) showJanFallbackToast(jan);
+  }
+
   // ========= AI商品名補助 =========
   async function aiRefineName() {
     const nameInput = document.getElementById('inputName');
     const makerInput = document.getElementById('inputMaker');
+    const catSelect = document.getElementById('inputCategory');
     const btn = document.getElementById('aiNameBtn');
-    const jan = normalizeJan(curBarcode || '');
+    const jan = String(curBarcode || '').trim();
+    const rawName = (nameInput?.value || '').trim();
 
-    if (!btn) return;
+    if (!jan && !rawName) {
+      showToast('先にバーコードを読み取ってください', 3000);
+      return;
+    }
+
     btn.textContent = '⏳';
     btn.style.pointerEvents = 'none';
 
     try {
-      const currentName = (nameInput?.value || '').trim();
-      const currentMaker = (makerInput?.value || '').trim();
-      let yahooInfo = null, rakutenInfo = null, offInfo = null;
+      const candidates = [];
+      if (rawName) candidates.push(rawName);
 
-      if (jan && /^\d{8,14}$/.test(jan)) {
+      let yahooInfo = null, rakutenInfo = null, offInfo = null;
+      if (jan) {
         try { yahooInfo = await lookupYahooByJan(jan); } catch(e) {}
         try { rakutenInfo = await lookupRakutenByJan(jan); } catch(e) {}
         try { offInfo = await lookupOffByJan(jan); } catch(e) {}
       }
 
-      const candidates = [
-        currentName,
-        currentMaker ? `${currentMaker} ${currentName}`.trim() : '',
-        yahooInfo?.name || '',
-        (yahooInfo?.maker && yahooInfo?.name) ? `${yahooInfo.maker} ${yahooInfo.name}` : '',
-        rakutenInfo?.name || '',
-        (rakutenInfo?.maker && rakutenInfo?.name) ? `${rakutenInfo.maker} ${rakutenInfo.name}` : '',
-        offInfo?.name || '',
-        (offInfo?.maker && offInfo?.name) ? `${offInfo.maker} ${offInfo.name}` : ''
-      ].map(v => String(v || '').trim()).filter(Boolean);
+      if (yahooInfo?.name) candidates.push(yahooInfo.name);
+      if (rakutenInfo?.name) candidates.push(rakutenInfo.name);
+      if (offInfo?.name) candidates.push(offInfo.name);
+      if (yahooInfo?.maker && yahooInfo?.name) candidates.push(`${yahooInfo.maker} ${yahooInfo.name}`);
+      if (rakutenInfo?.maker && rakutenInfo?.name) candidates.push(`${rakutenInfo.maker} ${rakutenInfo.name}`);
 
-      if (!candidates.length) {
-        btn.textContent = '✨';
-        showToast(`JAN: ${jan}\n追加できる情報がまだあります\n✨ を押して商品名を取得してください`, 4000);
+      const ai = await callAiFilterForProduct(jan, candidates, rawName || yahooInfo?.name || rakutenInfo?.name || offInfo?.name || '');
+
+      if (ai) {
+        if (ai.name && nameInput) nameInput.value = cleanProductName(ai.name);
+        if (ai.maker && makerInput) makerInput.value = validateMakerName(ai.maker);
+        if (ai.category && catSelect) {
+          for (let opt of catSelect.options) {
+            if (opt.value === ai.category) { catSelect.value = ai.category; break; }
+          }
+        }
+        btn.textContent = '✅';
+        setTimeout(() => { btn.textContent = '✨'; }, 1500);
+        showToast('商品名・メーカーを更新しました', 2500);
         return;
       }
 
-      const ai = await callAiFilterForProduct(jan, candidates, candidates[0] || currentName || '');
-      if (ai) {
-        if (nameInput && ai.name) nameInput.value = cleanProductName(ai.name || '');
-        if (makerInput && ai.maker) makerInput.value = validateMakerName(ai.maker || '');
-        if (ai.imageUrl) {
-          const imgEl = getProductImageElement();
-          if (imgEl) imgEl.src = ai.imageUrl;
-        } else {
-          const imgEl = getProductImageElement();
-          const imageUrl = yahooInfo?.imageUrl || rakutenInfo?.imageUrl || offInfo?.imageUrl || '';
-          if (imgEl && imageUrl) imgEl.src = imageUrl;
-        }
-        btn.textContent = '✅';
-        setTimeout(() => { if (btn) btn.textContent = '✨'; }, 1500);
-        showToast('商品名・メーカーを取得しました', 2500);
-      } else {
-        btn.textContent = '✨';
-        showToast('追加候補は見つかりましたが、整形に失敗しました', 3000);
-      }
+      // AIが取れない時は既存候補で最低限補完
+      const fallbackName = cleanProductName(rawName || yahooInfo?.name || rakutenInfo?.name || offInfo?.name || '');
+      const fallbackMaker = validateMakerName(makerInput?.value || yahooInfo?.maker || rakutenInfo?.maker || offInfo?.maker || lookupMakerByJan(jan) || '');
+      if (fallbackName && nameInput) nameInput.value = fallbackName;
+      if (fallbackMaker && makerInput) makerInput.value = fallbackMaker;
+      btn.textContent = '✅';
+      setTimeout(() => { btn.textContent = '✨'; }, 1500);
+      showToast('候補から商品名を補完しました', 2500);
     } catch(e) {
       btn.textContent = '✨';
       showToast('✨ の取得に失敗しました', 3000);
@@ -6169,6 +6187,8 @@ return true;
           console.log('[Debug] Product Data:', debugStatus);
           
           // 画面に簡易表示（5秒間）
+        checkJanFallback(jan, finalInfo);
+
           const debugMsg = `[DEBUG] JAN: ${jan}\nSOURCE: ${sourceUsed}\nSTATUS: ${debugStatus.STATUS}\nNAME: ${debugStatus.NAME}\nIMAGE: ${debugStatus.IMAGE}`;
           showToast(debugMsg, 5000);
         }
