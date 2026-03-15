@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.9.59";
+  const APP_VERSION = "v23.9.62";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-15_debug-ai-tool";
+  const BUILD_ID = "2026-03-15_yui-fix-save-sparkle";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -110,8 +110,8 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#D50000">
-  <title>Smart Price v23.9.59</title>
-  <!-- ✅ SW RESET TOOL (v23.9.59) : ?reset=sw -->
+  <title>Smart Price v23.9.62</title>
+  <!-- ✅ SW RESET TOOL (v22.7.0) : ?reset=sw -->
   <script>
   (function() {
     try {
@@ -5347,120 +5347,141 @@ return true;
     manualBarcodeEntry(code);
   }
 
-  // ✅ P0: 商品名クリーニング（箱売り情報・不要な情報を除去）
-
-  function spDebugLog(msg, cls) {
-    try {
-      if (typeof window.spDbgLog === 'function') window.spDbgLog(msg, cls || 'ok');
-      if (isDebug()) console.log('[SPDBG]', msg);
-    } catch(e) {}
-  }
-
   function getProductImageElement() {
-    return document.getElementById('previewImg') || document.getElementById('productImage') || null;
+    return document.getElementById('previewImg') || getProductImageElement();
   }
 
   function showJanFallbackToast(jan) {
     if (!jan) return;
-    const msg = `JAN: ${jan}
-追加できる情報がまだあります
-✨ を押して商品名を取得してください`;
-    showToast(msg, 5000);
-    spDebugLog('JAN fallback toast: ' + jan, 'w');
+    showToast(`JAN: ${jan}\n追加できる情報がまだあります\n✨ を押して商品名を取得してください`, 6000);
   }
 
-  function callDebugProbe(label, payload) {
+  function autoDetectCategory(name, maker) {
     try {
-      const text = typeof payload === 'string' ? payload : JSON.stringify(payload || {});
-      spDebugLog(label + ': ' + text, 'ok');
-    } catch(e) {
-      spDebugLog(label + ': [unserializable]', 'w');
+      const text = `${name || ''} ${maker || ''}`.trim();
+      if (!text) return { category: '', subCategory: '' };
+      const rules = [
+        [/カステーラ|カステラ|せんべい|チョコ|キャンディ|グミ|クッキー|ビスケット|ポテトチップス|スナック/, ['お菓子','その他']],
+        [/ラーメン|カップ麺|焼そば|焼きそば|うどん|そば/, ['麺類','即席ラーメン']],
+        [/お茶|緑茶|麦茶|烏龍茶|ウーロン|コーヒー|紅茶|ジュース|炭酸|水|ミネラルウォーター|スポーツドリンク/, ['水・お茶','その他']],
+        [/しょうゆ|醤油|みそ|味噌|ソース|ケチャップ|マヨネーズ|ドレッシング|油|オイル/, ['基本調味料','その他']],
+      ];
+      for (const [pat, vals] of rules) {
+        if (pat.test(text)) return { category: vals[0], subCategory: vals[1] };
+      }
+      return { category: '', subCategory: '' };
+    } catch (e) {
+      return { category: '', subCategory: '' };
     }
   }
 
   async function callAiFilterForProduct(jan, candidates, fallback = '') {
     try {
       const proxyBase = (window.SP_CONFIG && window.SP_CONFIG.yahooProxyExecUrl) ? window.SP_CONFIG.yahooProxyExecUrl.trim() : '';
-      if (!proxyBase) { spDebugLog('AI Filter: Proxy URL 未設定', 'e'); return null; }
-      if (!jan) { spDebugLog('AI Filter: JAN なし', 'e'); return null; }
+      if (!proxyBase || !jan) return null;
       const cleaned = (Array.isArray(candidates) ? candidates : []).map(v => String(v || '').trim()).filter(Boolean);
-      if (!cleaned.length) { spDebugLog('AI Filter: 候補 0 件', 'e'); return null; }
+      if (!cleaned.length) return null;
       const url = `${proxyBase}?action=ai_filter&jan=${encodeURIComponent(jan)}&names=${encodeURIComponent(cleaned.join('|||'))}&fallback=${encodeURIComponent(fallback || cleaned[0] || '')}&v=${Date.now()}`;
-      spDebugLog('AI Filter request: ' + jan + ' / candidates=' + cleaned.length, 'w');
+      if (window.spDbg) window.spDbg(`AI Filter request: ${jan} / candidates=${cleaned.length}`);
       const res = await fetch(url, { method: 'GET', cache: 'no-store' });
-      if (!res.ok) { spDebugLog('AI Filter HTTP NG: ' + res.status, 'e'); return null; }
+      if (!res.ok) return null;
       const data = await res.json();
-      callDebugProbe('AI Filter response', data);
-      if (!data || !data.ok) return null;
-      return data;
-    } catch(e) {
-      spDebugLog('AI Filter error: ' + (e && e.message ? e.message : e), 'e');
+      if (window.spDbg) window.spDbg(`AI Filter response: ${JSON.stringify(data)}`);
+      return (data && data.ok) ? data : null;
+    } catch (e) {
+      if (window.spDbg) window.spDbg(`AI Filter error: ${e.message || e}`);
       return null;
     }
   }
 
+  // ✅ P0: 商品名クリーニング（箱売り情報・不要な情報を除去）
   // ========= AI商品名補助 =========
   async function aiRefineName() {
     const nameInput = document.getElementById('inputName');
     const makerInput = document.getElementById('inputMaker');
     const catSelect = document.getElementById('inputCategory');
+    const subSelect = document.getElementById('inputSubCategory');
     const btn = document.getElementById('aiNameBtn');
-    const jan = String(curBarcode || '').trim();
     const rawName = (nameInput?.value || '').trim();
+    const jan = String(window.curBarcode || '').trim();
 
-    spDebugLog('✨ click / jan=' + (jan || '(none)') + ' / rawName=' + (rawName || '(empty)'), 'w');
+    if (!jan && !rawName) { showToast('JANコードか商品名が必要です', 3000); return; }
+    if (window.spDbg) window.spDbg(`✨ click / jan=${jan || '(none)'} / rawName=${rawName || '(empty)'}`);
 
-    if (!jan && !rawName) {
-      showToast('JANコードか商品名が必要です', 3000);
-      spDebugLog('✨ stop: JANも商品名も無し', 'e');
-      return;
-    }
-
+    const oldText = btn ? btn.textContent : '✨';
     if (btn) { btn.textContent = '⏳'; btn.style.pointerEvents = 'none'; }
 
     try {
-      const candidates = [];
-      if (rawName) candidates.push(rawName);
-      let yahooInfo = null, rakutenInfo = null, offInfo = null;
-      if (jan) {
-        try { yahooInfo = await lookupYahooByJan(jan, true); callDebugProbe('✨ yahooInfo', yahooInfo); } catch(e) { spDebugLog('✨ Yahoo error: ' + (e.message || e), 'e'); }
-        try { rakutenInfo = await lookupRakutenByJan(jan); callDebugProbe('✨ rakutenInfo', rakutenInfo); } catch(e) { spDebugLog('✨ Rakuten error: ' + (e.message || e), 'e'); }
-        try { offInfo = await lookupOffByJan(jan); callDebugProbe('✨ offInfo', offInfo); } catch(e) { spDebugLog('✨ OFF error: ' + (e.message || e), 'e'); }
-      }
-      [yahooInfo, rakutenInfo, offInfo].forEach(info => {
-        if (!info) return;
-        if (info.name) candidates.push(info.name);
-        if (info.maker && info.name) candidates.push(`${info.maker} ${info.name}`);
-      });
-      const uniqueCandidates = [...new Set(candidates.map(v => String(v || '').trim()).filter(Boolean))];
-      callDebugProbe('✨ candidates', uniqueCandidates);
-      if (!uniqueCandidates.length) {
-        showToast('候補が見つかりませんでした', 3000);
-        spDebugLog('✨ stop: 候補ゼロ', 'e');
+      let yahooInfo = {};
+      let rakutenInfo = {};
+      let offInfo = {};
+      try { if (jan) yahooInfo = await lookupYahooByJan(jan) || {}; } catch(e) {}
+      if (window.spDbg) window.spDbg(`✨ yahooInfo: ${JSON.stringify(yahooInfo)}`);
+      try { if (jan) rakutenInfo = await lookupRakutenByJan(jan) || {}; } catch(e) {}
+      if (window.spDbg) window.spDbg(`✨ rakutenInfo: ${JSON.stringify(rakutenInfo)}`);
+      try { if (jan) offInfo = await lookupOffByJan(jan) || {}; } catch(e) {}
+      if (window.spDbg) window.spDbg(`✨ offInfo: ${JSON.stringify(offInfo)}`);
+
+      let candidates = [
+        rawName,
+        yahooInfo.name || '',
+        rakutenInfo.name || '',
+        offInfo.name || '',
+        (yahooInfo.maker && yahooInfo.name) ? `${yahooInfo.maker} ${yahooInfo.name}` : '',
+        (rakutenInfo.maker && rakutenInfo.name) ? `${rakutenInfo.maker} ${rakutenInfo.name}` : ''
+      ].map(v => String(v || '').trim()).filter(Boolean);
+      candidates = [...new Set(candidates)];
+      if (window.spDbg) window.spDbg(`✨ candidates: ${JSON.stringify(candidates)}`);
+
+      if (!candidates.length) {
+        showJanFallbackToast(jan);
+        if (window.spDbg) window.spDbg('✨ stop: 候補ゼロ');
         return;
       }
-      const ai = await callAiFilterForProduct(jan, uniqueCandidates, rawName || uniqueCandidates[0] || '');
+
+      const ai = await callAiFilterForProduct(jan, candidates, rawName || yahooInfo.name || rakutenInfo.name || offInfo.name || '');
       if (!ai) {
-        showToast('AI整形に失敗しました', 3000);
-        spDebugLog('✨ result: AI整形失敗', 'e');
+        showToast('商品名の補助に失敗しました', 3000);
         return;
       }
-      if (ai.name && nameInput) nameInput.value = cleanProductName(ai.name || '');
-      if (ai.maker && makerInput) makerInput.value = validateMakerName(ai.maker || '');
-      if ((!nameInput?.value || !nameInput.value.trim()) && uniqueCandidates[0] && nameInput) { nameInput.value = cleanProductName(uniqueCandidates[0]); }
-      const suggestedCategory = autoDetectCategory((nameInput?.value || rawName || uniqueCandidates[0] || ''), (makerInput?.value || ''));
-      if (suggestedCategory && catSelect) {
-        for (let opt of catSelect.options) { if (opt.value === suggestedCategory) { catSelect.value = suggestedCategory; break; } }
-      }
-      const imageInfo = yahooInfo || rakutenInfo || offInfo;
+
+      if (nameInput && ai.name) nameInput.value = ai.name;
+      const makerVal = ai.maker || yahooInfo.maker || rakutenInfo.maker || offInfo.maker || lookupMakerByJan(jan) || '';
+      if (makerInput && makerVal) makerInput.value = validateMakerName(makerVal);
+
+      const pickedImage = yahooInfo.imageUrl || rakutenInfo.imageUrl || offInfo.imageUrl || '';
       const imgEl = getProductImageElement();
-      if (imgEl && imageInfo && imageInfo.imageUrl && !imgEl.src) { imgEl.src = imageInfo.imageUrl; }
+      if (imgEl && pickedImage) imgEl.src = pickedImage;
+
+      const detected = autoDetectCategory(ai.name || rawName, makerVal);
+      if (detected.category && catSelect) {
+        const has = Array.from(catSelect.options).some(o => o.value === detected.category);
+        if (has) {
+          catSelect.value = detected.category;
+          initSubCategorySelect(detected.category);
+          if (subSelect && detected.subCategory) {
+            const hasSub = Array.from(subSelect.options).some(o => o.value === detected.subCategory);
+            if (hasSub) subSelect.value = detected.subCategory;
+          }
+        }
+      }
+
+      const p = db.products[jan] || { history: [] };
+      if (ai.name) p.name = ai.name;
+      if (makerVal) p.maker = validateMakerName(makerVal);
+      if (pickedImage && (!p.imageUrl || !String(p.imageUrl).startsWith('http'))) p.imageUrl = pickedImage;
+      if (detected.category) p.category = detected.category;
+      if (detected.subCategory) p.subCategory = detected.subCategory;
+      db.products[jan] = p;
+      saveLocalOnly();
+
       showToast('商品名・メーカーを取得しました', 2500);
-      spDebugLog('✨ success: ' + (nameInput?.value || '(name empty)') + ' / ' + (makerInput?.value || '(maker empty)'), 'ok');
-      if (btn) { btn.textContent = '✅'; setTimeout(() => { try { btn.textContent = '✨'; } catch(e) {} }, 1500); }
+      if (window.spDbg) window.spDbg('✨ success');
+      if (btn) btn.textContent = '✅';
+      setTimeout(() => { if (btn) btn.textContent = '✨'; }, 1200);
     } catch(e) {
-      showToast('AI補助に失敗しました', 3000);
-      spDebugLog('✨ fatal error: ' + (e && e.message ? e.message : e), 'e');
+      if (window.spDbg) window.spDbg(`✨ fatal error: ${e.message || e}`);
+      showToast('AI補助に失敗しました', 2500);
       if (btn) btn.textContent = '✨';
     } finally {
       if (btn) btn.style.pointerEvents = 'auto';
@@ -5840,7 +5861,7 @@ return true;
             if (makerInput && makerInput.value === makerAtStart && finalInfo.maker) {
               makerInput.value = finalInfo.maker;
             }
-            const imgEl = document.getElementById('productImage');
+            const imgEl = getProductImageElement();
             if (imgEl && finalInfo.imageUrl && !imgEl.src) {
               imgEl.src = finalInfo.imageUrl;
             }
@@ -5907,7 +5928,7 @@ return true;
                 makerInput.value = finalInfo.maker;
               }
               // 画像も即座に更新（可能な場合）
-              const imgEl = document.getElementById('productImage');
+              const imgEl = getProductImageElement();
               if (imgEl && finalInfo.imageUrl && !imgEl.src) {
                 imgEl.src = finalInfo.imageUrl;
               }
@@ -5959,7 +5980,7 @@ return true;
                   makerInput.value = finalInfo.maker;
                 }
                 // 画像も即座に更新（可能な場合）
-                const imgEl = document.getElementById('productImage');
+                const imgEl = getProductImageElement();
                 if (imgEl && finalInfo.imageUrl && (!imgEl.src || imgEl.src.includes('placeholder'))) {
                   imgEl.src = finalInfo.imageUrl;
                 }
@@ -5994,7 +6015,7 @@ return true;
                 makerInput.value = finalInfo.maker;
               }
               // 画像も即座に更新（可能な場合）
-              const imgEl = document.getElementById('productImage');
+              const imgEl = getProductImageElement();
               if (imgEl && finalInfo.imageUrl && !imgEl.src) {
                 imgEl.src = finalInfo.imageUrl;
               }
@@ -6041,7 +6062,7 @@ return true;
                   makerInput.value = finalInfo.maker;
                 }
                 // 画像も即座に更新（可能な場合）
-                const imgEl = document.getElementById('productImage');
+                const imgEl = getProductImageElement();
                 if (imgEl && finalInfo.imageUrl && (!imgEl.src || imgEl.src.includes('placeholder'))) {
                   imgEl.src = finalInfo.imageUrl;
                 }
@@ -6171,13 +6192,12 @@ return true;
         const hasData = finalInfo.name || finalInfo.maker || finalInfo.imageUrl;
         if (hasData) {
           showToast("商品情報を取得しました", 3000);
-          spDebugLog('JAN取得成功: ' + jan + ' / source=' + sourceUsed, 'ok');
         } else {
           // 全API失敗 → JANコードをフォームに表示して手動入力を促す
-          showJanFallbackToast(jan);
+          showToast(`商品情報が見つかりませんでした\nJAN: ${jan}\n商品名・メーカーを手入力してください`, 8000);
           const nameInput = document.getElementById('inputName');
           if (nameInput && !nameInput.value) {
-            nameInput.placeholder = `JAN: ${jan} （✨で補完）`;
+            nameInput.placeholder = `JAN: ${jan} （商品名を入力）`;
           }
         }
         
@@ -6205,8 +6225,7 @@ return true;
         }
       } catch(e) {
         // ✅ P0: 取得失敗時のメッセージ（常に表示）
-        showJanFallbackToast(jan);
-        spDebugLog('JAN取得エラー: ' + (e && e.message ? e.message : e), 'e');
+        showToast(`商品情報を取得できませんでした`, 5000);
         if (isDebug()) {
           showToast(`情報取得エラー: ${e.message}`, 5000);
           console.error('[ProcessBarcode] Error:', e);
@@ -7863,186 +7882,6 @@ window.importBackup   = importBackup;
   }, true);
 
 })();
-</script>
-
-
-<script>
-(function(){
-  function dbg(msg, cls){ try{ if(typeof window.spDbgLog==='function') window.spDbgLog(msg, cls||'ok'); }catch(e){} }
-  document.addEventListener('click', function(ev){
-    try{
-      var t = ev.target; if(!t) return;
-      if (t.id === 'aiNameBtn' || (t.closest && t.closest('#aiNameBtn'))) dbg('CLICK aiNameBtn / JAN=' + (window.curBarcode || '(none)'), 'w');
-      if (t.id === 'scanBtnTop' || (t.closest && t.closest('#scanBtnTop'))) dbg('CLICK scanBtnTop', 'w');
-    }catch(e){}
-  }, true);
-
-  var origFetch = window.fetch;
-  if (origFetch && !window.__spFetchWrapped) {
-    window.__spFetchWrapped = true;
-    window.fetch = async function(){
-      var url = arguments[0];
-      var u = (typeof url === 'string') ? url : (url && url.url ? url.url : '');
-      try{
-        if (window.isDebug && window.isDebug()) {
-          if (/action=ai_filter/.test(u)) dbg('FETCH ai_filter start', 'w');
-          else if (/action=yahoo/.test(u)) dbg('FETCH yahoo start', 'w');
-          else if (/action=rakuten/.test(u)) dbg('FETCH rakuten start', 'w');
-        }
-      }catch(e){}
-      try{
-        var res = await origFetch.apply(this, arguments);
-        try{
-          if (window.isDebug && window.isDebug()) {
-            if (/action=ai_filter/.test(u)) dbg('FETCH ai_filter done HTTP ' + res.status, res.ok?'ok':'e');
-            else if (/action=yahoo/.test(u)) dbg('FETCH yahoo done HTTP ' + res.status, res.ok?'ok':'e');
-            else if (/action=rakuten/.test(u)) dbg('FETCH rakuten done HTTP ' + res.status, res.ok?'ok':'e');
-          }
-        }catch(e){}
-        return res;
-      } catch(err){
-        try{ if (window.isDebug && window.isDebug()) dbg('FETCH error: ' + (err && err.message ? err.message : err), 'e'); }catch(e){}
-        throw err;
-      }
-    }
-  }
-})();
-  /* ================================
-   Chatgpt_yui DEBUG TOOL
-   ================================ */
-
-(function(){
-
-const dbg = [];
-
-function dbgLog(msg){
-  const t = new Date().toLocaleTimeString();
-  dbg.push(`${dbg.length+1} ${t} ${msg}`);
-  console.log("[SPDBG]",msg);
-  renderDbg();
-}
-
-function renderDbg(){
-
-  if(!location.search.includes("debug=1")) return;
-
-  let box = document.getElementById("sp-debug-box");
-
-  if(!box){
-    box = document.createElement("div");
-    box.id="sp-debug-box";
-    box.style.position="fixed";
-    box.style.bottom="0";
-    box.style.left="0";
-    box.style.right="0";
-    box.style.height="200px";
-    box.style.background="#111";
-    box.style.color="#0f0";
-    box.style.fontSize="12px";
-    box.style.zIndex="100000000";
-    box.style.overflow="auto";
-    box.style.padding="6px";
-    document.body.appendChild(box);
-  }
-
-  box.innerHTML = "== SP Debug Log ==<br>"+dbg.join("<br>");
-}
-
-window.spDbg = dbgLog;
-
-/* intercept sparkle */
-
-const oldAi = window.aiRefineName;
-
-window.aiRefineName = async function(){
-
-  const jan = window.curBarcode || "";
-
-  dbgLog("✨ CLICK aiRefineName()");
-  dbgLog("JAN="+jan);
-
-  if(oldAi){
-    try{
-      await oldAi();
-    }catch(e){
-      dbgLog("aiRefineName ERROR "+e.message);
-    }
-  }
-
-};
-
-/* intercept yahoo */
-
-const oldYahoo = window.lookupYahooByJan;
-
-if(oldYahoo){
-
-  window.lookupYahooByJan = async function(jan){
-
-    dbgLog("YAHOO REQUEST "+jan);
-
-    const res = await oldYahoo(jan);
-
-    dbgLog("YAHOO RESULT "+JSON.stringify(res));
-
-    return res;
-  }
-
-}
-
-/* intercept rakuten */
-
-const oldRakuten = window.lookupRakutenByJan;
-
-if(oldRakuten){
-
-  window.lookupRakutenByJan = async function(jan){
-
-    dbgLog("RAKUTEN REQUEST "+jan);
-
-    const res = await oldRakuten(jan);
-
-    dbgLog("RAKUTEN RESULT "+JSON.stringify(res));
-
-    return res;
-  }
-
-}
-
-})();
-  function autoDetectCategory(name, maker) {
-  try {
-    const text = `${name || ''} ${maker || ''}`.trim();
-
-    if (!text) {
-      return { category: '', subCategory: '' };
-    }
-
-    // 飲み物
-    if (/お茶|緑茶|麦茶|烏龍茶|ウーロン|コーヒー|紅茶|ジュース|炭酸|水|ミネラルウォーター|スポーツドリンク/.test(text)) {
-      return { category: '水・お茶', subCategory: 'その他' };
-    }
-
-    // 即席麺
-    if (/ラーメン|カップ麺|焼そば|焼きそば|うどん|そば/.test(text)) {
-      return { category: '麺類', subCategory: '即席ラーメン' };
-    }
-
-    // お菓子
-    if (/カステーラ|カステラ|せんべい|チョコ|キャンディ|グミ|クッキー|ビスケット|ポテトチップス|スナック/.test(text)) {
-      return { category: 'お菓子', subCategory: 'その他' };
-    }
-
-    // 調味料
-    if (/しょうゆ|醤油|みそ|味噌|ソース|ケチャップ|マヨネーズ|ドレッシング|油|オイル/.test(text)) {
-      return { category: '基本調味料', subCategory: 'その他' };
-    }
-
-    return { category: '', subCategory: '' };
-  } catch (e) {
-    return { category: '', subCategory: '' };
-  }
-}
 </script>
 
 </body>
