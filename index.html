@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--APP: Smart Price
-AUTHOR: Claude
+AUTHOR: ChatGPT_Yui
 POLICY: UI_FREEZE / 単一HTML / VERSION SSOT
 NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-->
 <html lang="ja">
@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.9.52";
+  const APP_VERSION = "v23.9.53";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-14_ai-fill";
+  const BUILD_ID = "2026-03-15_ai-filter-html";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -110,7 +110,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#D50000">
-  <title>Smart Price v22.7.0</title>
+  <title>Smart Price v23.9.53</title>
   <!-- ✅ SW RESET TOOL (v22.7.0) : ?reset=sw -->
   <script>
   (function() {
@@ -4772,6 +4772,40 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     }
   }
 
+
+  async function callAiFilterForProduct(jan, candidates, fallback = '') {
+    try {
+      const proxyBase = (window.SP_CONFIG && window.SP_CONFIG.yahooProxyExecUrl)
+        ? window.SP_CONFIG.yahooProxyExecUrl.trim() : '';
+      if (!proxyBase || !jan || !Array.isArray(candidates)) return null;
+
+      const cleaned = candidates
+        .map(v => String(v || '').trim())
+        .filter(Boolean);
+      if (!cleaned.length) return null;
+
+      const url = `${proxyBase}?action=ai_filter&jan=${encodeURIComponent(jan)}&names=${encodeURIComponent(cleaned.join('|||'))}&fallback=${encodeURIComponent(fallback || cleaned[0] || '')}&v=${Date.now()}`;
+      const res = await fetch(url, { method: 'GET', cache: 'no-store' });
+      if (!res.ok) return null;
+
+      const data = await res.json();
+      if (!data || !data.ok) return null;
+      return data;
+    } catch (e) {
+      if (isDebug()) console.warn('[AI Filter] error:', e);
+      return null;
+    }
+  }
+
+  function mergeAiFilterNameAndSize(name, size) {
+    const baseName = String(name || '').trim();
+    const baseSize = String(size || '').trim();
+    if (!baseName) return '';
+    if (!baseSize) return baseName;
+    if (baseName.includes(baseSize)) return baseName;
+    return `${baseName} ${baseSize}`.trim();
+  }
+
   // ========= 近隣店舗取得（YahooProxy経由でOSM検索） =========
   // ✅ 買い物関係の店舗かどうか判定（病院・クリニック・銀行等を除外）
   function isShoppingStore(name) {
@@ -5859,6 +5893,11 @@ return true;
             }
           }
 
+          const aiCandidates = [
+            yahooInfo && yahooInfo.name ? yahooInfo.name : '',
+            yahooInfo && yahooInfo.maker ? `${yahooInfo.maker} ${yahooInfo.name || ''}` : ''
+          ];
+
           // ✅ Yahoo結果が弱い/空、またはスコアが低い場合は楽天で補完
           const yahooWeak = !finalInfo.name || !finalInfo.maker || !finalInfo.imageUrl || yahooTrustScore < 70;
           if (yahooWeak) {
@@ -5908,6 +5947,38 @@ return true;
               if (isDebug()) {
                 showToast(`[楽天] 補完OK`, 3000);
               }
+              if (rakutenInfo.name) aiCandidates.push(rakutenInfo.name);
+              if (rakutenInfo.maker) aiCandidates.push(`${rakutenInfo.maker} ${rakutenInfo.name || ''}`);
+            }
+          }
+
+          const aiFiltered = await callAiFilterForProduct(
+            jan,
+            aiCandidates,
+            finalInfo.name || (yahooInfo && yahooInfo.name) || ''
+          );
+
+          if (aiFiltered) {
+            finalInfo.name = cleanProductName(mergeAiFilterNameAndSize(aiFiltered.name || finalInfo.name || '', aiFiltered.size || ''));
+            finalInfo.maker = validateMakerName(aiFiltered.maker || finalInfo.maker || '');
+            if (sourceUsed === 'yahoo') sourceUsed = 'yahoo+ai';
+            else if (sourceUsed === 'yahoo+rakuten') sourceUsed = 'yahoo+rakuten+ai';
+            else if (sourceUsed === 'none') sourceUsed = 'ai';
+
+            const currentJanCheckAi = String(curBarcode || '').trim();
+            if (currentJanCheckAi === jan) {
+              if (nameInput && nameInput.value === nameAtStart && finalInfo.name) {
+                nameInput.value = finalInfo.name;
+                nameInput.placeholder = originalPlaceholder;
+              }
+              if (makerInput && makerInput.value === makerAtStart && finalInfo.maker) {
+                makerInput.value = finalInfo.maker;
+              }
+            }
+
+            if (isDebug()) {
+              console.log('[AI Filter] Yahoo/Rakuten refined:', aiFiltered);
+              showToast(`[AI整形] ${finalInfo.name}`, 2500);
             }
           }
         } else {
@@ -5921,6 +5992,26 @@ return true;
             finalInfo.maker = validateMakerName(rakutenInfo.maker || '');
             finalInfo.imageUrl = rakutenInfo.imageUrl || '';
             sourceUsed = 'rakuten';
+
+            const aiFiltered = await callAiFilterForProduct(
+              jan,
+              [
+                rakutenInfo.name || '',
+                rakutenInfo.maker ? `${rakutenInfo.maker} ${rakutenInfo.name || ''}` : ''
+              ].filter(Boolean),
+              rakutenInfo.name || ''
+            );
+
+            if (aiFiltered) {
+              finalInfo.name = cleanProductName(mergeAiFilterNameAndSize(aiFiltered.name || finalInfo.name || '', aiFiltered.size || ''));
+              finalInfo.maker = validateMakerName(aiFiltered.maker || finalInfo.maker || '');
+              sourceUsed = 'rakuten+ai';
+
+              if (isDebug()) {
+                console.log('[AI Filter] Rakuten refined:', aiFiltered);
+                showToast(`[AI整形] ${finalInfo.name}`, 2500);
+              }
+            }
 
             // ✅ P0: 楽天取得→段階更新（先に仮反映）
             const currentJanCheck3 = String(curBarcode || '').trim();
