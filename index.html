@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--APP: Smart Price
-AUTHOR: ChatGPT_Yui
+AUTHOR: Claude
 POLICY: UI_FREEZE / 単一HTML / VERSION SSOT
 NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-->
 <html lang="ja">
@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: ChatGPT_Yui
-  const APP_VERSION = "v23.9.54";
+  const APP_VERSION = "v23.9.56";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-18_0020_kira-diag-r1";
+  const BUILD_ID = "2026-03-18_maker-fallback-r1";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -110,7 +110,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#D50000">
-  <title>Smart Price v23.9.54</title>
+  <title>Smart Price v23.9.56</title>
   <!-- ✅ SW RESET TOOL (v22.7.0) : ?reset=sw -->
   <script>
   (function() {
@@ -5420,12 +5420,25 @@ return true;
 
   // ✅ P0: 商品名クリーニング（箱売り情報・不要な情報を除去）
   // ========= AI商品名補助 =========
+  // ✅ maker fallback v23.9.56: 優先順位付きでベストメーカーを選ぶ
+  function pickBestMaker(aiMaker, yahooMaker, rakutenMaker, existingMaker) {
+    const candidates = [aiMaker, yahooMaker, rakutenMaker, existingMaker];
+    for (const v of candidates) {
+      if (typeof v === 'string' && v.trim()) return v.trim();
+    }
+    return '';
+  }
+
   async function aiRefineName() {
+    // === KIRA FIX v23.9.56 ===
     const nameInput = document.getElementById('inputName');
     const makerInput = document.getElementById('inputMaker');
     const catSelect = document.getElementById('inputCategory');
     const btn = document.getElementById('aiNameBtn');
     const rawName = (nameInput?.value || '').trim();
+
+    console.log('[KIRA] aiRefineName start', { rawName });
+
     if (!rawName) { showToast('商品名を入力してください', 2000); return; }
 
     btn.textContent = '⏳';
@@ -5434,13 +5447,30 @@ return true;
     // カテゴリ選択肢を取得
     const catOptions = catSelect ? Array.from(catSelect.options).map(o => o.value).filter(v => v).join('、') : '';
 
+    // APIキー取得（window.ANTHROPIC_API_KEY が未定義の場合は空文字）
+    const apiKey = (typeof window.ANTHROPIC_API_KEY !== 'undefined' && window.ANTHROPIC_API_KEY)
+      ? window.ANTHROPIC_API_KEY
+      : '';
+
+    if (!apiKey) {
+      console.warn('[KIRA] ANTHROPIC_API_KEY が未設定です');
+      showToast('APIキーが設定されていません', 3000);
+      btn.textContent = '✨';
+      btn.style.pointerEvents = 'auto';
+      return;
+    }
+
     try {
       const resp = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01'
+        },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 200,
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 300,
           system: `あなたはスーパーの価格比較アプリのアシスタントです。
 商品名から以下をJSON形式で返してください：
 - name: 整形済み商品名（まとめ売り表記・EC販促情報を除去、内容量は残す）
@@ -5456,12 +5486,39 @@ return true;
           }]
         })
       });
+
+      console.log('[KIRA] API status', resp.status);
       const data = await resp.json();
+      console.log('[KIRA] API raw data', data);
+
       const text = (data?.content?.[0]?.text || '').trim().replace(/```json|```/g, '').trim();
       const result = JSON.parse(text);
+      console.log('[KIRA] API result', result);
 
       if (result.name) nameInput.value = result.name;
-      if (result.maker && makerInput) makerInput.value = result.maker;
+
+      // ✅ maker fallback v23.9.56: hints から候補を取得してベストを選ぶ
+      const hints = window.latestProductHints || {};
+      console.log('[KIRA] maker candidates', {
+        ai: result?.maker || '',
+        yahoo: hints?.yahooMaker || '',
+        rakuten: hints?.rakutenMaker || '',
+        existing: hints?.existingMaker || ''
+      });
+
+      const bestMaker = pickBestMaker(
+        result?.maker || '',
+        hints?.yahooMaker || '',
+        hints?.rakutenMaker || '',
+        hints?.existingMaker || ''
+      );
+      console.log('[KIRA] best maker selected', bestMaker);
+
+      if (bestMaker && makerInput) {
+        makerInput.value = bestMaker;
+        console.log('[KIRA] maker assign done', makerInput.value);
+      }
+
       if (result.category && catSelect) {
         for (let opt of catSelect.options) {
           if (opt.value === result.category) { catSelect.value = result.category; break; }
@@ -5471,6 +5528,8 @@ return true;
       setTimeout(() => { btn.textContent = '✨'; }, 2000);
       showToast('商品名・カテゴリ・メーカーを入力しました', 2000);
     } catch(e) {
+      console.error('[KIRA] aiRefineName error', e);
+      console.error('[KIRA] aiRefineName error message', e?.message || '');
       btn.textContent = '✨';
       showToast('AI補助に失敗しました', 2000);
     } finally {
@@ -6154,6 +6213,16 @@ return true;
             imageRefType: imageRefType,
             source: sourceUsed
           });
+
+          // ✅ maker fallback v23.9.56: キラマーク用にメーカー候補を保存
+          window.latestProductHints = {
+            jan: jan,
+            yahooMaker: (yahooInfo && yahooInfo.maker) ? String(yahooInfo.maker).trim() : '',
+            rakutenMaker: (rakutenInfo && rakutenInfo.maker) ? String(rakutenInfo.maker).trim() : '',
+            existingMaker: (p && p.maker) ? String(p.maker).trim() : '',
+            finalMaker: finalInfo.maker || ''
+          };
+          console.log('[ProductHints] latestProductHints saved', window.latestProductHints);
         }
         
         // ✅ dirtyフラグで保護: ユーザーが入力し始めていたら上書きしない
