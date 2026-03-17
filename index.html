@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--APP: Smart Price
-AUTHOR: Claude
+AUTHOR: ChatGPT_Yui
 POLICY: UI_FREEZE / 単一HTML / VERSION SSOT
 NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-->
 <html lang="ja">
@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: Claude
-  const APP_VERSION = "v23.9.63";
+  const APP_VERSION = "v23.9.53";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-15_yui-debug-fix-r1";
+  const BUILD_ID = "2026-03-17_0255_store-price-r1";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -110,7 +110,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#D50000">
-  <title>Smart Price v23.9.63</title>
+  <title>Smart Price v22.7.0</title>
   <!-- ✅ SW RESET TOOL (v22.7.0) : ?reset=sw -->
   <script>
   (function() {
@@ -221,6 +221,14 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
     .stats-row { display: flex; justify-content: space-around; width: 100%; }
     .stat-item { text-align: center; flex: 1; color: #aaa; }
     .stat-val { display: block; font-weight: bold; color: #fff; font-size: 0.9rem; }
+
+    .sp-store-price-box { display:flex; flex-direction:column; background:#262626; padding:10px; border-radius:8px; margin-bottom:15px; font-size:0.75rem; border:1px solid #333; }
+    .sp-store-price-title { font-weight:700; color:#fff; margin-bottom:6px; }
+    .sp-store-price-row { padding:6px 0; border-top:1px solid #333; }
+    .sp-store-price-row:first-of-type { border-top:none; }
+    .sp-store-price-shop { font-weight:600; color:#fff; }
+    .sp-store-price-meta { font-size:12px; color:#aaa; }
+    .sp-store-price-empty { display:flex; flex-direction:column; background:#262626; padding:10px; border-radius:8px; margin-bottom:15px; font-size:12px; color:#777; border:1px solid #333; }
 
     .history-row { font-size: 0.8rem; padding: 10px 0; border-top: 1px solid #333; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
     
@@ -839,6 +847,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
         </div>
 
         <div id="statsBox" class="stats-strip"></div>
+        <div id="storePriceStatsBox"></div>
         <div id="detailHistory" class="mb-3" style="display:none;"></div>
 
         <div class="text-center mb-3">
@@ -3852,21 +3861,81 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
 
     renderDetailHistory(exists ? p.history : []);
     renderStats(exists ? p.history : []);
+    renderStorePriceStats(exists ? p.history : []);
   }
 
   function renderStats(history) {
     const box = document.getElementById('statsBox');
     if (!box) return;
     if (!Array.isArray(history) || history.length === 0) { box.innerHTML = "過去データなし"; return; }
-    const pArr = history.map(h => h.price);
+    const pArr = history.map(h => Number(h.price || 0)).filter(v => v > 0);
+    if (!pArr.length) { box.innerHTML = "過去データなし"; return; }
     const avg = Math.floor(pArr.reduce((a,b)=>a+b,0)/pArr.length);
     const low = Math.min(...pArr);
-    const last = pArr[pArr.length-1];
+    const last = pArr[0] || pArr[pArr.length-1];
     box.innerHTML = `<div class="stats-row">
       <div class="stat-item">平均<span class="stat-val">${avg}円</span></div>
       <div class="stat-item">最安<span class="stat-val text-danger">${low}円</span></div>
-      <div class="stat-item">前回<span class="stat-val">${last}円</span></div>
+      <div class="stat-item">直近<span class="stat-val">${last}円</span></div>
     </div>`;
+  }
+
+  function groupPriceLogsByShop(history) {
+    const map = {};
+    (Array.isArray(history) ? history : []).forEach(h => {
+      const price = Number(h && h.price || 0);
+      if (!price || price <= 0) return;
+      const key = [h && h.store || "", h && h.branch || ""].filter(Boolean).join(" / ") || "不明店舗";
+      if (!map[key]) map[key] = [];
+      map[key].push(h);
+    });
+    return map;
+  }
+
+  function buildShopPriceStats(grouped) {
+    const result = [];
+    Object.keys(grouped || {}).forEach(shop => {
+      const arr = (grouped[shop] || [])
+        .filter(x => Number(x && x.price || 0) > 0)
+        .sort((a, b) => Number(b && (b.created_at || b.ts || 0) || 0) - Number(a && (a.created_at || a.ts || 0) || 0));
+      if (!arr.length) return;
+      const prices = arr.map(x => Number(x.price));
+      const latest = prices[0];
+      const min = Math.min(...prices);
+      const avg = Math.round(prices.reduce((a, b) => a + b, 0) / prices.length);
+      result.push({
+        shop,
+        latest,
+        min,
+        avg,
+        count: prices.length,
+        latest_at: arr[0].created_at || arr[0].ts || 0
+      });
+    });
+    result.sort((a, b) => a.latest - b.latest);
+    return result;
+  }
+
+  function renderStorePriceStats(history) {
+    const box = document.getElementById('storePriceStatsBox');
+    if (!box) return;
+    const grouped = groupPriceLogsByShop(history);
+    const stats = buildShopPriceStats(grouped);
+    if (!stats.length) {
+      box.innerHTML = '<div class="sp-store-price-empty">店舗別価格はまだありません</div>';
+      return;
+    }
+    box.innerHTML = `
+      <div class="sp-store-price-box">
+        <div class="sp-store-price-title">店舗別価格</div>
+        ${stats.map((s, idx) => `
+          <div class="sp-store-price-row">
+            <div class="sp-store-price-shop">${s.shop}${idx === 0 ? '（最安）' : ''}</div>
+            <div class="sp-store-price-meta">最新 ${s.latest}円 / 平均 ${s.avg}円 / 最安 ${s.min}円 / ${s.count}件</div>
+          </div>
+        `).join('')}
+      </div>
+    `;
   }
 
   function renderDetailHistory(history) {
@@ -3920,6 +3989,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     document.getElementById('storeJumpBtn').style.display = "block";
 
     renderDetailHistory(p.history);
+    renderStats(p.history);
+    renderStorePriceStats(p.history);
 
     window.scrollTo({ top: 0, behavior: 'smooth' });
     showToast("店名は上のチップで変更できます", 3000);
@@ -3944,18 +4015,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         return;
       }
 
-      const catEl = document.getElementById('inputCategory');
-      let cat = catEl ? catEl.value : "__NONE__";
-      const nameNow = document.getElementById('inputName').value || '';
-      const makerNow = document.getElementById('inputMaker').value || '';
-      if (cat === "__NONE__") {
-        const detected = autoDetectCategory(nameNow, makerNow);
-        if (detected.category && catEl && Array.from(catEl.options || []).some(o => o.value === detected.category)) {
-          catEl.value = detected.category;
-          cat = detected.category;
-          initSubCategorySelect(detected.category);
-        }
-      }
+      const cat = document.getElementById('inputCategory').value;
       if (cat === "__NONE__") {
         showToast("カテゴリを選んでください", 4000);
         if (saveBtn) saveBtn.disabled = false;
@@ -3964,14 +4024,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
 
       const subSel = document.getElementById('inputSubCategory');
       const needsSub = (subSel && subSel.style.display !== 'none');
-      let sub = needsSub ? subSel.value : "__NONE__";
-      if (needsSub && sub === "__NONE__") {
-        const detectedSub = autoDetectCategory(nameNow, makerNow);
-        if (detectedSub.subCategory && subSel && Array.from(subSel.options || []).some(o => o.value === detectedSub.subCategory)) {
-          subSel.value = detectedSub.subCategory;
-          sub = detectedSub.subCategory;
-        }
-      }
+      const sub = needsSub ? subSel.value : "__NONE__";
       if (needsSub && sub === "__NONE__") {
         showToast("サブカテゴリを選んでください", 4000);
         if (saveBtn) saveBtn.disabled = false;
@@ -5366,122 +5419,60 @@ return true;
   }
 
   // ✅ P0: 商品名クリーニング（箱売り情報・不要な情報を除去）
-
-  function getProductImageElement() {
-    return document.getElementById('previewImg') || document.getElementById('productImage') || null;
-  }
-
-  function autoDetectCategory(name, maker) {
-    try {
-      const text = `${name || ''} ${maker || ''}`.trim();
-      if (!text) return { category: '', subCategory: '' };
-      if (/お茶|緑茶|麦茶|烏龍茶|ウーロン|コーヒー|紅茶|ジュース|炭酸|水|ミネラルウォーター|スポーツドリンク/.test(text)) return { category: '水・お茶', subCategory: 'その他' };
-      if (/ラーメン|カップ麺|焼そば|焼きそば|うどん|そば|カステーラ|カステラ|せんべい|チョコ|キャンディ|グミ|クッキー|ビスケット|ポテトチップス|スナック/.test(text)) return { category: 'お菓子', subCategory: 'その他' };
-      if (/しょうゆ|醤油|みそ|味噌|ソース|ケチャップ|マヨネーズ|ドレッシング|油|オイル/.test(text)) return { category: '基本調味料', subCategory: 'その他' };
-      return { category: '', subCategory: '' };
-    } catch(e) {
-      return { category: '', subCategory: '' };
-    }
-  }
-
-  function showJanFallbackToast(jan){
-    if(!jan) return;
-    showToast(`JAN: ${jan}\n追加できる情報がまだあります\n✨ を押して商品名を取得してください`, 4000);
-  }
-
-  async function callAiFilterForProduct(jan, candidates, fallback = '') {
-    try {
-      const proxyBase = (window.SP_CONFIG && window.SP_CONFIG.yahooProxyExecUrl) ? window.SP_CONFIG.yahooProxyExecUrl.trim() : '';
-      if (!proxyBase || !jan) return null;
-      const cleaned = (Array.isArray(candidates) ? candidates : []).map(v => String(v || '').trim()).filter(Boolean);
-      const url = `${proxyBase}?action=ai_filter&jan=${encodeURIComponent(jan)}&names=${encodeURIComponent(cleaned.join('|||'))}&fallback=${encodeURIComponent(fallback || cleaned[0] || '')}&v=${Date.now()}`;
-      if (isDebug()) console.log('[AI Filter] request', url);
-      const res = await fetch(url, { method:'GET', cache:'no-store' });
-      if (!res.ok) return null;
-      const data = await res.json();
-      if (!data || !data.ok) return null;
-      return data;
-    } catch(e) {
-      if (isDebug()) console.warn('[AI Filter] error', e);
-      return null;
-    }
-  }
-
   // ========= AI商品名補助 =========
   async function aiRefineName() {
     const nameInput = document.getElementById('inputName');
     const makerInput = document.getElementById('inputMaker');
     const catSelect = document.getElementById('inputCategory');
-    const subSelect = document.getElementById('inputSubCategory');
     const btn = document.getElementById('aiNameBtn');
-    const jan = String(curBarcode || '').trim();
     const rawName = (nameInput?.value || '').trim();
-
-    if (!jan && !rawName) { showToast('商品コードか商品名が必要です', 2500); return; }
+    if (!rawName) { showToast('商品名を入力してください', 2000); return; }
 
     btn.textContent = '⏳';
     btn.style.pointerEvents = 'none';
 
+    // カテゴリ選択肢を取得
+    const catOptions = catSelect ? Array.from(catSelect.options).map(o => o.value).filter(v => v).join('、') : '';
+
     try {
-      let yahooInfo = jan ? await lookupYahooByJan(jan) : null;
-      let rakutenInfo = jan ? await lookupRakutenByJan(jan) : null;
-      let offInfo = jan ? await lookupOffByJan(jan) : null;
+      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 200,
+          system: `あなたはスーパーの価格比較アプリのアシスタントです。
+商品名から以下をJSON形式で返してください：
+- name: 整形済み商品名（まとめ売り表記・EC販促情報を除去、内容量は残す）
+- maker: メーカー名（不明なら空文字）
+- category: カテゴリ（選択肢から最も近いものを1つ選ぶ。選択肢にない場合は空文字）
+必ずJSON only、余計な説明なし。`,
+          messages: [{
+            role: 'user',
+            content: `商品名: ${rawName}
+カテゴリ選択肢: ${catOptions}
 
-      const candidates = [];
-      const push = (v) => { const s = String(v || '').trim(); if (s && !candidates.includes(s)) candidates.push(s); };
-      push(rawName);
-      push(yahooInfo && yahooInfo.name);
-      push(rakutenInfo && rakutenInfo.name);
-      push(offInfo && offInfo.name);
-      if (yahooInfo && yahooInfo.maker && yahooInfo.name) push(`${yahooInfo.maker} ${yahooInfo.name}`);
-      if (rakutenInfo && rakutenInfo.maker && rakutenInfo.name) push(`${rakutenInfo.maker} ${rakutenInfo.name}`);
+→ JSON:`
+          }]
+        })
+      });
+      const data = await resp.json();
+      const text = (data?.content?.[0]?.text || '').trim().replace(/```json|```/g, '').trim();
+      const result = JSON.parse(text);
 
-      if (!candidates.length && jan) {
-        showJanFallbackToast(jan);
-        btn.textContent = '✨';
-        return;
-      }
-
-      const ai = await callAiFilterForProduct(jan, candidates, rawName || candidates[0] || '');
-      if (!ai) {
-        showToast('AI補助に失敗しました', 2500);
-        btn.textContent = '✨';
-        return;
-      }
-
-      if (ai.name && nameInput) nameInput.value = cleanProductName(ai.name || '');
-      if (ai.maker && makerInput) makerInput.value = validateMakerName(ai.maker || '');
-
-      const detected = autoDetectCategory(ai.name || rawName || '', ai.maker || '');
-      if (detected.category && catSelect) {
-        const has = Array.from(catSelect.options || []).some(o => o.value === detected.category);
-        if (has) {
-          catSelect.value = detected.category;
-          initSubCategorySelect(detected.category);
-          if (subSelect && detected.subCategory) {
-            const hasSub = Array.from(subSelect.options || []).some(o => o.value === detected.subCategory);
-            if (hasSub) subSelect.value = detected.subCategory;
-          }
+      if (result.name) nameInput.value = result.name;
+      if (result.maker && makerInput) makerInput.value = result.maker;
+      if (result.category && catSelect) {
+        for (let opt of catSelect.options) {
+          if (opt.value === result.category) { catSelect.value = result.category; break; }
         }
       }
-
-      if (jan) {
-        const p = db.products[jan] || { history: [] };
-        if (ai.name) p.name = cleanProductName(ai.name || '');
-        if (ai.maker) p.maker = validateMakerName(ai.maker || '');
-        if (!p.category && detected.category) p.category = detected.category;
-        if (!p.subCategory && detected.subCategory) p.subCategory = detected.subCategory;
-        db.products[jan] = p;
-        saveLocalOnly();
-      }
-
       btn.textContent = '✅';
-      setTimeout(() => { btn.textContent = '✨'; }, 1500);
-      showToast('商品名・メーカーを更新しました', 2500);
+      setTimeout(() => { btn.textContent = '✨'; }, 2000);
+      showToast('商品名・カテゴリ・メーカーを入力しました', 2000);
     } catch(e) {
-      console.error('[aiRefineName]', e);
       btn.textContent = '✨';
-      showToast('AI補助に失敗しました', 2500);
+      showToast('AI補助に失敗しました', 2000);
     } finally {
       btn.style.pointerEvents = 'auto';
     }
@@ -5860,7 +5851,7 @@ return true;
             if (makerInput && makerInput.value === makerAtStart && finalInfo.maker) {
               makerInput.value = finalInfo.maker;
             }
-            const imgEl = getProductImageElement();
+            const imgEl = document.getElementById('productImage');
             if (imgEl && finalInfo.imageUrl && !imgEl.src) {
               imgEl.src = finalInfo.imageUrl;
             }
@@ -5927,7 +5918,7 @@ return true;
                 makerInput.value = finalInfo.maker;
               }
               // 画像も即座に更新（可能な場合）
-              const imgEl = getProductImageElement();
+              const imgEl = document.getElementById('productImage');
               if (imgEl && finalInfo.imageUrl && !imgEl.src) {
                 imgEl.src = finalInfo.imageUrl;
               }
@@ -5979,7 +5970,7 @@ return true;
                   makerInput.value = finalInfo.maker;
                 }
                 // 画像も即座に更新（可能な場合）
-                const imgEl = getProductImageElement();
+                const imgEl = document.getElementById('productImage');
                 if (imgEl && finalInfo.imageUrl && (!imgEl.src || imgEl.src.includes('placeholder'))) {
                   imgEl.src = finalInfo.imageUrl;
                 }
@@ -6014,7 +6005,7 @@ return true;
                 makerInput.value = finalInfo.maker;
               }
               // 画像も即座に更新（可能な場合）
-              const imgEl = getProductImageElement();
+              const imgEl = document.getElementById('productImage');
               if (imgEl && finalInfo.imageUrl && !imgEl.src) {
                 imgEl.src = finalInfo.imageUrl;
               }
@@ -6061,7 +6052,7 @@ return true;
                   makerInput.value = finalInfo.maker;
                 }
                 // 画像も即座に更新（可能な場合）
-                const imgEl = getProductImageElement();
+                const imgEl = document.getElementById('productImage');
                 if (imgEl && finalInfo.imageUrl && (!imgEl.src || imgEl.src.includes('placeholder'))) {
                   imgEl.src = finalInfo.imageUrl;
                 }
@@ -6233,10 +6224,6 @@ return true;
         // エラー時もplaceholderを戻す
         if (nameInput) {
           nameInput.placeholder = originalPlaceholder;
-        }
-
-        if (!finalInfo.name && !finalInfo.maker) {
-          showJanFallbackToast(jan);
         }
       } finally {
         // ✅ P0: 処理完了時にフラグを解除
@@ -7885,43 +7872,6 @@ window.importBackup   = importBackup;
   }, true);
 
 })();
-
-
-  // ==== Chatgpt_yui mobile debug helpers ====
-  function yuiDebugLog(msg) {
-    if (!isDebug()) return;
-    try {
-      const host = document.getElementById('sp-dbg-log');
-      if (host) {
-        const row = document.createElement('div');
-        row.textContent = `${new Date().toLocaleTimeString()} ${msg}`;
-        host.appendChild(row);
-        host.scrollTop = host.scrollHeight;
-      }
-      console.log('[YUI DBG]', msg);
-    } catch(e) {}
-  }
-
-  window.addEventListener('load', () => {
-    if (!isDebug()) return;
-    try {
-      const toggle = document.getElementById('sp-dbg-toggle');
-      const panel = document.getElementById('sp-dbg-panel');
-      if (toggle && panel) {
-        toggle.style.display = 'block';
-        toggle.onclick = () => { panel.style.display = (panel.style.display === 'flex' ? 'none' : 'flex'); };
-      }
-      const aiBtn = document.getElementById('aiNameBtn');
-      if (aiBtn) {
-        aiBtn.addEventListener('click', () => yuiDebugLog(`CLICK aiNameBtn JAN=${curBarcode || '(none)'} name=${(document.getElementById('inputName')?.value || '').trim() || '(empty)'}`));
-      }
-      const saveBtn = document.getElementById('saveBtn');
-      if (saveBtn) {
-        saveBtn.addEventListener('click', () => yuiDebugLog(`CLICK saveData store=${curStore} category=${document.getElementById('inputCategory')?.value || ''}`));
-      }
-    } catch(e) {}
-  });
-
 </script>
 
 </body>
