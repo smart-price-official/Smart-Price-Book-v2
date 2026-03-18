@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: ChatGPT_Yui
-  const APP_VERSION = "v23.9.57";
+  const APP_VERSION = "v23.9.58";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-18_barcode-trace-r1";
+  const BUILD_ID = "2026-03-18_barcode-name-trace-r1";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -110,7 +110,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#D50000">
-  <title>Smart Price v23.9.57</title>
+  <title>Smart Price v23.9.58</title>
   <!-- ✅ SW RESET TOOL (v22.7.0) : ?reset=sw -->
   <script>
   (function() {
@@ -5952,6 +5952,7 @@ return true;
         yahooInfo = await lookupYahooByJan(jan);
         if (isDebug()) {
           console.log('[BARCODE] yahoo result', yahooInfo);
+      console.log('[BARCODE] yahoo result name', yahooInfo?.name || '');
         }
         
         if (yahooInfo) {
@@ -6003,9 +6004,11 @@ return true;
             rakutenInfo = await lookupRakutenByJan(jan);
             if (isDebug()) {
               console.log('[BARCODE] rakuten result', rakutenInfo);
+      console.log('[BARCODE] rakuten result name', rakutenInfo?.name || '');
             }
             if (isDebug()) {
               console.log('[BARCODE] rakuten result', rakutenInfo);
+      console.log('[BARCODE] rakuten result name', rakutenInfo?.name || '');
             }
             
             if (rakutenInfo) {
@@ -6088,6 +6091,7 @@ return true;
             offInfo = await lookupOffByJan(jan);
             if (isDebug()) {
               console.log('[BARCODE] off result', offInfo);
+      console.log('[BARCODE] off result name', offInfo?.name || '');
             }
             
             if (offInfo) {
