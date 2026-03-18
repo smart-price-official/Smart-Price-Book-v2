@@ -1,16 +1,8 @@
 <!DOCTYPE html>
 <!--APP: Smart Price
-VERSION: v22.7.0
-DATE(JST): 2026-02-15 00:48 JST
-TITLE: UIFIX23（手入力ボタン修正/履歴復旧探索強化/バージョン表示SSOT修正）
-CHANGES:
-- 重大なJS構文エラーを修正（設定の同期/移行スクリプト末尾の `});` / `})();` を整理）→ startScanner等が未定義になる連鎖を停止
-- VERSION/BUILD/表示のSSOT（単一正本）を v22.7.0 / 2026-02-14_2230_layout-fix に統一（旧表記を全削除）
-- 既存UIはそのまま（UI_FREEZE）。ボタンの見た目・配置は変更なし
-BUILD_PARAM(b): ?b=2026-02-15_0102_ui-fix24
-DEBUG_PARAM: &debug=1
-AUTHOR: Yui
-POLICY: UI_FREEZE / 単一HTML / VERSION SSOT-->
+AUTHOR: ChatGPT_Yui
+POLICY: UI_FREEZE / 単一HTML / VERSION SSOT
+NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-->
 <html lang="ja">
 <head>
 <!-- SW GUARD: prevent old Service Worker from serving stale index.html -->
@@ -20,9 +12,10 @@ POLICY: UI_FREEZE / 単一HTML / VERSION SSOT-->
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
-  const APP_VERSION = "v22.7.0";
+  // Author: ChatGPT_Yui
+  const APP_VERSION = "v23.9.57";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-02-15_1156_ui-fix26";
+  const BUILD_ID = "2026-03-18_barcode-trace-r1";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -109,8 +102,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 
   <meta charset="UTF-8">
   <script>
-  // === VERSION SSOT (auto) ===
-  window.VERSION_INFO = 'v22.7.0';
+  // === VERSION SSOT: APP_VERSION/BUILD_IDのみで管理 ===
   </script>
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -118,7 +110,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#D50000">
-  <title>Smart Price v22.7.0</title>
+  <title>Smart Price v23.9.57</title>
   <!-- ✅ SW RESET TOOL (v22.7.0) : ?reset=sw -->
   <script>
   (function() {
@@ -230,6 +222,14 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
     .stat-item { text-align: center; flex: 1; color: #aaa; }
     .stat-val { display: block; font-weight: bold; color: #fff; font-size: 0.9rem; }
 
+    .sp-store-price-box { display:flex; flex-direction:column; background:#262626; padding:10px; border-radius:8px; margin-bottom:15px; font-size:0.75rem; border:1px solid #333; }
+    .sp-store-price-title { font-weight:700; color:#fff; margin-bottom:6px; }
+    .sp-store-price-row { padding:6px 0; border-top:1px solid #333; }
+    .sp-store-price-row:first-of-type { border-top:none; }
+    .sp-store-price-shop { font-weight:600; color:#fff; }
+    .sp-store-price-meta { font-size:12px; color:#aaa; }
+    .sp-store-price-empty { display:flex; flex-direction:column; background:#262626; padding:10px; border-radius:8px; margin-bottom:15px; font-size:12px; color:#777; border:1px solid #333; }
+
     .history-row { font-size: 0.8rem; padding: 10px 0; border-top: 1px solid #333; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
     
     /* ✅ P0: 購入履歴選択時の赤枠を#priceSectionと同じ仕様へ統一 */
@@ -245,6 +245,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
     }
 
     #camera-area { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100dvh; background: black; z-index: 2000; }
+    #camera-area[style*="display: none"], #camera-area[style*="display:none"] { pointer-events: none !important; }
     #interactive { width: 100%; height: 100%; position: relative; }
     #interactive video { width: 100%; height: 100%; object-fit: cover; }
     /* ✅ スキャナ画面：合わせ窓（角丸ガイド枠）- 既存UIと統一 */
@@ -299,13 +300,26 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
       } 
     }
 
-    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 3000; justify-content: center; align-items: center; }
-    .modal-content { background: #1e1e1e; padding: 25px; border-radius: 20px; width: 95%; max-width: 450px; border: 1px solid #D50000; }
+    /* モーダル基本 */
+    .modal { display: none; }
+    /* show-modal クラスで全画面オーバーレイ表示 */
+    .modal.show-modal {
+      display: flex !important;
+      position: fixed !important;
+      inset: 0 !important;
+      background: rgba(0,0,0,0.85) !important;
+      z-index: 99000 !important;
+      justify-content: center !important;
+      align-items: center !important;
+      padding: 10px !important;
+      box-sizing: border-box !important;
+    }
+    .modal-content { background: #1e1e1e; padding: 20px; border-radius: 20px; width: 100%; max-width: 450px; max-height: 90vh; border: 1px solid #D50000; box-sizing: border-box; overflow-y: auto; display: flex !important; flex-direction: column !important; }
 
     .toast-container{
   position: fixed;
   top: auto;
-  bottom: 110px; /* fallback */
+  bottom: 110px;
   left: 50%;
   transform: translateX(-50%);
   width: min(92vw, 420px);
@@ -452,7 +466,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 
 
 /* === PATCH: settings modal visibility & stacking (settingsnav-r3) === */
-#settingsModal { z-index: 100500; }
+#settingsModal.show-modal { z-index: 100500 !important; }
 #settingsModal .modal-content { max-height: 80vh; overflow-y: auto; }
 #settingsModal .sp-settings-box { max-height: 70vh; overflow-y: auto; }
 #settingsModal .sp-settings-menu { position: sticky; top: 0; background: rgba(26,26,26,0.98); padding-top: 6px; z-index: 2; }
@@ -716,27 +730,44 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 
 
 /* UIFIX24: 設定モーダルのボタン間隔と高さを統一 */
+/* UIFIX24: 設定モーダルのボタン間隔と高さを統一 */
 #settingsModal .modal-content { display:flex; flex-direction:column; gap:10px; }
 #settingsModal .modal-content .btn { min-height: 52px; }
 #settingsModal .modal-content .btn.btn-link { min-height: auto; }
 
+
+
+
+/* === SP DEBUG PANEL v2 === */
+#sp-dbg-panel {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  background: #111; color: #0f0; font: 10px/1.3 monospace;
+  z-index: 99999999; border-top: 2px solid #0f0;
+  max-height: 45vh; display: none; flex-direction: column;
+}
+#sp-dbg-log { flex: 1; overflow-y: auto; padding: 4px 6px; }
+#sp-dbg-log .e { color: #f44; }
+#sp-dbg-log .w { color: #fa0; }
+#sp-dbg-log .ok { color: #0f0; }
+#sp-dbg-bar {
+  display: flex; gap: 4px; padding: 4px 6px;
+  background: #222; border-top: 1px solid #444; flex-shrink: 0;
+}
+#sp-dbg-bar button {
+  font: 10px monospace; padding: 2px 8px; border: 1px solid #555;
+  background: #333; color: #fff; border-radius: 3px; cursor: pointer;
+}
+#sp-dbg-toggle {
+  position: fixed; bottom: 0; right: 60px;
+  background: #050; color: #0f0; font: bold 10px monospace;
+  padding: 3px 8px; z-index: 100000000; border: 1px solid #0f0;
+  border-radius: 4px 4px 0 0; cursor: pointer;
+}
 </style>
 
 <script>
 // === SAFETY WRAPPERS (keep onclick working) ===
-window.startScanner = window.startScanner || function() {
-  try {
-    // 手入力で隠した要素を復帰
-    try{ document.querySelectorAll('.scan-frame,.scan-laser').forEach(el=>el.style.display='block'); }catch(e){}
-    try{ const inter=document.getElementById('interactive'); if(inter){ inter.style.pointerEvents='auto'; } }catch(e){}
-    if (typeof startScannerImpl === 'function') return startScannerImpl();
-    if (typeof SmartPriceScanner?.start === 'function') return SmartPriceScanner.start();
-    if (typeof openScanner === 'function') return openScanner();
-    if (typeof showToast === 'function') showToast('スキャン機能の初期化に失敗しました（startScanner未接続）');
-  } catch(e) {
-    try { if (typeof showToast==='function') showToast('スキャン起動エラー: ' + (e?.message||e)); } catch(_){}
-  }
-};
+// startScanner SAFETY WRAPPER removed - function defined below
 window.showVeggieMenu = window.showVeggieMenu || function() {
   try {
     if (typeof showVeggieMenuImpl === 'function') return showVeggieMenuImpl();
@@ -753,7 +784,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 <body>
 <header class="header d-flex justify-content-between align-items-center">
    <h5 class="m-0 fw-bold text-white"><i class="bi bi-cart4"></i> Smart Price <span class="v-badge" id="versionBadge">…</span></h5>
-  <button class="btn btn-sm btn-outline-light" id="settingsBtn"><i class="bi bi-gear-fill"></i></button>
+  <button class="btn btn-sm btn-outline-light" id="settingsBtn" onclick="window.openSettings && window.openSettings()"><i class="bi bi-gear-fill"></i></button>
 </header>
 
 <div class="store-area"><div id="store-list" class="store-list"></div></div>
@@ -762,7 +793,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   <div id="mainView">
     <div class="row g-2 mb-4">
       <div class="col-7"><button id="scanBtnTop" class="btn btn-danger w-100 py-3 rounded-4 shadow" onclick="startScanner()"><i class="bi bi-upc-scan fs-1"></i><br>スキャン</button></div>
-      <div class="col-5"><button class="btn btn-dark w-100 py-3 rounded-4 border-secondary shadow" onclick="openBarcodeManual()"><i class="bi bi-keyboard fs-1"></i><br>手入力</button></div>
+      <div class="col-5"><button class="btn btn-dark w-100 py-3 rounded-4 border-secondary shadow" onclick="window.openBarcodeManual && window.openBarcodeManual()"><i class="bi bi-keyboard fs-1"></i><br>手入力</button></div>
     </div>
     <div id="historyList"></div>
   </div>
@@ -786,7 +817,12 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
             <input type="file" id="imgInput" accept="image/*" style="display:none;" onchange="handleImage(this)">
           </div>
           <div class="flex-grow-1">
-            <input type="text" id="inputName" class="form-control bg-dark text-white border-secondary mb-2" placeholder="商品名（内容量）">
+            <div class="d-flex align-items-center mb-2 gap-1">
+              <input type="text" id="inputName" class="form-control bg-dark text-white border-secondary" placeholder="商品名（内容量）" style="flex:1;">
+              <button id="aiNameBtn" onclick="aiRefineName()" title="AIで商品名を整える"
+                style="flex-shrink:0; width:36px; height:36px; border-radius:8px; border:1px solid #555; background:#1a1a2e; color:#a78bfa; font-size:16px; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:all 0.2s;"
+                onmouseenter="this.style.background='#2d2d4e'" onmouseleave="this.style.background='#1a1a2e'">✨</button>
+            </div>
             <select id="inputCategory" class="form-control bg-dark text-white border-secondary mb-2" style="font-size:0.85rem; padding:4px;"></select>
             <!-- ✅ サブカテゴリ復活（最小UI） -->
             <select id="inputSubCategory" class="form-control bg-dark text-white border-secondary mb-2" style="font-size:0.85rem; padding:4px; display:none;"></select>
@@ -811,6 +847,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
         </div>
 
         <div id="statsBox" class="stats-strip"></div>
+        <div id="storePriceStatsBox"></div>
         <div id="detailHistory" class="mb-3" style="display:none;"></div>
 
         <div class="text-center mb-3">
@@ -819,6 +856,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 
         <div class="d-flex gap-2 mb-3">
           <button id="delHistBtn" class="btn btn-outline-secondary py-3 fw-bold flex-grow-0 px-3 shadow" style="display:none;" onclick="confirmDeleteHist()">削除</button>
+          <button id="delProductBtn" class="btn btn-outline-danger py-3 fw-bold flex-grow-0 px-3 shadow" style="display:none;" onclick="confirmDeleteProduct()" title="この商品を完全削除">🗑</button>
           <button id="saveBtn" class="btn btn-danger py-3 fw-bold fs-5 shadow flex-grow-1" onclick="saveData()">保存</button>
         </div>
       </div>
@@ -881,7 +919,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   </div>
 </div>
 
-<div id="settingsModal" class="modal" style="z-index: 9999;">
+<div id="settingsModal" class="modal">
   <div class="modal-content">
     <h5 class="text-white mb-4 text-center" id="settingsTitle" onclick="handleSettingsTitleClick()" style="cursor: pointer;">設定</h5>
 
@@ -902,37 +940,48 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
       </div>
 
       <div id="panelReferral" class="sp-panel mt-3" style="display:none;">
-        <div class="small text-secondary mb-2" style="opacity:.9;">個人ID：<span class="text-white fw-bold" id="sp-personal-id-panelReferral"></span></div>
 
-        <div class="small text-secondary mb-2">
-          この「紹介リンク」を友人に送ってください。友人が開くと、あなたの紹介IDが記録されます。
-        </div>
-        <div class="mt-2">
-        <div class="small text-secondary mb-1">あなたの紹介ID</div>
-        <div class="d-flex gap-2 mb-2">
-          <input id="ref-my-id" class="form-control bg-dark text-white border-secondary" readonly>
-          <button class="btn btn-dark" onclick="spCopy('ref-my-id')">コピー</button>
+        <!-- ハンドルネーム設定 -->
+        <div class="mb-3">
+          <div class="small text-secondary mb-1">あなたのハンドルネーム <span class="text-warning">※友人に表示される名前</span></div>
+          <div class="d-flex gap-2">
+            <input id="ref-handle-input" class="form-control bg-dark text-white border-secondary" placeholder="例: たろう、Taro123" maxlength="20">
+            <button class="btn btn-outline-light" onclick="saveHandle()">保存</button>
+          </div>
+          <div class="small text-secondary mt-1" style="opacity:.7;">※本名・メールアドレスは使わないでください</div>
         </div>
 
-        <div class="small text-secondary mb-1">紹介リンク</div>
-        <textarea id="ref-link" class="form-control bg-dark text-white border-secondary url-box mb-2" rows="2" readonly></textarea>
-
-        <div class="d-flex gap-2 mb-3">
-          <button class="btn btn-dark flex-grow-1" onclick="spCopy('ref-link')">コピー</button>
-          <button class="btn btn-danger flex-grow-1" onclick="spShareReferral()">共有</button>
+        <!-- 紹介の説明 -->
+        <div class="small text-secondary mb-3" style="line-height:1.6;">
+          友人に「紹介文＋リンク」を送るだけ。友人がリンクから開くと自動で紹介が記録されます。あなたのIDは外部に公開されません。
         </div>
-        
-        <button class="btn btn-primary w-100 py-2 mb-3" onclick="showReferralStatus()">
-          👥 紹介者の利用状況を確認
+
+        <!-- 紹介リンク（表示のみ・コピーは一括ボタンから） -->
+        <div class="small text-secondary mb-1">紹介リンク（内部用・自動生成）</div>
+        <textarea id="ref-link" class="form-control bg-dark text-secondary border-secondary url-box mb-3" rows="2" readonly style="font-size:0.7rem;opacity:0.7;"></textarea>
+
+        <!-- 一括アクションボタン -->
+        <div class="d-grid gap-2 mb-3">
+          <button class="btn btn-danger py-2" onclick="spShareReferral()">
+            📤 紹介文＋リンクを共有する
+          </button>
+          <button class="btn btn-outline-light" onclick="spCopyReferral()">
+            📋 紹介文＋リンクをコピー
+          </button>
+        </div>
+
+        <button class="btn btn-outline-secondary w-100 py-2 mb-3" onclick="showReferralStatus()">
+          👥 紹介した友人の利用状況を確認
         </button>
 
+        <!-- 隠しフィールド（内部処理用） -->
+        <input id="ref-my-id" type="hidden">
         <div id="ref-from-status" class="small text-secondary mt-2" style="opacity:.9;"></div>
         <div id="referral-status-list" class="mt-2" style="display:none;"></div>
       </div>
         <div class="mt-3 d-grid">
           <button type="button" class="btn btn-outline-secondary sp-back-btn" data-back="">戻る</button>
         </div>
-      </div>
 
       <div id="panelFamily" class="sp-panel mt-3" style="display:none;">
         <div class="small text-secondary mb-2" style="opacity:.9;">個人ID：<span class="text-white fw-bold" id="sp-personal-id-panelFamily"></span></div>
@@ -1075,7 +1124,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 </div>
 
 <!-- 生活圏設定モーダル -->
-<div id="homeCityModal" class="modal" style="z-index: 10002;">
+<div id="homeCityModal" class="modal">
   <div class="modal-content">
     <h5 class="text-white mb-3 text-center">生活圏の設定</h5>
     
@@ -1103,7 +1152,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 </div>
 
 <!-- バーコード手入力モーダル -->
-<div id="barcodeManualModal" class="modal" style="z-index: 10000;">
+<div id="barcodeManualModal" class="modal">
   <div class="modal-content">
     <h5 class="text-white mb-4 text-center">バーコード手入力</h5>
     
@@ -1459,32 +1508,56 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 
   // ========= Category Tree（Amazon/Rakutenを実用レベルに整理＋追記可） =========
   const DEFAULT_CATEGORY_TREE = {
-    "ドリンク": ["水・ミネラルウォーター","炭酸飲料","乳飲料","コーヒー","紅茶","お茶","スポーツドリンク","ジュース","粉末ドリンク","その他"],
-    "お酒": ["ビール","発泡酒","チューハイ","日本酒","焼酎","ワイン","ウイスキー","梅酒","その他"],
-    "菓子・スナック": ["スナック","チョコ","ビスケット","キャンディ・ガム","和菓子","ナッツ","その他"],
-    "米・雑穀": ["白米","玄米","雑穀米","もち米","ご飯パック","餅","その他"],
-    "麺類・パスタ": ["ラーメン","うどん","そば","そうめん","焼きそば","パスタ","その他"],
-    "パン・ジャム・シリアル": ["パン","ジャム・はちみつ","シリアル","その他"],
-    "精肉・肉加工品": ["牛肉","豚肉","鶏肉","挽肉","加工品","セット","その他"],
-    "魚介類・水産加工品": ["マグロ","サケ","サバ","エビ","カニ","貝類","海藻類","魚卵","加工品","その他"],
-    "野菜・きのこ": ["葉物","根菜","果菜","きのこ","豆類","カット野菜","その他"],
-    "フルーツ・果物": ["柑橘","りんご系","ベリー","バナナ","ぶどう","その他"],
-    "乳製品・卵": ["牛乳","ヨーグルト","チーズ","バター・マーガリン","卵","代替品","その他"],
-    "豆腐・納豆・こんにゃく・練り物": ["豆腐","納豆","こんにゃく","練り物","その他"],
-    "漬物・佃煮": ["漬物","梅干し","キムチ","佃煮","その他"],
-    "冷凍食品": ["冷凍惣菜","冷凍麺","冷凍野菜","アイス","その他"],
-    "惣菜・チルド": ["和風惣菜","洋風惣菜","中華惣菜","韓国惣菜","その他"],
-    "レトルト・料理の素": ["カレー","スープ","丼","パスタソース","料理の素","その他"],
-    "缶詰・瓶詰": ["水産","肉","野菜","フルーツ","惣菜","その他"],
-    "乾物": ["海苔","鰹節","昆布","わかめ","春雨","その他"],
-    "粉類": ["小麦粉","片栗粉","パン粉","米粉","その他"],
-    "調味料・食用油・ドレッシング": ["砂糖","塩","酢","しょうゆ","みそ","だし","めんつゆ","ソース・たれ","ケチャップ","マヨネーズ","スパイス","油","ドレッシング","その他"],
-    "ベビーフード": ["離乳食","おやつ","その他"],
-    "健康食品": ["サプリ","プロテイン","その他"],
-    "介護用食品": ["やわらか食","とろみ","その他"],
-    "ミールキット": ["ミールキット","その他"],
-    "日用品": ["洗剤","キッチン用品","紙製品","衛生用品","その他"],
-    "薬": ["風邪","胃腸","痛み","外用","その他"],
+    // ── 飲み物 ──────────────────────────────
+    "水・お茶": ["ミネラルウォーター","麦茶","緑茶","ウーロン茶","ほうじ茶","その他"],
+    "炭酸飲料": ["コーラ","サイダー","フレーバー炭酸","炭酸水","その他"],
+    "コーヒー・紅茶": ["缶コーヒー","RTDコーヒー","紅茶飲料","ミルクティー","その他"],
+    "スポーツ・栄養ドリンク": ["スポーツドリンク","エナジードリンク","栄養ドリンク","その他"],
+    "果汁・野菜ジュース": ["100%果汁","野菜ジュース","混合飲料","その他"],
+    "乳飲料": ["牛乳","カフェオレ","豆乳","乳酸菌飲料","その他"],
+    "粉末・濃縮飲料": ["粉末スティック","濃縮タイプ","その他"],
+    // ── アルコール ───────────────────────────
+    "ビール・発泡酒": ["ビール","発泡酒","第三のビール","ノンアルコール","その他"],
+    "チューハイ・サワー": ["缶チューハイ","缶サワー","ハイボール缶","その他"],
+    "日本酒・焼酎": ["日本酒","焼酎","泡盛","梅酒","その他"],
+    "ワイン・洋酒": ["赤ワイン","白ワイン","ロゼ","スパークリング","ウイスキー","ブランデー","その他"],
+    // ── 主食 ────────────────────────────────
+    "米・ご飯": ["白米","玄米","雑穀米","もち米","パックご飯","餅","その他"],
+    "パン": ["食パン","菓子パン","総菜パン","その他"],
+    "麺類": ["即席ラーメン","生麺・チルド麺","うどん","そば","そうめん","パスタ","焼きそば","その他"],
+    "シリアル・グラノーラ": ["シリアル","グラノーラ","オートミール","その他"],
+    // ── おかず・加工食品 ──────────────────────
+    "肉・肉加工品": ["牛肉","豚肉","鶏肉","挽肉","ハム・ソーセージ","ベーコン","その他"],
+    "魚介・水産加工品": ["生鮮魚介","干物","練り物","海藻","魚卵","その他"],
+    "卵・乳製品": ["卵","牛乳","ヨーグルト","チーズ","バター","生クリーム","その他"],
+    "豆腐・大豆食品": ["豆腐","納豆","油揚げ","豆乳","その他"],
+    "野菜・果物": ["葉物野菜","根菜","きのこ","カット野菜","果物","その他"],
+    "惣菜・チルド": ["和惣菜","洋惣菜","中華惣菜","サラダ","その他"],
+    "冷凍食品": ["冷凍弁当・惣菜","冷凍麺","冷凍野菜","冷凍肉・魚","アイス","その他"],
+    "缶詰・瓶詰・レトルト": ["魚缶","肉缶","野菜缶","カレー","スープ","丼の素","その他"],
+    "乾物・乾燥食品": ["海苔","鰹節・だし","昆布","乾燥わかめ","春雨","その他"],
+    // ── 調味料・料理材料 ──────────────────────
+    "基本調味料": ["塩","砂糖","しょうゆ","みそ","酢","みりん","料理酒","その他"],
+    "ソース・たれ類": ["ウスターソース","ケチャップ","マヨネーズ","ドレッシング","ポン酢","焼肉のたれ","その他"],
+    "だし・スープの素": ["和風だし","コンソメ","鶏ガラスープ","その他"],
+    "油・バター類": ["サラダ油","オリーブオイル","ごま油","バター・マーガリン","その他"],
+    "小麦粉・粉類": ["薄力粉","強力粉","片栗粉","パン粉","ミックス粉","その他"],
+    "スパイス・香辛料": ["コショウ","カレー粉","ハーブ類","わさび・からし","その他"],
+    // ── お菓子 ──────────────────────────────
+    "スナック菓子": ["ポテト系","コーン系","ポップコーン","せんべい","その他"],
+    "チョコ・キャンディ": ["チョコレート","キャラメル","グミ","キャンディ","ガム","その他"],
+    "ビスケット・クッキー": ["ビスケット","クッキー","ウエハース","その他"],
+    "和菓子": ["どら焼き","大福","羊羹","おかき","その他"],
+    "ナッツ・ドライフルーツ": ["ミックスナッツ","アーモンド","ドライフルーツ","その他"],
+    // ── 健康・特殊 ──────────────────────────
+    "健康食品・サプリ": ["ビタミン","プロテイン","サプリメント","機能性食品","その他"],
+    "ベビー・介護食": ["離乳食","ベビーおやつ","介護食","その他"],
+    // ── 日用品 ──────────────────────────────
+    "洗濯用品": ["洗濯洗剤","柔軟剤","漂白剤","その他"],
+    "台所用品": ["食器用洗剤","スポンジ","ラップ・ホイル","その他"],
+    "トイレ・掃除用品": ["トイレットペーパー","ティッシュ","洗剤・クリーナー","その他"],
+    "衛生・ボディケア": ["シャンプー","ボディソープ","歯磨き","生理用品","マスク","その他"],
+    "薬・医薬品": ["風邪薬","胃腸薬","鎮痛剤","外用薬","目薬","その他"],
     "その他": ["その他"]
   };
 
@@ -2003,7 +2076,8 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   function parseInviteCode() {
     try {
       const params = new URL(location.href).searchParams;
-      const invite = params.get('invite');
+      // 'ref' パラメータ優先（紹介リンクで生成）、互換のため'invite'も読む
+      const invite = params.get('ref') || params.get('invite');
       if (invite && invite.trim().length > 0) {
         return invite.trim();
       }
@@ -3373,14 +3447,26 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         }
       }
 
+      // ✅ 統計計算（平均・最安・前回）
+      const allPrices = hlist.map(h => Number(h.price)).filter(p => !isNaN(p) && p > 0);
+      const avgP = allPrices.length ? Math.round(allPrices.reduce((a,b)=>a+b,0)/allPrices.length) : null;
+      const minP = allPrices.length ? Math.min(...allPrices) : null;
+      const lastP = last && last.price ? Number(last.price) : null;
+      const statsHtml = (allPrices.length >= 2) ? `
+        <div class="d-flex gap-2 mt-1" style="font-size:0.6rem; color:#aaa;">
+          <span>平均 <b style="color:#fff;">${avgP}円</b></span>
+          <span>最安 <b style="color:#e74c3c;">${minP}円</b></span>
+          <span>前回 <b style="color:#fff;">${lastP}円</b></span>
+        </div>` : '';
       div.innerHTML = `
         <div class="d-flex align-items-center">
           <img id="${imgId}" src="${imgSrc}" class="prod-thumb" referrerpolicy="no-referrer">
           <div class="flex-grow-1 overflow-hidden">
             <div class="fw-bold text-white small text-truncate">${it.name || ''}</div>
             <div class="text-secondary" style="font-size:0.6rem;">${last.store || '未設定'}</div>
+            ${statsHtml}
           </div>
-          <div class="text-end ms-2">
+          <div class="text-end ms-2 flex-shrink-0">
             <div class="price-main">${last.price}<span style="font-size:0.6rem;">円</span></div>
           </div>
         </div>`;
@@ -3473,9 +3559,11 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     const saveBtn = document.getElementById('saveBtn');
     const delBtn = document.getElementById('delHistBtn');
     const storeJumpBtn = document.getElementById('storeJumpBtn');
+    const delProdBtn = document.getElementById('delProductBtn');
     if(calcArea) calcArea.style.display = 'flex';
     if(saveBtn) saveBtn.innerText = '保存';
     if(delBtn) delBtn.style.display = 'none';
+    if(delProdBtn) delProdBtn.style.display = 'none';
     if(storeJumpBtn) storeJumpBtn.style.display = 'none';
 
     curBarcode = code; editingHistIdx = null;
@@ -3504,25 +3592,9 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         prev.referrerPolicy = "no-referrer";
       }
       tempImgData = null;
-      
-      // ✅ 新規商品の場合、JANコードならYahoo検索を試行
-      if (code && /^\d{8,14}$/.test(String(code))) {
-        try {
-          const info = await lookupYahooByJan(String(code));
-          if (info) {
-            if (info.name) document.getElementById('inputName').value = info.name;
-            if (info.maker) document.getElementById('inputMaker').value = info.maker;
-            if (info.imageUrl && prev) {
-              prev.src = info.imageUrl;
-              tempImgData = { type:'url', url: info.imageUrl };
-            }
-            showToast("商品情報を取得しました", 3000);
-          }
-        } catch(e) {
-          if (isDebug()) showToast(`情報取得エラー: ${e.message}`, 5000);
-        }
-      }
+      // ※ 商品情報取得は processBarcodeData に一本化（openForm では行わない）
     } else {
+      if(delProdBtn) delProdBtn.style.display = 'block';
       document.getElementById('inputName').value = p.name || "";
       document.getElementById('inputMaker').value = p.maker || "";
 
@@ -3789,21 +3861,81 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
 
     renderDetailHistory(exists ? p.history : []);
     renderStats(exists ? p.history : []);
+    renderStorePriceStats(exists ? p.history : []);
   }
 
   function renderStats(history) {
     const box = document.getElementById('statsBox');
     if (!box) return;
     if (!Array.isArray(history) || history.length === 0) { box.innerHTML = "過去データなし"; return; }
-    const pArr = history.map(h => h.price);
+    const pArr = history.map(h => Number(h.price || 0)).filter(v => v > 0);
+    if (!pArr.length) { box.innerHTML = "過去データなし"; return; }
     const avg = Math.floor(pArr.reduce((a,b)=>a+b,0)/pArr.length);
     const low = Math.min(...pArr);
-    const last = pArr[pArr.length-1];
+    const last = pArr[0] || pArr[pArr.length-1];
     box.innerHTML = `<div class="stats-row">
       <div class="stat-item">平均<span class="stat-val">${avg}円</span></div>
       <div class="stat-item">最安<span class="stat-val text-danger">${low}円</span></div>
-      <div class="stat-item">前回<span class="stat-val">${last}円</span></div>
+      <div class="stat-item">直近<span class="stat-val">${last}円</span></div>
     </div>`;
+  }
+
+  function groupPriceLogsByShop(history) {
+    const map = {};
+    (Array.isArray(history) ? history : []).forEach(h => {
+      const price = Number(h && h.price || 0);
+      if (!price || price <= 0) return;
+      const key = [h && h.store || "", h && h.branch || ""].filter(Boolean).join(" / ") || "不明店舗";
+      if (!map[key]) map[key] = [];
+      map[key].push(h);
+    });
+    return map;
+  }
+
+  function buildShopPriceStats(grouped) {
+    const result = [];
+    Object.keys(grouped || {}).forEach(shop => {
+      const arr = (grouped[shop] || [])
+        .filter(x => Number(x && x.price || 0) > 0)
+        .sort((a, b) => Number(b && (b.created_at || b.ts || 0) || 0) - Number(a && (a.created_at || a.ts || 0) || 0));
+      if (!arr.length) return;
+      const prices = arr.map(x => Number(x.price));
+      const latest = prices[0];
+      const min = Math.min(...prices);
+      const avg = Math.round(prices.reduce((a, b) => a + b, 0) / prices.length);
+      result.push({
+        shop,
+        latest,
+        min,
+        avg,
+        count: prices.length,
+        latest_at: arr[0].created_at || arr[0].ts || 0
+      });
+    });
+    result.sort((a, b) => a.latest - b.latest);
+    return result;
+  }
+
+  function renderStorePriceStats(history) {
+    const box = document.getElementById('storePriceStatsBox');
+    if (!box) return;
+    const grouped = groupPriceLogsByShop(history);
+    const stats = buildShopPriceStats(grouped);
+    if (!stats.length) {
+      box.innerHTML = '<div class="sp-store-price-empty">店舗別価格はまだありません</div>';
+      return;
+    }
+    box.innerHTML = `
+      <div class="sp-store-price-box">
+        <div class="sp-store-price-title">店舗別価格</div>
+        ${stats.map((s, idx) => `
+          <div class="sp-store-price-row">
+            <div class="sp-store-price-shop">${s.shop}${idx === 0 ? '（最安）' : ''}</div>
+            <div class="sp-store-price-meta">最新 ${s.latest}円 / 平均 ${s.avg}円 / 最安 ${s.min}円 / ${s.count}件</div>
+          </div>
+        `).join('')}
+      </div>
+    `;
   }
 
   function renderDetailHistory(history) {
@@ -3857,6 +3989,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     document.getElementById('storeJumpBtn').style.display = "block";
 
     renderDetailHistory(p.history);
+    renderStats(p.history);
+    renderStorePriceStats(p.history);
 
     window.scrollTo({ top: 0, behavior: 'smooth' });
     showToast("店名は上のチップで変更できます", 3000);
@@ -4031,7 +4165,10 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
           const nearbyStores = await fetchNearbyStores();
           if (nearbyStores && nearbyStores.length > 0) {
             window.nearbyStoreNames = nearbyStores;
+            showToast(`📍 近隣の店舗 ${nearbyStores.length}件 取得しました`, 3000);
             if (isDebug()) console.log('[GPS] Nearby stores loaded:', nearbyStores.length);
+          } else {
+            showToast('近隣の店舗が見つかりませんでした', 4000);
           }
         } catch(e) {
           if (isDebug()) console.warn('[GPS] fetchNearbyStores failed:', e);
@@ -4280,10 +4417,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       }
     }
     
-    // ✅ 7. まとめ買い注記を追加（短く）
-    if (packHint && name.length > 0) {
-      name = name + '（ケース）';
-    }
+    // まとめ買い表記は削除するのみ（商品名に混入させない）
+    // packHintフラグは上位関数で画像差し替え等の判断に使う
     
     // ✅ デバッグログ
     if (isDebug() && (name !== original.name || maker !== original.maker)) {
@@ -4503,9 +4638,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       const proxyUrl = (window.SP_CONFIG && window.SP_CONFIG.yahooProxyExecUrl) ? window.SP_CONFIG.yahooProxyExecUrl.trim() : '';
       
       if (!proxyUrl) {
-        if (isDebug()) {
-          showToast("[楽天] Proxy URL not configured", 5000);
-        }
+        if (isDebug()) showToast('[楽天] ProxyURL未設定、スキップ', 2000);
         return null;
       }
 
@@ -4615,123 +4748,116 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     }
   }
 
-  // ========= Yahoo Shopping API（JANコード検索）with キャッシュ =========
+  // ========= Yahoo商品検索（GASプロキシ優先 → Yahoo直接API フォールバック）=========
   async function lookupYahooByJan(jan, forceUpdate = false) {
     try {
-      // ✅ キャッシュチェック（7日間有効）
+      // キャッシュチェック（7日間有効）
       const cacheKey = `yahoo_cache_${jan}`;
-      const cacheTtl = 7 * 24 * 60 * 60 * 1000; // 7日
-      
+      const cacheTtl = 7 * 24 * 60 * 60 * 1000;
       if (!forceUpdate) {
         try {
           const cached = localStorage.getItem(cacheKey);
           if (cached) {
             const cacheData = JSON.parse(cached);
             if (cacheData && cacheData.ts && (Date.now() - cacheData.ts < cacheTtl)) {
-              if (isDebug()) console.log("[YahooSearch] Cache hit:", jan);
+              if (isDebug()) showToast(`[Yahoo] キャッシュ使用: ${jan}`, 2000);
               return cacheData.data || null;
             }
           }
-        } catch(e) {
-          // キャッシュ読み込みエラーは無視
-        }
-      }
-      
-      // Config.jsonからYahoo Proxy URLを取得（最優先）
-      const proxyUrl = (window.SP_CONFIG && window.SP_CONFIG.yahooProxyExecUrl) ? window.SP_CONFIG.yahooProxyExecUrl.trim() : '';
-      
-      if (!proxyUrl) {
-        if (isDebug()) {
-          showToast("Yahoo検索プロキシURLが設定されていません", 5000);
-        }
-        return null;
+        } catch(e) {}
       }
 
-      // ✅ デバッグ: Yahoo検索開始
-      const requestUrl = `${proxyUrl}?jan=${encodeURIComponent(jan)}`;
-      if (isDebug()) {
-        showToast(`[Yahoo] Fetching: ${requestUrl}`, 5000);
-        console.log("[YahooSearch] JAN:", jan, "Proxy URL:", proxyUrl);
-        console.log("[YahooSearch] Request URL:", requestUrl);
-      }
-      
-      // ✅ AbortController+timeout（12秒）
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 12000);
-      
-      showToast("Yahoo検索中…", 5000);
-      const res = await fetch(requestUrl, { 
-        cache: 'no-store', 
-        signal: controller.signal 
-      });
-      clearTimeout(timeoutId);
-      
-      // ✅ デバッグ: HTTPステータス表示
-      if (isDebug()) {
-        showToast(`[Yahoo] HTTP Status: ${res.status} ${res.statusText}`, 5000);
-        console.log("[YahooSearch] HTTP Status:", res.status, res.statusText);
-      }
-      
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-      
-      const json = await res.json();
-      
-      if (json && json.name) {
-        const rawResult = {
-          name: json.name || "",
-          maker: json.maker || "",
-          imageUrl: json.imageUrl || ""
-        };
-        
-        // ✅ 商品情報を自動整形（12本1箱問題対応）
-        const result = normalizeYahooProductInfo(rawResult);
-        
-        // ✅ キャッシュに保存（整形後）
+      const proxyUrl = (window.SP_CONFIG && window.SP_CONFIG.yahooProxyExecUrl)
+        ? window.SP_CONFIG.yahooProxyExecUrl.trim() : '';
+      // APIキーはGASプロキシ内で管理（HTMLには置かない）
+      // config.jsonにyahooClientIdがあれば直接API呼び出しのフォールバックとして使用
+      const appId = (window.SP_CONFIG && window.SP_CONFIG.yahooClientId)
+        ? window.SP_CONFIG.yahooClientId.trim() : '';
+
+      let result = null;
+
+      // ① GASプロキシ優先
+      if (proxyUrl) {
         try {
-          localStorage.setItem(cacheKey, JSON.stringify({
-            ts: Date.now(),
-            data: result
-          }));
-        } catch(e) {
-          // キャッシュ保存エラーは無視
-        }
-        
-        if (isDebug()) {
-          console.log("[YahooSearch] Found:", json.name);
-          if (result.packHint) {
-            showToast('[Yahoo] まとめ買い商品を検出しました', 3000);
+          if (isDebug()) showToast(`[Yahoo] プロキシ検索中...`, 2000);
+          const controller = new AbortController();
+          const tid = setTimeout(() => controller.abort(), 12000);
+          const res = await fetch(`${proxyUrl}?jan=${encodeURIComponent(jan)}`, {
+            cache: 'no-store', signal: controller.signal
+          });
+          clearTimeout(tid);
+          if (res.ok) {
+            const json = await res.json();
+            if (json && json.name) {
+              result = normalizeYahooProductInfo({ name: json.name, maker: json.maker || '', imageUrl: json.imageUrl || '' });
+              if (isDebug()) showToast(`[Yahoo] プロキシOK: ${json.name.substring(0,20)}`, 3000);
+            }
           }
+        } catch(e) {
+          if (isDebug()) showToast(`[Yahoo] プロキシ失敗: ${e.message}`, 3000);
         }
-        return result;
       }
-      return null;
+
+      // ② Yahoo直接API（プロキシが失敗/未設定の場合）
+      if (!result && appId) {
+        try {
+          if (isDebug()) showToast(`[Yahoo] 直接API検索中...`, 2000);
+          const url = `https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch?appid=${encodeURIComponent(appId)}&jan_code=${encodeURIComponent(jan)}&results=3&output=json`;
+          const controller2 = new AbortController();
+          const tid2 = setTimeout(() => controller2.abort(), 12000);
+          const res2 = await fetch(url, { cache: 'no-store', signal: controller2.signal });
+          clearTimeout(tid2);
+          if (res2.ok) {
+            const json2 = await res2.json();
+            const hits = json2 && json2.hits;
+            if (hits && hits.length > 0) {
+              const item = hits[0];
+              const name = (item.name || '').trim();
+              const maker = (item.brand && item.brand.name) ? item.brand.name.trim()
+                          : (item.seller && item.seller.name) ? item.seller.name.trim() : '';
+              const imageUrl = (item.image && item.image.medium) ? item.image.medium
+                             : (item.image && item.image.small) ? item.image.small : '';
+              if (name) {
+                result = normalizeYahooProductInfo({ name, maker, imageUrl });
+                if (isDebug()) showToast(`[Yahoo] 直接APIok: ${name.substring(0,20)}`, 3000);
+              }
+            }
+          }
+        } catch(e) {
+          if (isDebug()) showToast(`[Yahoo] 直接API失敗: ${e.message}`, 3000);
+        }
+      }
+
+      // キャッシュ保存
+      if (result) {
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data: result }));
+        } catch(e) {}
+      }
+
+      return result || null;
+
     } catch(e) {
-      // ✅ デバッグ: エラー詳細表示
-      if (isDebug()) {
-        const errorDetail = e.name === 'AbortError' ? 'タイムアウト（12秒）' : e.message || '不明なエラー';
-        showToast(`[Yahoo] Error: ${errorDetail}`, 8000);
-        console.error("[YahooSearch] Error:", e);
-        console.error("[YahooSearch] Error name:", e.name);
-        console.error("[YahooSearch] Error stack:", e.stack);
-      } else {
-        showToast(`Yahoo検索失敗: ${e.name === 'AbortError' ? 'タイムアウト' : '通信エラー'}`, 5000);
-      }
+      if (isDebug()) console.error("[Yahoo] 予期しないエラー:", e);
       return null;
     }
   }
 
   // ========= 近隣店舗取得（YahooProxy経由でOSM検索） =========
+  // ✅ 買い物関係の店舗かどうか判定（病院・クリニック・銀行等を除外）
+  function isShoppingStore(name) {
+    if (!name || name.length === 0) return false;
+    const NG = ['クリニック','病院','医院','歯科','眼科','耳鼻','皮膚科','整形','内科','外科','小児科','産婦','精神','調剤','薬局','銀行','信用金庫','証券','保険','不動産','美容室','美容院','ヘアサロン','理容','床屋','学校','幼稚園','保育園','塾','教室','寺','神社','教会','ガソリン','駐車場','修理','整備','ホテル','旅館','宿','図書館','役所','市役所','区役所','町役場','郵便局','警察','消防','介護','デイサービス','福祉','ハローワーク','公民館','体育館','診療'];
+    return !NG.some(ng => name.includes(ng));
+  }
+
   async function fetchNearbyStores() {
     try {
       const proxyUrl = (window.SP_CONFIG && window.SP_CONFIG.yahooProxyExecUrl) ? window.SP_CONFIG.yahooProxyExecUrl.trim() : '';
       
       if (!proxyUrl) {
-        if (isDebug()) {
-          console.log('[FetchStores] Proxy URL not configured');
-          showToast('Yahoo Proxy URLが設定されていません', 10000);
-        }
+        if (isDebug()) console.log('[FetchStores] Proxy URL not configured');
+        showToast('店舗検索サーバーが未設定です（config.json）', 6000);
         return [];
       }
 
@@ -4750,7 +4876,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         if (json && json.ok && Array.isArray(json.stores)) {
           if (isDebug()) console.log('[FetchStores] GPS result:', json.stores.length, 'stores');
           // ✅ trim() + 空要素除去
-          return json.stores.map(s => String(s.name || '').trim()).filter(n => n.length > 0);
+          return json.stores.map(s => String(s.name || '').trim()).filter(isShoppingStore);
         }
         return [];
       }
@@ -4771,7 +4897,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         if (json && json.ok && Array.isArray(json.stores)) {
           if (isDebug()) console.log('[FetchStores] Area result:', json.stores.length, 'stores');
           // ✅ trim() + 空要素除去
-          return json.stores.map(s => String(s.name || '').trim()).filter(n => n.length > 0);
+          return json.stores.map(s => String(s.name || '').trim()).filter(isShoppingStore);
         } else if (json && !json.ok) {
           // エラー時（例：使用できないアドレス）
           if (isDebug()) {
@@ -4831,7 +4957,7 @@ function openManualEntryOnly(){
       const manual = document.getElementById('manual-entry');
 
       // 手入力モード: カメラ枠は使わず、手入力UIだけを確実に表示
-      if(ca) ca.style.display = 'block';
+      if(ca){ca.style.display='block';ca.style.pointerEvents='auto';}
 
       // 走査枠/走査ラインは隠す（手入力では不要）
       try{ document.querySelectorAll('.scan-frame,.scan-laser').forEach(el=>el.style.display='none'); }catch(e){}
@@ -4868,247 +4994,53 @@ function openManualEntryOnly(){
   }
 
 function startScanner() {
-    if(isScanning) {
-      if (isDebug()) {
-        console.log("[Scanner] Already scanning, skip");
-      }
-      return;
-    }
-    
-    // ✅ P0: Html5Qrcodeライブラリの読み込み確認
+    if (isScanning) return;
+
     if (typeof Html5Qrcode === 'undefined') {
-      const errorMsg = "バーコードスキャンライブラリが読み込まれていません。ページを再読み込みしてください。";
-      showToast(errorMsg, 10000);
-      if (isDebug()) {
-        console.error("[Scanner] Html5Qrcode library not loaded");
-        setLastError(`[Scanner] ${errorMsg}`);
-      }
+      showToast("スキャンライブラリが読み込まれていません。再読込してください。", 8000);
       return;
     }
-    
+
     isScanning = true;
-    document.getElementById('camera-area').style.display='block';
-    // ✅ P0: トースト「カメラ起動中…」は表示しない（最低でも debug=1 の時だけに限定）
-    if (isDebug()) {
-      showToast("カメラ起動中…", 2000);
-      console.log("[Scanner] Starting scanner...");
+    document.getElementById('camera-area').style.display = 'block';
+    ensureScanbarDom();
+
+    if (scanner) {
+      try { scanner.clear(); } catch(e) {}
+      scanner = null;
     }
-    
+
     try {
-      if(!scanner) {
-        scanner = new Html5Qrcode("interactive");
-        if (isDebug()) {
-          console.log("[Scanner] Html5Qrcode instance created");
-        }
-      }
+      scanner = new Html5Qrcode("interactive", { verbose: false });
     } catch(e) {
+      showToast(`スキャナー初期化失敗: ${e.message}`, 8000);
       isScanning = false;
-      document.getElementById('camera-area').style.display='none';
-      const errorMsg = `スキャナーの初期化に失敗しました: ${e.message || e}`;
-      showToast(errorMsg, 10000);
-      if (isDebug()) {
-        console.error("[Scanner] Initialization error:", e);
-        setLastError(`[Scanner] ${errorMsg}`);
-      }
+      const _ca=document.getElementById('camera-area'); if(_ca){_ca.style.display='none';_ca.style.pointerEvents='none';}
       return;
     }
-    
-    // ✅ P0: カメラのピント問題対応
-    // ✅ P0修正: cameraIdOrConfigは1キーだけにする（ライブラリの要求に準拠）
-    // ✅ getUserMedia は最初は安全に取得（落ちにくい条件）
-    const cameraConfig = {
-      facingMode: "environment" // 背面カメラ固定（1キーのみ）
-    };
-    
-    // ✅ P0: その他の設定（解像度・アスペクト比等）は別の設定引数へ分離
-    // ✅ P0修正: Html5Qrcodeライブラリの要求に準拠（cameraIdOrConfigは1キーのみ）
-    const scannerConfig = {
-      fps: 15,
-      qrbox: {width: 280, height: 180}, // ROI内だけの検出を確実にする
-      aspectRatio: 1.0, // 正方形に近い形状で精度向上
-      disableFlip: false // フリップを有効にして検出精度向上
-      // ✅ 注意: 解像度設定は、カメラ起動後にtrack.applyConstraints()で適用（後続の処理で実装済み）
-    };
-    
-    // ✅ P0: 検出は枠（ROI）内だけにして精度/速度を上げる（細い側面バーコードで特に）
-    scanner.start(cameraConfig, scannerConfig, async (t)=> {
-      // ✅ スキャンバーDOM要素を確実に生成・配置（カメラ起動成功後すぐ）
-      ensureScanbarDom();
-      ensureManualEntryDom();
-      try{ suppressQrcodeGuides(); setTimeout(suppressQrcodeGuides, 80); setTimeout(suppressQrcodeGuides, 250); setTimeout(suppressQrcodeGuides, 700);}catch(e){}
-      
-      showToast("読み取りOK", 1500);
-      
-      // ✅ P0: 取得できたら track.applyConstraints() を段階的にtry
-      try {
-        const videoElement = document.querySelector('#interactive video');
-        if (videoElement && videoElement.srcObject) {
-          const stream = videoElement.srcObject;
-          const track = stream.getVideoTracks()[0];
-          if (track) {
-            // ✅ track.getCapabilities() で端末の対応状況を確認
-            const capabilities = track.getCapabilities ? track.getCapabilities() : {};
-            const settings = track.getSettings ? track.getSettings() : {};
-            
-            // ✅ torch（ライト）対応チェック（暗所だけ自動点灯）
-            if (capabilities.torch && capabilities.torch.length > 0) {
-              try {
-                // 簡易的な明るさ判定（環境光センサーがない場合の代替）
-                // 実際の実装では、より高度な判定が必要な場合がある
-                const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-                // より確実な方法：明るさが低いと判断した場合のみ点灯
-                // ここでは、ユーザーが明示的に要求しない限り、自動点灯は控えめに
-                // 将来的には、実際の環境光センサーやカメラの明るさ情報を使用可能
-                if (isDebug()) {
-                  console.log("[Camera] torch capability available:", capabilities.torch);
-                }
-              } catch(e) {
-                if (isDebug()) {
-                  console.log("[Camera] torch check error:", e);
-                }
-              }
-            }
-            
-            // ✅ P0: ピント改善（連続AF/露出/ホワイトバランス等の強化）
-            // getCapabilities() を見て、対応端末は focusMode=continuous を優先
-            const constraints = [];
-            
-            // ✅ focusMode: continuous（連続オートフォーカス優先）
-            if (capabilities.focusMode && capabilities.focusMode.includes && capabilities.focusMode.includes("continuous")) {
-              constraints.push({ focusMode: "continuous" });
-            } else if (capabilities.focusMode && Array.isArray(capabilities.focusMode) && capabilities.focusMode.includes("continuous")) {
-              constraints.push({ focusMode: "continuous" });
-            } else {
-              // 対応していない場合は manual を試す（フォールバック）
-              if (capabilities.focusMode && (capabilities.focusMode.includes && capabilities.focusMode.includes("manual") || 
-                  (Array.isArray(capabilities.focusMode) && capabilities.focusMode.includes("manual")))) {
-                constraints.push({ focusMode: "manual" });
-              }
-            }
-            
-            // ✅ exposureMode: continuous（連続露出調整）
-            if (capabilities.exposureMode && capabilities.exposureMode.includes && capabilities.exposureMode.includes("continuous")) {
-              constraints.push({ exposureMode: "continuous" });
-            } else if (capabilities.exposureMode && Array.isArray(capabilities.exposureMode) && capabilities.exposureMode.includes("continuous")) {
-              constraints.push({ exposureMode: "continuous" });
-            }
-            
-            // ✅ whiteBalanceMode: continuous（ホワイトバランス調整）
-            if (capabilities.whiteBalanceMode && capabilities.whiteBalanceMode.includes && capabilities.whiteBalanceMode.includes("continuous")) {
-              constraints.push({ whiteBalanceMode: "continuous" });
-            } else if (capabilities.whiteBalanceMode && Array.isArray(capabilities.whiteBalanceMode) && capabilities.whiteBalanceMode.includes("continuous")) {
-              constraints.push({ whiteBalanceMode: "continuous" });
-            }
-            
-            // ✅ zoom: 1.2 は条件付き（capabilityがあり、かつ読み取りがブレる端末のみ）
-            if (capabilities.zoom && capabilities.zoom.max && capabilities.zoom.max >= 1.2) {
-              constraints.push({ zoom: 1.2 }); // 控えめなズーム（対応端末のみ）
-            }
-            
-            for (let i = 0; i < constraints.length; i++) {
-              try {
-                await track.applyConstraints({ advanced: [constraints[i]] });
-                if (isDebug()) {
-                  const constraintName = Object.keys(constraints[i])[0];
-                  showToast(`[Camera] Constraint ${i+1} OK: ${constraintName}`, 2000);
-                  console.log("[Camera] Applied constraint:", constraints[i]);
-                }
-              } catch(e) {
-                if (isDebug()) {
-                  const constraintName = Object.keys(constraints[i])[0];
-                  console.log(`[Camera] Constraint ${i+1} failed: ${constraintName}`, e.message);
-                }
-                // 失敗しても継続
-              }
-            }
-          }
-        }
-      } catch(e) {
-        if (isDebug()) {
-          console.log("[Camera] applyConstraints error:", e);
-        }
-        // エラーは握りつぶして継続
+
+    scanner.start(
+      { facingMode: "environment" },
+      { fps: 10 },
+      async (code) => {
+        await stopScanner();
+        try { await processBarcodeData(code); } catch(e) { showToast(`エラー: ${e.message}`, 8000); }
       }
-      
-      await stopScanner();
-      
-      // ✅ 共通処理へ（手入力と同じ）
-      await processBarcodeData(t);
-    }).catch((err) => {
-      // ✅ P0: スキャナー起動失敗時の詳細なエラーハンドリング
-      let errorMsg = "起動失敗";
-      let errorDetail = "";
-      
-      if (err) {
-        if (err instanceof Error) {
-          errorMsg = err.message || "起動失敗";
-          errorDetail = err.name || "";
-          if (err.stack) {
-            console.error("[Scanner] Error stack:", err.stack);
-          }
-        } else if (typeof err === 'string') {
-          errorMsg = err;
-        } else {
-          errorMsg = JSON.stringify(err) || "起動失敗";
-        }
-      }
-      
-      // エラーメッセージの詳細化
-      if (errorMsg.includes('NotAllowedError') || errorMsg.includes('Permission denied')) {
-        errorMsg = "カメラへのアクセスが拒否されました。ブラウザの設定でカメラの許可を確認してください。";
-      } else if (errorMsg.includes('NotFoundError') || errorMsg.includes('No camera found')) {
-        errorMsg = "カメラが見つかりません。カメラが接続されているか確認してください。";
-      } else if (errorMsg.includes('NotReadableError') || errorMsg.includes('Could not start video source')) {
-        errorMsg = "カメラが使用中です。他のアプリでカメラを使用していないか確認してください。";
-      } else if (errorMsg.includes('OverconstrainedError') || errorMsg.includes('constraint')) {
-        errorMsg = "カメラの設定が端末に対応していません。";
-      }
-      
-      const fullErrorMsg = errorDetail ? `${errorDetail}: ${errorMsg}` : errorMsg;
-      
-      // ✅ P0修正: スキャナー起動失敗時は必ず15秒表示（debug=1時は画面内ログにも残す）
-      const errorToastMsg = `[Scanner起動失敗] ${fullErrorMsg}`;
-      showToast(errorToastMsg, 15000); // 最低15秒
-      
-      // ✅ P0修正: debug=1 時は、同じ内容を画面内ログにも残す（消えない領域）
-      if (isDebug()) {
-        console.error("[Scanner] Start failed:", {
-          error: err,
-          message: errorMsg,
-          detail: errorDetail,
-          stack: err instanceof Error ? err.stack : '',
-          rawError: err
-        });
-      }
-      
-      // ✅ P0修正: エラーログを保存（診断ツール用）- 生の例外メッセージも必ず保存
-      addErrorLog({
-        type: 'scanner_start_failed',
-        message: errorMsg,
-        detail: errorDetail,
-        stack: err instanceof Error ? err.stack : '',
-        rawError: String(err),
-        rawErrorObject: err instanceof Error ? {
-          name: err.name,
-          message: err.message,
-          stack: err.stack
-        } : err,
-        timestamp: new Date().toISOString()
-      });
-      
-      stopScanner();
+    ).then(() => {
+      setTimeout(() => {
+        try { suppressQrcodeGuides(); } catch(e) {}
+        if (isDebug()) displayScanbarDebugInfo();
+      }, 300);
+    }).catch(err => {
+      showToast(`カメラ起動失敗: ${err && (err.message || String(err))}`, 8000);
+      isScanning = false;
+      scanner = null;
+      const _ca=document.getElementById('camera-area'); if(_ca){_ca.style.display='none';_ca.style.pointerEvents='none';}
     });
-    
-    // ✅ スキャンバーDOM要素を確実に生成・配置（エラー時も実行）
-    setTimeout(() => {
-      ensureScanbarDom();
-      
-      // ✅ debug=1時にスキャンバー情報を表示
-      if (isDebug()) {
-        displayScanbarDebugInfo();
-      }
-    }, 300); // カメラ起動後0.3秒待ってから実行
   }
+  window.startScanner = startScanner; // ← windowに登録
+
+
   
   // ✅ スキャンバーDOM要素を確実に生成・配置する関数（自己修復機能）
   function ensureScanbarDom() {
@@ -5439,14 +5371,23 @@ return true;
   }
 
   async function stopScanner() {
-    if(scanner) {
+    isScanning = false;
+    if (scanner) {
       try { await scanner.stop(); } catch(e) {}
-      finally { document.getElementById('camera-area').style.display='none'; isScanning = false;
-      try{ const me=document.getElementById('manual-entry'); if(me) me.style.display='none'; const mi=document.getElementById('manualCodeInput'); if(mi) mi.value=''; }catch(e){} }
-    } else {
-      document.getElementById('camera-area').style.display='none'; isScanning = false;
+      try { scanner.clear(); } catch(e) {}
+      scanner = null;
     }
+    // BarcodeDetector stream残留対策
+    if (window._scanStream) {
+      try { window._scanStream.getTracks().forEach(t => t.stop()); } catch(e) {}
+      window._scanStream = null;
+    }
+    const nv = document.getElementById('scannerNativeVideo');
+    if (nv) { try { nv.srcObject = null; nv.remove(); } catch(e) {} }
+    const _ca=document.getElementById('camera-area'); if(_ca){_ca.style.display='none';_ca.style.pointerEvents='none';}
+    try { const me = document.getElementById('manual-entry'); if(me) me.style.display='none'; } catch(e) {}
   }
+
 
   async function showHome() {
     try{ clearToasts(); }catch(e){}
@@ -5478,70 +5419,300 @@ return true;
   }
 
   // ✅ P0: 商品名クリーニング（箱売り情報・不要な情報を除去）
+  // ========= AI商品名補助 =========
+  // ✅ maker fallback v23.9.56: 優先順位付きでベストメーカーを選ぶ
+  function pickBestMaker(aiMaker, yahooMaker, rakutenMaker, existingMaker) {
+    const candidates = [aiMaker, yahooMaker, rakutenMaker, existingMaker];
+    for (const v of candidates) {
+      if (typeof v === 'string' && v.trim()) return v.trim();
+    }
+    return '';
+  }
+
+  async function aiRefineName() {
+    // === KIRA FIX v23.9.56 ===
+    const nameInput = document.getElementById('inputName');
+    const makerInput = document.getElementById('inputMaker');
+    const catSelect = document.getElementById('inputCategory');
+    const btn = document.getElementById('aiNameBtn');
+    const rawName = (nameInput?.value || '').trim();
+
+    console.log('[KIRA] aiRefineName start', { rawName });
+
+    if (!rawName) { showToast('商品名を入力してください', 2000); return; }
+
+    btn.textContent = '⏳';
+    btn.style.pointerEvents = 'none';
+
+    // カテゴリ選択肢を取得
+    const catOptions = catSelect ? Array.from(catSelect.options).map(o => o.value).filter(v => v).join('、') : '';
+
+    // APIキー取得（window.ANTHROPIC_API_KEY が未定義の場合は空文字）
+    const apiKey = (typeof window.ANTHROPIC_API_KEY !== 'undefined' && window.ANTHROPIC_API_KEY)
+      ? window.ANTHROPIC_API_KEY
+      : '';
+
+    if (!apiKey) {
+      console.warn('[KIRA] ANTHROPIC_API_KEY が未設定です');
+      showToast('APIキーが設定されていません', 3000);
+      btn.textContent = '✨';
+      btn.style.pointerEvents = 'auto';
+      return;
+    }
+
+    try {
+      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 300,
+          system: `あなたはスーパーの価格比較アプリのアシスタントです。
+商品名から以下をJSON形式で返してください：
+- name: 整形済み商品名（まとめ売り表記・EC販促情報を除去、内容量は残す）
+- maker: メーカー名（不明なら空文字）
+- category: カテゴリ（選択肢から最も近いものを1つ選ぶ。選択肢にない場合は空文字）
+必ずJSON only、余計な説明なし。`,
+          messages: [{
+            role: 'user',
+            content: `商品名: ${rawName}
+カテゴリ選択肢: ${catOptions}
+
+→ JSON:`
+          }]
+        })
+      });
+
+      console.log('[KIRA] API status', resp.status);
+      const data = await resp.json();
+      console.log('[KIRA] API raw data', data);
+
+      const text = (data?.content?.[0]?.text || '').trim().replace(/```json|```/g, '').trim();
+      const result = JSON.parse(text);
+      console.log('[KIRA] API result', result);
+
+      if (result.name) nameInput.value = result.name;
+
+      // ✅ maker fallback v23.9.56: hints から候補を取得してベストを選ぶ
+      const hints = window.latestProductHints || {};
+      console.log('[KIRA] maker candidates', {
+        ai: result?.maker || '',
+        yahoo: hints?.yahooMaker || '',
+        rakuten: hints?.rakutenMaker || '',
+        existing: hints?.existingMaker || ''
+      });
+
+      const bestMaker = pickBestMaker(
+        result?.maker || '',
+        hints?.yahooMaker || '',
+        hints?.rakutenMaker || '',
+        hints?.existingMaker || ''
+      );
+      console.log('[KIRA] best maker selected', bestMaker);
+
+      if (bestMaker && makerInput) {
+        makerInput.value = bestMaker;
+        console.log('[KIRA] maker assign done', makerInput.value);
+      }
+
+      if (result.category && catSelect) {
+        for (let opt of catSelect.options) {
+          if (opt.value === result.category) { catSelect.value = result.category; break; }
+        }
+      }
+      btn.textContent = '✅';
+      setTimeout(() => { btn.textContent = '✨'; }, 2000);
+      showToast('商品名・カテゴリ・メーカーを入力しました', 2000);
+    } catch(e) {
+      console.error('[KIRA] aiRefineName error', e);
+      console.error('[KIRA] aiRefineName error message', e?.message || '');
+      btn.textContent = '✨';
+      showToast('AI補助に失敗しました', 2000);
+    } finally {
+      btn.style.pointerEvents = 'auto';
+    }
+  }
+  window.aiRefineName = aiRefineName;
+
   function cleanProductName(name) {
     if (!name) return '';
     let cleaned = String(name).trim();
-    
-    // 箱売り情報を除去
-    cleaned = cleaned.replace(/[×xX]\d+[個本入枚缶袋]/g, ''); // ×10個、×12本、×24入 など
-    cleaned = cleaned.replace(/\d+[個本入枚缶袋]セット/g, ''); // 12個セット など
-    cleaned = cleaned.replace(/\（ケース）/g, ''); // （ケース）
-    cleaned = cleaned.replace(/\[ケース\]/g, ''); // [ケース]
-    cleaned = cleaned.replace(/ケース販売/g, ''); // ケース販売
-    
-    // 送料情報を除去
-    cleaned = cleaned.replace(/送料[別込無料]/g, ''); // 送料別、送料込、送料無料
-    cleaned = cleaned.replace(/\|.*送料.*/g, ''); // | 送料別 など
-    
+
+    // 箱売り・まとめ買い表記を除去
+    cleaned = cleaned.replace(/[×xX]\s*\d+\s*[個本入枚缶袋パック]/g, '');
+    cleaned = cleaned.replace(/\d+\s*[個本入枚缶袋パック]\s*[×x]\s*/g, '');
+    cleaned = cleaned.replace(/\d+\s*[個本入枚缶袋パック]\s*セット/g, '');
+    cleaned = cleaned.replace(/（ケース）/g, '');
+    cleaned = cleaned.replace(/\[ケース\]/g, '');
+    cleaned = cleaned.replace(/ケース販売/g, '');
+    cleaned = cleaned.replace(/ケース買い/g, '');
+    cleaned = cleaned.replace(/まとめ買い/g, '');
+    cleaned = cleaned.replace(/業務用/g, '');
+    cleaned = cleaned.replace(/セット販売/g, '');
+    cleaned = cleaned.replace(/箱買い/g, '');
+
+    // 送料・販促情報を除去
+    cleaned = cleaned.replace(/送料[別込無料]/g, '');
+    cleaned = cleaned.replace(/\|.*送料.*/g, '');
+    cleaned = cleaned.replace(/【[^】]*】/g, '');   // 【○○】を全除去
+    cleaned = cleaned.replace(/「[^」]*」/g, '');   // 「○○」を全除去
+    cleaned = cleaned.replace(/\([^)]*送料[^)]*\)/g, '');
+    cleaned = cleaned.replace(/\([^)]*ポイント[^)]*\)/g, '');
+
+    // ECサイト・店舗名を除去
+    cleaned = cleaned.replace(/楽天|Amazon|ヤフー|Yahoo!?|Rakuten|公式|本店/gi, '');
+
+    // メーカー名が先頭に重複している場合を検出して除去
+    // 例：「日清食品 日清のどん兵衛 天ぷらそば」→「日清のどん兵衛 天ぷらそば」
+    // （メーカー名除去はlookupMakerByJanと連携して行う）
+
     // 余分な空白・記号を整理
     cleaned = cleaned.replace(/\s+/g, ' ').trim();
-    cleaned = cleaned.replace(/\s*\|\s*$/, '').trim(); // 末尾の | を除去
-    
+    cleaned = cleaned.replace(/^[\s　\-・|／]+|[\s　\-・|／]+$/g, '').trim();
+
     return cleaned;
   }
 
-  // ✅ P0: メーカー名検証（販売店名などの不正確な情報を検出）
+  // メーカー名検証（販売店名・ECサイト名を除外）
   function validateMakerName(maker) {
     if (!maker) return '';
     const cleaned = String(maker).trim();
-    
-    // 販売店名のパターン（除外すべきもの）
+
+    // 販売店・ECサイト名パターン（空文字を返す）
     const invalidPatterns = [
-      /店$/,           // 「○○店」で終わる
-      /ショップ$/,     // 「○○ショップ」で終わる
-      /販売$/,         // 「○○販売」で終わる
-      /^楽天/,         // 「楽天○○」で始まる
-      /^Amazon/i,      // 「Amazon○○」で始まる
-      /^Yahoo/i,       // 「Yahoo○○」で始まる
-      /！$/            // 「○○！」で終わる（販売店名の特徴）
+      /店$/, /ショップ$/, /販売$/, /通販$/, /市場$/,
+      /^楽天/, /^Amazon/i, /^Yahoo/i, /^Rakuten/i,
+      /^ヤフー/, /^メルカリ/i, /公式$/, /！$/, /!$/,
+      /オンライン$/, /ダイレクト$/, /ストア$/,
+      /[0-9]{5,}/,  // 数字が5桁以上（注文番号っぽい）
     ];
-    
-    // 不正確なパターンに一致する場合は空文字を返す
+
     for (const pattern of invalidPatterns) {
       if (pattern.test(cleaned)) {
-        if (isDebug()) {
-          console.log(`[MakerValidation] Invalid maker name detected: ${cleaned}`);
-        }
+        if (isDebug()) console.log(`[MakerValidation] 除外: ${cleaned}`);
         return '';
       }
     }
-    
+
+    // 長すぎる（30文字超）はメーカー名ではなく商品説明の可能性
+    if (cleaned.length > 30) return '';
+
     return cleaned;
+  }
+
+  // JANコード先頭桁からメーカーを特定（GS1ジャパン登録情報ベース）
+  function lookupMakerByJan(jan) {
+    if (!jan || jan.length < 7) return '';
+
+    // 主要メーカーのJAN企業コード（先頭2-7桁）
+    const makerMap = [
+      // 食品・飲料
+      { prefix: '4901085', name: '明治' },
+      { prefix: '4901301', name: '森永製菓' },
+      { prefix: '4901777', name: '日清食品' },
+      { prefix: '4901990', name: '江崎グリコ' },
+      { prefix: '4902102', name: 'カルビー' },
+      { prefix: '4902201', name: 'ハウス食品' },
+      { prefix: '4902370', name: '任天堂' },
+      { prefix: '4902555', name: '日本ハム' },
+      { prefix: '4902707', name: '雪印メグミルク' },
+      { prefix: '4903015', name: 'ポッカサッポロ' },
+      { prefix: '4903301', name: 'キッコーマン' },
+      { prefix: '4903414', name: 'エースコック' },
+      { prefix: '4904001', name: '花王' },
+      { prefix: '4904230', name: '丸大食品' },
+      { prefix: '4904315', name: '亀田製菓' },
+      { prefix: '4904661', name: '日本たばこ産業' },
+      { prefix: '4904810', name: 'ヤクルト' },
+      { prefix: '4905009', name: 'アサヒ飲料' },
+      { prefix: '4905516', name: 'カゴメ' },
+      { prefix: '4905841', name: '永谷園' },
+      { prefix: '4906039', name: '伊藤ハム' },
+      { prefix: '4906409', name: 'ニチレイ' },
+      { prefix: '4907113', name: '味の素' },
+      { prefix: '4907335', name: 'キユーピー' },
+      { prefix: '4907897', name: 'サントリー' },
+      { prefix: '4908011', name: '大塚食品' },
+      { prefix: '4908139', name: 'ブルドックソース' },
+      { prefix: '4909313', name: 'ソフトバンク' },
+      { prefix: '4910049', name: '小林製薬' },
+      { prefix: '4910041', name: '第一三共ヘルスケア' },
+      { prefix: '4911006', name: 'ロート製薬' },
+      { prefix: '4987035', name: 'ライオン' },
+      { prefix: '4987072', name: 'アース製薬' },
+      { prefix: '4987123', name: 'P&G' },
+      { prefix: '4987176', name: '大正製薬' },
+      { prefix: '4987228', name: 'ユニ・チャーム' },
+      { prefix: '4987241', name: '資生堂' },
+      { prefix: '4987360', name: 'コーセー' },
+      { prefix: '4987413', name: '武田薬品工業' },
+      { prefix: '4987517', name: 'バスクリン' },
+      { prefix: '4987600', name: '日本製紙クレシア' },
+      { prefix: '4988003', name: 'バンダイ' },
+      { prefix: '4988006', name: '伊藤園' },
+      { prefix: '4988013', name: 'ダイドードリンコ' },
+      { prefix: '4988021', name: 'ロッテ' },
+      { prefix: '4988065', name: '明治（チョコ）' },
+      { prefix: '4988085', name: '不二家' },
+      { prefix: '4988110', name: 'コカ・コーラ' },
+      { prefix: '4988166', name: 'ペプシコーラ' },
+      { prefix: '4988203', name: 'キリンビバレッジ' },
+      { prefix: '4988208', name: 'サッポロビール' },
+      { prefix: '4988371', name: 'ミツカン' },
+      { prefix: '4988395', name: '日清オイリオ' },
+      { prefix: '4988485', name: 'カルピス' },
+      { prefix: '4988490', name: 'ネスレ日本' },
+      { prefix: '4988527', name: 'アサヒビール' },
+      { prefix: '4988603', name: 'キリンビール' },
+      { prefix: '4988616', name: 'サントリービール' },
+      { prefix: '4988680', name: '日清製粉' },
+      { prefix: '4988770', name: '昭和産業' },
+      { prefix: '4988788', name: '日本製粉' },
+      { prefix: '4902033', name: '味の素冷凍食品' },
+      { prefix: '4901330', name: '山崎製パン' },
+      { prefix: '4901550', name: '敷島製パン' },
+      // 日用品・雑貨
+      { prefix: '4901301', name: '花王' },
+      { prefix: '4901460', name: 'エステー' },
+      { prefix: '4549741', name: '無印良品' },
+    ];
+
+    for (const { prefix, name } of makerMap) {
+      if (jan.startsWith(prefix)) return name;
+    }
+
+    // 企業コード（先頭7桁）が一致しない場合は空文字
+    return '';
   }
 
   // ✅ P0: JAN/EAN-13 チェックデジット検証
   function validateJanCheckDigit(jan) {
-    if (!jan || jan.length !== 13) return false;
+    if (!jan) return false;
     const digits = jan.split('').map(Number);
     if (digits.some(isNaN)) return false;
-    
-    const checkDigit = digits[12];
-    let sum = 0;
-    for (let i = 0; i < 12; i++) {
-      sum += digits[i] * (i % 2 === 0 ? 1 : 3);
+
+    if (jan.length === 13) {
+      // EAN-13: 奇数位置×1 + 偶数位置×3
+      const checkDigit = digits[12];
+      let sum = 0;
+      for (let i = 0; i < 12; i++) {
+        sum += digits[i] * (i % 2 === 0 ? 1 : 3);
+      }
+      return checkDigit === (10 - (sum % 10)) % 10;
+    } else if (jan.length === 8) {
+      // EAN-8: 奇数位置×3 + 偶数位置×1
+      const checkDigit = digits[7];
+      let sum = 0;
+      for (let i = 0; i < 7; i++) {
+        sum += digits[i] * (i % 2 === 0 ? 3 : 1);
+      }
+      return checkDigit === (10 - (sum % 10)) % 10;
     }
-    const calculatedCheckDigit = (10 - (sum % 10)) % 10;
-    return checkDigit === calculatedCheckDigit;
+    return false;
   }
 
   // ✅ P0: JAN正規化（数字のみに統一）
@@ -5549,12 +5720,11 @@ return true;
     if (!code) return '';
     // 数字以外を除去（空白・ハイフン・全角数字を含む）
     let jan = String(code).replace(/[^0-9]/g, '');
-    // 13桁にパディング（8桁・12桁の場合は先頭に0を追加）
-    if (jan.length === 8) {
-      jan = '00000' + jan; // EAN-8 → EAN-13変換
-    } else if (jan.length === 12) {
-      jan = '0' + jan; // UPC-A → EAN-13変換
+    // UPC-A（12桁）→ EAN-13変換（先頭に0を追加）
+    if (jan.length === 12) {
+      jan = '0' + jan;
     }
+    // EAN-8（8桁）はそのまま保持（無効なパディングで壊さない）
     return jan;
   }
 
@@ -5627,9 +5797,9 @@ return true;
     // ✅ P0: JAN正規化（数字のみに統一・空白・ハイフン除去）
     let jan = normalizeJan(code);
     
-    // ✅ P0: 13桁（JAN/EAN-13）チェック
-    if (jan.length !== 13) {
-      const errorMsg = `バーコードが不正です（13桁ではありません）: ${jan}（元: ${code}）`;
+    // ✅ P0: 桁数チェック（EAN-13: 13桁 / EAN-8: 8桁 / UPC-A: 12→13桁変換済み）
+    if (jan.length !== 13 && jan.length !== 8) {
+      const errorMsg = `バーコードが不正です（8桁または13桁ではありません）: ${jan}（元: ${code}）`;
       showToast(errorMsg, 5000);
       if (isDebug()) {
         console.error("[ProcessBarcode] Invalid JAN length:", jan, "original:", code);
@@ -5689,19 +5859,21 @@ return true;
     }
     
     curBarcode = jan; // ✅ P0: 正規化後のJANをセット（取得前）
+
+    if (isDebug()) showToast(`📷 JAN: ${jan}`, 2000);
     
     // ✅ P0: 対策A: openForm を先に出す（読めた瞬間に画面を動かす）
-    openForm(jan);
+    await openForm(jan);
     
     // ✅ P0: JAN表示・取得中トースト・入力欄を触れる状態にする
     if (jan && /^\d{8,14}$/.test(jan)) {
-      showToast(`JAN: ${jan}`, 2000);
+      if (isDebug()) showToast(`JAN: ${jan}`, 2000);
       // ✅ 対策A: 「取得中…」表示
       const nameInput = document.getElementById('inputName');
       const makerInput = document.getElementById('inputMaker');
       const originalPlaceholder = nameInput ? nameInput.placeholder : '';
       
-      // ✅ dirtyフラグ: openForm直後の値を記録
+      // ✅ dirtyフラグ: openForm完了後の値を記録（openForm内でYahoo取得済みの場合その値を保持）
       const nameAtStart = nameInput ? nameInput.value : '';
       const makerAtStart = makerInput ? makerInput.value : '';
       
@@ -5716,6 +5888,10 @@ return true;
         let offInfo = null;
         let finalInfo = { name: '', maker: '', imageUrl: '', imageRefType: '', areaId: '' };
         let sourceUsed = 'none'; // デバッグ用：どのソースを採用したか
+
+        if (isDebug()) {
+          console.log('[BARCODE] start', { jan, code, curBarcode, nameAtStart, makerAtStart });
+        }
 
         // ✅ P0: 最優先: LocalStorageキャッシュをチェック（共有DB暫定実装）
         const cachedData = getJanCache(jan);
@@ -5763,7 +5939,7 @@ return true;
               p.imageUrl = finalInfo.imageUrl;
             }
             db.products[jan] = p;
-            saveDb();
+            saveLocalOnly();
 
             // ✅ 処理完了
             processBarcodeInFlight.delete(jan);
@@ -5774,6 +5950,9 @@ return true;
         // ✅ P0: 反映ラグ短縮（"先に仮反映→裏で補完"）
         // ✅ 優先順位1: Yahoo最優先（商品身元情報＋価格情報）
         yahooInfo = await lookupYahooByJan(jan);
+        if (isDebug()) {
+          console.log('[BARCODE] yahoo result', yahooInfo);
+        }
         
         if (yahooInfo) {
           // ✅ 品質スコアで採用を絞る（Yahooのスコア判定）
@@ -5822,6 +6001,12 @@ return true;
           if (yahooWeak) {
             // ✅ 優先順位2: 楽天（国内DB第2優先）
             rakutenInfo = await lookupRakutenByJan(jan);
+            if (isDebug()) {
+              console.log('[BARCODE] rakuten result', rakutenInfo);
+            }
+            if (isDebug()) {
+              console.log('[BARCODE] rakuten result', rakutenInfo);
+            }
             
             if (rakutenInfo) {
               // ✅ 不足している項目だけ補完（上書きしない）
@@ -5901,6 +6086,9 @@ return true;
             // ✅ Yahooも楽天も未取得の場合のみ、OFFを使用（第3優先）
             // ✅ OFFを使う条件: Yahooも楽天も「未取得」または「整形後も不自然」
             offInfo = await lookupOffByJan(jan);
+            if (isDebug()) {
+              console.log('[BARCODE] off result', offInfo);
+            }
             
             if (offInfo) {
               // ✅ OFFで商品身元情報を埋める（条件チェック済み・最終補助）
@@ -5967,11 +6155,24 @@ return true;
         if (isDebug()) {
           showToast(`[採用] ${sourceUsed}`, 3000);
           console.log("[ProcessBarcode] Source used:", sourceUsed, { yahooInfo, rakutenInfo, offInfo });
+          console.log('[BARCODE] before apply to product', { jan, finalInfo, existingProduct: { name: p?.name || '', maker: p?.maker || '', imageUrl: p?.imageUrl || '', imageKey: p?.imageKey || '' } });
         }
 
         // ✅ 商品情報をDBに保存（finalInfoを使用）
+        // 商品名の先頭にメーカー名が重複している場合を除去
+        // 例：「日清食品 日清のどん兵衛 天ぷらそば」→「日清のどん兵衛 天ぷらそば」
+        if (finalInfo.name && finalInfo.maker) {
+          const makerPrefix = finalInfo.maker.replace(/[（()）]/g, '').trim();
+          if (makerPrefix && finalInfo.name.startsWith(makerPrefix)) {
+            finalInfo.name = finalInfo.name.slice(makerPrefix.length).trim();
+          }
+        }
         if (finalInfo.name && (!p.name || !p.name.trim())) {
           p.name = finalInfo.name;
+        }
+        // メーカー名がAPIから取れない場合はJANコードから特定
+        if (!finalInfo.maker) {
+          finalInfo.maker = lookupMakerByJan(jan) || '';
         }
         if (finalInfo.maker && (!p.maker || !p.maker.trim())) {
           p.maker = finalInfo.maker;
@@ -6029,6 +6230,30 @@ return true;
             imageRefType: imageRefType,
             source: sourceUsed
           });
+
+          // ✅ maker fallback v23.9.56: キラマーク用にメーカー候補を保存
+          window.latestProductHints = {
+            jan: jan,
+            yahooMaker: (yahooInfo && yahooInfo.maker) ? String(yahooInfo.maker).trim() : '',
+            rakutenMaker: (rakutenInfo && rakutenInfo.maker) ? String(rakutenInfo.maker).trim() : '',
+            existingMaker: (p && p.maker) ? String(p.maker).trim() : '',
+            finalMaker: finalInfo.maker || ''
+          };
+          console.log('[ProductHints] latestProductHints saved', window.latestProductHints);
+          console.log('[BARCODE] finalInfo', {
+            jan,
+            sourceUsed,
+            finalInfo,
+            hints: window.latestProductHints
+          });
+          if ((!finalInfo.name || !String(finalInfo.name).trim()) || (!finalInfo.maker || !String(finalInfo.maker).trim())) {
+            console.warn('[BARCODE] weak result', {
+              jan,
+              missingName: !finalInfo.name || !String(finalInfo.name).trim(),
+              missingMaker: !finalInfo.maker || !String(finalInfo.maker).trim(),
+              sourceUsed
+            });
+          }
         }
         
         // ✅ dirtyフラグで保護: ユーザーが入力し始めていたら上書きしない
@@ -6058,7 +6283,12 @@ return true;
         if (hasData) {
           showToast("商品情報を取得しました", 3000);
         } else {
-          showToast("商品情報が見つかりませんでした", 5000);
+          // 全API失敗 → JANコードをフォームに表示して手動入力を促す
+          showToast(`商品情報が見つかりませんでした\nJAN: ${jan}\n商品名・メーカーを手入力してください`, 8000);
+          const nameInput = document.getElementById('inputName');
+          if (nameInput && !nameInput.value) {
+            nameInput.placeholder = `JAN: ${jan} （商品名を入力）`;
+          }
         }
         
         // ✅ P0: debug=1 時の詳細表示（LAST_JAN / SOURCE / STATUS / 取得データ）
@@ -6212,9 +6442,9 @@ return true;
       const i = document.getElementById('dialogInput');
       i.value = def;
       document.getElementById('dialogCancel').style.display="block";
-      document.getElementById('dialogModal').style.display="flex";
-      document.getElementById('dialogOk').onclick = () => { document.getElementById('dialogModal').style.display="none"; res(i.value); };
-      document.getElementById('dialogCancel').onclick = () => { document.getElementById('dialogModal').style.display="none"; res(null); };
+      const _dm=document.getElementById('dialogModal'); if(_dm){_dm.classList.add('show-modal');}
+      document.getElementById('dialogOk').onclick = () => { const _dmc=document.getElementById('dialogModal'); if(_dmc){_dmc.classList.remove('show-modal'); _dmc.style.display='none';} res(i.value); };
+      document.getElementById('dialogCancel').onclick = () => { const _dmc=document.getElementById('dialogModal'); if(_dmc){_dmc.classList.remove('show-modal'); _dmc.style.display='none';} res(null); };
     });
   }
 
@@ -6223,9 +6453,9 @@ return true;
       document.getElementById('dialogMsg').innerText = msg;
       document.getElementById('dialogInputArea').style.display="none";
       document.getElementById('dialogCancel').style.display="block";
-      document.getElementById('dialogModal').style.display="flex";
-      document.getElementById('dialogOk').onclick = () => { document.getElementById('dialogModal').style.display="none"; res(true); };
-      document.getElementById('dialogCancel').onclick = () => { document.getElementById('dialogModal').style.display="none"; res(false); };
+      const _dm=document.getElementById('dialogModal'); if(_dm){_dm.classList.add('show-modal');}
+      document.getElementById('dialogOk').onclick = () => { const _dmc=document.getElementById('dialogModal'); if(_dmc){_dmc.classList.remove('show-modal'); _dmc.style.display='none';} res(true); };
+      document.getElementById('dialogCancel').onclick = () => { const _dmc=document.getElementById('dialogModal'); if(_dmc){_dmc.classList.remove('show-modal'); _dmc.style.display='none';} res(false); };
     });
   }
 
@@ -6238,6 +6468,20 @@ return true;
     syncFirebasePut();
     showHome();
   }
+
+  // ✅ 商品を完全削除
+  async function confirmDeleteProduct() {
+    if(!curBarcode || !db.products[curBarcode]) return;
+    const name = db.products[curBarcode].name || curBarcode;
+    const ok = await customConfirm(`「${name}」を完全に削除しますか？\n購入履歴も全て消えます。`);
+    if(!ok) return;
+    delete db.products[curBarcode];
+    saveLocalOnly();
+    syncFirebasePut();
+    showToast('商品を削除しました', 2000);
+    showHome();
+  }
+  window.confirmDeleteProduct = confirmDeleteProduct;
 
   // ========= Settings / Sync =========
   async function startMigration() {
@@ -6400,7 +6644,21 @@ return true;
     try { if (typeof window.clearToasts === 'function') window.clearToasts(); } catch(e) {}
     
     state.isOpen = true; state.currentPanel = 'Main'; state.history = ['Main'];
-    modal.style.display = 'flex';
+    // インラインstyleで確実に全画面オーバーレイを設定
+    modal.setAttribute('style', [
+      'display:flex',
+      'position:fixed',
+      'inset:0',
+      'background:rgba(0,0,0,0.85)',
+      'z-index:100500',
+      'justify-content:center',
+      'align-items:center',
+      'padding:10px',
+      'box-sizing:border-box'
+    ].join(';') + ';');
+    modal.classList.add('show-modal');
+    // DBG: セット直後の実際の表示状態を確認
+
     try{ if(typeof window.setHeaderVersionBadge==='function') window.setHeaderVersionBadge(); }catch(e){}
     // ✅ 個人ID表示（設定内の各画面にも表示）
     try{
@@ -6416,22 +6674,13 @@ return true;
         if(el) el.textContent = pid || '-';
       });
     }catch(e){}
-    // ✅ 友人紹介/家族共有の表示値を更新
+    // ✅ 友人紹介パネル更新
     try{
-      const pid = (typeof getDeviceId === 'function') ? getDeviceId() : '';
-      const el1 = document.getElementById('ref-my-id');
-      if(el1) el1.value = pid || '';
+      if (typeof window.updateReferralPanel === 'function') window.updateReferralPanel();
       const el2 = document.getElementById('family-my-id');
-      if(el2) el2.value = pid || '';
-      const linkEl = document.getElementById('ref-link');
-      if(linkEl){
-        const u = new URL(location.href);
-        u.searchParams.set('ref', pid || '');
-        // build param (b) は維持
-        linkEl.value = u.toString();
-      }
+      const pid2 = (typeof getDeviceId === 'function') ? getDeviceId() : '';
+      if(el2) el2.value = pid2 || '';
     }catch(e){}
-
 
     setTimeout(function() { modal.classList.add('show'); }, 10);
     navigate('Main');
@@ -6442,8 +6691,8 @@ return true;
     if (!modal) return;
     state.isOpen = false;
     try{ if(typeof window.setHeaderVersionBadge==='function') window.setHeaderVersionBadge(); }catch(e){}
-    modal.classList.remove('show');
-    setTimeout(function() { modal.style.display = 'none'; }, 300);
+    modal.classList.remove('show'); modal.classList.remove('show-modal'); modal.removeAttribute('style');
+    setTimeout(function() { modal.setAttribute('style','display:none'); }, 300);
     state.currentPanel = 'Main'; state.history = [];
     setTimeout(function() { navigate('Main'); }, 400);
   }
@@ -6631,12 +6880,29 @@ window.saveHomeCityFromModal = saveHomeCityFromModal;
 let currentBarcodeType = 13;
 
 function openBarcodeManual() {
-  document.getElementById('barcodeManualModal').style.display = 'flex';
+  const _bmEl = document.getElementById('barcodeManualModal');
+  if (_bmEl) {
+    _bmEl.setAttribute('style', [
+      'display:flex',
+      'position:fixed',
+      'top:0',
+      'left:0',
+      'width:100vw',
+      'height:100vh',
+      'background:rgba(0,0,0,0.85)',
+      'z-index:100500',
+      'justify-content:center',
+      'align-items:center',
+      'overflow:hidden'
+    ].join(';') + ';');
+    _bmEl.classList.add('show-modal');
+
+  }
   renderBarcodeInputs(13);
 }
 
 function closeBarcodeManual() {
-  document.getElementById('barcodeManualModal').style.display = 'none';
+  const _cbm = document.getElementById('barcodeManualModal'); if(_cbm){_cbm.classList.remove('show-modal'); _cbm.setAttribute('style','display:none');}
 }
 
 document.addEventListener('click', function(e) {
@@ -7012,6 +7278,7 @@ function ensureUserIdInProducts() {
   }
 }
 
+
 document.addEventListener('DOMContentLoaded', function() {
   setTimeout(() => {
     ensureUserIdInProducts();
@@ -7022,49 +7289,81 @@ document.addEventListener('DOMContentLoaded', function() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // v22.0: 紹介者利用状況確認
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-function showReferralStatus() {
+async function showReferralStatus() {
   const container = document.getElementById('referral-status-list');
   if (!container) return;
-  
-  // 仮データ（実際はFirebaseから取得）
-  const myId = (db && db.config && db.config.personalId) || 'UNKNOWN';
-  
-  // 本来はFirebaseクエリで「referredBy === myId」のユーザーを取得
-  const referredUsers = [
-    { id: 'USER001', qualified: true, stores: 7, products: 12, qualifiedDate: Date.now() - 86400000 * 3 },
-    { id: 'USER002', qualified: false, stores: 3, products: 8, qualifiedDate: null },
-    { id: 'USER003', qualified: true, stores: 5, products: 15, qualifiedDate: Date.now() - 86400000 * 7 }
-  ];
-  
-  let html = '<div class="card bg-dark p-3 mb-2">';
-  html += '<h6 class="text-white mb-3">あなたの紹介実績</h6>';
-  
-  if (referredUsers.length === 0) {
-    html += '<div class="small text-secondary">まだ紹介者はいません</div>';
-  } else {
-    const qualified = referredUsers.filter(u => u.qualified).length;
-    html += `<div class="mb-2"><span class="text-white fw-bold">${qualified}人</span> / ${referredUsers.length}人 が条件達成</div>`;
-    
-    referredUsers.forEach(user => {
-      const statusIcon = user.qualified ? '✅' : '⏳';
-      const statusText = user.qualified ? '条件達成' : '利用中';
-      const statusColor = user.qualified ? 'text-success' : 'text-warning';
-      
-      html += `
-        <div class="small border-top border-secondary pt-2 mt-2">
-          <div class="d-flex justify-content-between mb-1">
-            <span class="text-secondary">ID: ${user.id.slice(0,6)}...</span>
-            <span class="${statusColor}">${statusIcon} ${statusText}</span>
-          </div>
-          <div class="text-secondary">
-            店舗数: ${user.stores} / 5 | 商品数: ${user.products}
-          </div>
-          ${user.qualifiedDate ? `<div class="text-secondary" style="font-size: 0.75rem;">達成日: ${new Date(user.qualifiedDate).toLocaleDateString('ja-JP')}</div>` : ''}
-        </div>
-      `;
-    });
+
+  // 自分のID
+  const myId = (typeof getDeviceId === 'function') ? getDeviceId() : 
+               (db && db.config && db.config.personalId) || null;
+
+  if (!myId) {
+    container.innerHTML = '<div class="small text-secondary p-2">個人IDが取得できませんでした</div>';
+    container.style.display = 'block';
+    return;
   }
+
+  // Firebaseから紹介実績を取得
+  const fbUrl = (db && db.config && db.config.firebaseUrl) ? db.config.firebaseUrl.trim() : '';
   
+  let html = '<div class="card bg-dark border-secondary p-3 mb-2">';
+  html += '<h6 class="text-white mb-3">👥 あなたの紹介実績</h6>';
+
+  if (!fbUrl) {
+    // Firebase未設定でもローカルで確認できる情報を表示
+    const myInvitedBy = localStorage.getItem('smartPrice_invitedBy') || '';
+    html += `<div class="small text-secondary mb-2">紹介コード（あなたのID）:</div>
+      <div class="fw-bold text-white mb-3" style="font-size:0.85rem; word-break:break-all;">${myId}</div>`;
+    if (myInvitedBy) {
+      html += `<div class="small text-secondary">あなたを紹介した人のID:<br><span class="text-white">${myInvitedBy.slice(0,8)}…</span></div>`;
+    }
+    html += '<div class="small text-secondary mt-3 p-2 border border-secondary rounded">Firebase同期を設定すると、紹介した友人の利用状況が確認できます。</div>';
+  } else {
+    // Firebase設定済み：紹介先ユーザーの状況を取得
+    container.innerHTML = '<div class="small text-secondary p-2">⏳ 読み込み中…</div>';
+    container.style.display = 'block';
+
+    try {
+      // Firebaseの全ユーザー設定を取得してreferredBy===myIdを探す
+      const targetUrl = fbUrl.replace(/\.json$/, '') + '.json';
+      const res = await fetch(targetUrl.replace(/\/[^\/]+\.json$/, '/referrals/' + myId + '.json'), { cache: 'no-store' });
+      const data = await res.ok ? await res.json() : null;
+
+      if (data && typeof data === 'object') {
+        const users = Object.entries(data);
+        const qualified = users.filter(([, u]) => (u.products || 0) >= 5).length;
+        html = '<div class="card bg-dark border-secondary p-3 mb-2">';
+        html += '<h6 class="text-white mb-3">👥 あなたの紹介実績</h6>';
+        html += `<div class="mb-3"><span class="text-white fw-bold fs-5">${qualified}人</span><span class="text-secondary"> / ${users.length}人 が条件達成</span></div>`;
+        users.forEach(([uid, u]) => {
+          const ok = (u.products || 0) >= 5;
+          html += `<div class="small border-top border-secondary pt-2 mt-2 d-flex justify-content-between align-items-center">
+            <span class="text-secondary">${uid.slice(0,8)}…</span>
+            <span class="${ok ? 'text-success' : 'text-warning'}">${ok ? '✅ 達成' : '⏳ 利用中'}</span>
+          </div>`;
+        });
+      } else {
+        html += '<div class="small text-secondary">まだ紹介者はいません。<br>紹介リンクを友人に送りましょう！</div>';
+      }
+    } catch(e) {
+      html += `<div class="small text-secondary">紹介実績の取得に失敗しました<br><span style="font-size:0.7rem; opacity:0.7;">${e.message || ''}</span></div>`;
+    }
+    
+    html += '</div>';
+    container.innerHTML = html;
+    container.style.display = 'block';
+    return;
+  }
+
+  // 紹介コードが起動時に保存されているか確認（招待リンクから起動した場合）
+  const savedRef = localStorage.getItem('smartPrice_invitedBy');
+  const urlRef = (function(){ try{ return new URL(location.href).searchParams.get('ref'); }catch(e){ return null; } })();
+  if (urlRef && !savedRef) {
+    // 初回: 紹介者IDを保存
+    localStorage.setItem('smartPrice_invitedBy', urlRef);
+    html += `<div class="small text-success mt-2">✅ 紹介コードを登録しました（紹介者: ${urlRef.slice(0,8)}…）</div>`;
+  }
+
   html += '</div>';
   container.innerHTML = html;
   container.style.display = 'block';
@@ -7217,16 +7516,170 @@ async function spCopyTextFallback(text){
   }catch(e){}
 }
 
-async function spShareReferral(){
-  try{
-    const pid = (typeof getDeviceId === 'function') ? getDeviceId() : '';
-    const linkEl = document.getElementById('ref-link');
-    const link = linkEl ? (linkEl.value || '').trim() : '';
-    const text = `【Smart Price 友人紹介】\n紹介ID: ${pid}\nリンク: ${link}`;
-    const ok = await spShareText('Smart Price 友人紹介', text);
-    if(!ok) spCopyTextFallback(text);
-  }catch(e){}
+// ========== ハンドルネーム管理 ==========
+function getHandle() {
+  return localStorage.getItem('smartPrice_handle') || '';
 }
+function saveHandle() {
+  const inp = document.getElementById('ref-handle-input');
+  if (!inp) return;
+  const v = inp.value.trim();
+  if (!v) { showToast('ハンドルネームを入力してください', 3000); return; }
+  if (v.length > 20) { showToast('20文字以内で入力してください', 3000); return; }
+  localStorage.setItem('smartPrice_handle', v);
+  showToast(`ハンドルネームを「${v}」に設定しました ✅`, 2500);
+  updateReferralPanel();
+}
+window.saveHandle = saveHandle;
+
+// ========== ワンタイム紹介トークン生成 ==========
+// IDを直接URLに入れず、専用トークンをFirebase referral_tokensに保存
+// トークン: tok_xxxxx（1回使用で無効化）
+function genReferralToken(pid) {
+  // クライアントサイドでのみ使う一時トークン（Firebase未使用時は単純ハッシュ）
+  const ts = Date.now().toString(36);
+  const rand = Math.random().toString(36).slice(2, 9);
+  return `r${ts}${rand}`;  // 例: r1abc2def3ghi
+}
+
+// ========== 紹介パネル表示更新 ==========
+function updateReferralPanel() {
+  const pid = (typeof getDeviceId === 'function') ? getDeviceId() : '';
+  const handle = getHandle();
+
+  // ハンドルネーム入力欄に現在値を反映
+  const handleInp = document.getElementById('ref-handle-input');
+  if (handleInp && !handleInp.value) handleInp.value = handle;
+
+  // 紹介リンク生成（IDをそのまま使わずトークン経由）
+  // トークンはセッション中固定（シェア時に毎回変えるとリンクが無効になるため）
+  let token = sessionStorage.getItem('sp_ref_token');
+  if (!token) {
+    token = genReferralToken(pid);
+    sessionStorage.setItem('sp_ref_token', token);
+    // Firebaseにtoken→pid のマッピングを保存（利用可能な場合）
+    try {
+      if (window.firebaseDb && pid) {
+        const { ref: fbRef, set } = window._fbFns || {};
+        if (fbRef && set) {
+          set(fbRef(window.firebaseDb, `referral_tokens/${token}`), {
+            uid: pid,
+            handle: handle || '',
+            createdAt: Date.now(),
+            used: false
+          });
+        }
+      }
+    } catch(e) {}
+  }
+
+  // 隠しフィールドにpidをセット（内部処理用）
+  const myIdEl = document.getElementById('ref-my-id');
+  if (myIdEl) myIdEl.value = pid;
+
+  // 紹介リンク（トークン使用・IDは含まない）
+  const u = new URL(location.href);
+  u.searchParams.set('ref', token);
+  u.searchParams.delete('debug');
+  const refLink = u.toString();
+
+  const linkEl = document.getElementById('ref-link');
+  if (linkEl) linkEl.value = refLink;
+}
+window.updateReferralPanel = updateReferralPanel;
+
+// ========== 紹介文生成 ==========
+function buildReferralText() {
+  const handle = getHandle();
+  const linkEl = document.getElementById('ref-link');
+  const link = linkEl ? linkEl.value.trim() : location.href;
+  const fromName = handle ? `「${handle}」` : 'あなたの友人';
+
+  return `📱 ${fromName}からSmartPriceをオススメされました！
+
+🛒 SmartPrice（スマートプライス）とは？
+・バーコードをスキャンするだけで価格を記録
+・どのスーパーが安いか一目でわかる
+・家族や友人と買い物情報を共有できる
+・完全無料・広告なし
+
+↓ このリンクから始めると自動でつながります
+${link}`;
+}
+
+// ========== 一括コピー ==========
+async function spCopyReferral() {
+  const text = buildReferralText();
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast('紹介文＋リンクをコピーしました 📋', 2500);
+  } catch(e) {
+    // fallback
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+    document.body.removeChild(ta);
+    showToast('コピーしました 📋', 2500);
+  }
+}
+window.spCopyReferral = spCopyReferral;
+
+// ========== 共有（Web Share API）==========
+async function spShareReferral() {
+  const text = buildReferralText();
+  const handle = getHandle();
+  try {
+    if (navigator.share) {
+      await navigator.share({
+        title: 'SmartPrice 友人紹介',
+        text: text
+      });
+    } else {
+      await spCopyReferral();
+    }
+  } catch(e) {
+    if (e.name !== 'AbortError') await spCopyReferral();
+  }
+}
+window.spShareReferral = spShareReferral;
+
+// ========== 招待リンク受信処理（起動時）==========
+// トークン受信 → Firebaseでtoken→uid解決 → invitedByに保存
+(function parseInviteCode() {
+  try {
+    const q = new URL(location.href).searchParams;
+    const token = q.get('ref');
+    if (!token) return;
+    const savedRef = localStorage.getItem('smartPrice_invitedBy');
+    if (savedRef) return; // 既に保存済み
+
+    // まずトークンをそのまま保存（Firebase解決は非同期）
+    localStorage.setItem('smartPrice_invitedBy_token', token);
+
+    // Firebaseが使えればtoken→uid解決
+    setTimeout(() => {
+      try {
+        if (window.firebaseDb) {
+          const { ref: fbRef, get } = window._fbFns || {};
+          if (fbRef && get) {
+            get(fbRef(window.firebaseDb, `referral_tokens/${token}`)).then(snap => {
+              const data = snap && snap.val ? snap.val() : null;
+              if (data && data.uid && !data.used) {
+                localStorage.setItem('smartPrice_invitedBy', data.uid);
+                localStorage.setItem('smartPrice_invitedBy_handle', data.handle || '');
+                // トークンを使用済みにする（使い回し防止）
+                const { set } = window._fbFns || {};
+                if (set) set(fbRef(window.firebaseDb, `referral_tokens/${token}/used`), true);
+                const fromName = data.handle ? `「${data.handle}」` : '友人';
+                showToast(`${fromName}の紹介で登録されました ✅`, 4000);
+              }
+            }).catch(() => {});
+          }
+        }
+      } catch(e) {}
+    }, 3000);
+  } catch(e) {}
+})();
 
 async function spShareFamilyId(){
   try{
@@ -7236,6 +7689,7 @@ async function spShareFamilyId(){
     if(!ok) spCopyTextFallback(text);
   }catch(e){}
 }
+window.spShareFamilyId = spShareFamilyId;
 
 </script>
 
@@ -7399,6 +7853,125 @@ window.installPWA     = installPWA;
 window.exportBackup   = exportBackup;
 window.importBackup   = importBackup;
 
+</script>
+
+
+</div>
+
+
+<!-- SP DEBUG PANEL v2 -->
+<button id="sp-dbg-toggle" onclick="(function(){var p=document.getElementById('sp-dbg-panel');p.style.display=p.style.display==='flex'?'none':'flex';})()">🔍DBG</button>
+<div id="sp-dbg-panel">
+  <div id="sp-dbg-log"><div class="ok">== SP Debug Log ==</div></div>
+  <div id="sp-dbg-bar">
+    <button onclick="document.getElementById('sp-dbg-log').innerHTML='<div class=ok>cleared</div>'">CLR</button>
+    <button onclick="(function(){var t=document.createElement('textarea');t.value=Array.from(document.querySelectorAll('#sp-dbg-log div')).map(function(d){return d.textContent}).join('\n');t.style.cssText='position:fixed;top:-9999px';document.body.appendChild(t);t.select();document.execCommand('copy');t.remove();document.getElementById('sp-dbg-toggle').textContent='📋Copied!';setTimeout(function(){document.getElementById('sp-dbg-toggle').textContent='🔍DBG'},2000);})()">📋COPY LOG</button>
+    <button onclick="spDbgDump()">DUMP STATE</button>
+    <span id="sp-dbg-count" style="color:#fa0;margin-left:auto;"></span>
+  </div>
+</div>
+
+
+<script>
+// === SP DEBUG SYSTEM v2 ===
+(function() {
+  var logs = [];
+  var cnt = 0;
+
+  function spDbgLog(msg, cls) {
+    cnt++;
+    logs.push({t: new Date().toISOString().slice(11,23), m: msg, c: cls||'ok'});
+    var panel = document.getElementById('sp-dbg-log');
+    if (!panel) return;
+    var d = document.createElement('div');
+    d.className = cls || 'ok';
+    d.textContent = cnt + ' ' + new Date().toISOString().slice(11,19) + ' ' + msg;
+    panel.appendChild(d);
+    panel.scrollTop = panel.scrollHeight;
+    if (panel.children.length > 100) panel.children[0].remove();
+    var cntEl = document.getElementById('sp-dbg-count');
+    if (cntEl) cntEl.textContent = cnt + ' logs';
+  }
+  window.spDbgLog = spDbgLog;
+
+  window.spDbgDump = function() {
+    var state = '';
+    try {
+      var modal = document.getElementById('settingsModal');
+      var bm = document.getElementById('barcodeManualModal');
+      state += 'settingsModal: ' + (modal ? 'exists disp=' + modal.style.display : 'NULL') + '\n';
+      state += 'barcodeManualModal: ' + (bm ? 'exists disp=' + bm.style.display : 'NULL') + '\n';
+      state += 'window.openSettings: ' + typeof window.openSettings + '\n';
+      state += 'window.openBarcodeManual: ' + typeof window.openBarcodeManual + '\n';
+      state += 'window.SmartPriceModal: ' + typeof window.SmartPriceModal + '\n';
+      // IIFEのstateにアクセス試みる
+      if (window.SmartPriceModal) {
+        state += 'SmartPriceModal.keys: ' + Object.keys(window.SmartPriceModal).join(',') + '\n';
+      }
+    } catch(e) { state += 'ERROR: ' + e.message; }
+    spDbgLog('=== DUMP ===', 'w');
+    state.split('\n').forEach(function(l){ if(l) spDbgLog(l, 'w'); });
+  };
+
+  // window.openSettingsをラップして呼び出しをキャプチャ
+  document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(function() {
+      // openSettingsをインターセプト
+      var origOpen = window.openSettings;
+      window.openSettings = function() {
+        spDbgLog('openSettings called! orig=' + typeof origOpen, 'ok');
+        if (!origOpen) { spDbgLog('❌ openSettings is undefined!', 'e'); return; }
+        try {
+          origOpen();
+          spDbgLog('openSettings returned OK', 'ok');
+        } catch(e) {
+          spDbgLog('❌ openSettings ERROR: ' + e.message, 'e');
+          spDbgLog('stack: ' + (e.stack||'').slice(0,100), 'e');
+        }
+      };
+      
+      // openBarcodeManualをインターセプト
+      var origBM = window.openBarcodeManual;
+      window.openBarcodeManual = function() {
+        spDbgLog('openBarcodeManual called! orig=' + typeof origBM, 'ok');
+        if (!origBM) { spDbgLog('❌ openBarcodeManual is undefined!', 'e'); return; }
+        try {
+          origBM();
+          spDbgLog('openBarcodeManual returned OK', 'ok');
+        } catch(e) {
+          spDbgLog('❌ openBarcodeManual ERROR: ' + e.message, 'e');
+          spDbgLog('stack: ' + (e.stack||'').slice(0,100), 'e');
+        }
+      };
+      
+      spDbgLog('interceptors set. openSettings=' + typeof window.openSettings, 'ok');
+      spDbgLog('SmartPriceModal=' + typeof window.SmartPriceModal, 'ok');
+      
+      // fixed要素一覧
+      var fixedEls = [];
+      document.querySelectorAll('*').forEach(function(el) {
+        var cs = getComputedStyle(el);
+        if (cs.position === 'fixed' && cs.display !== 'none' && cs.visibility !== 'hidden') {
+          fixedEls.push((el.id||el.tagName) + ':z=' + cs.zIndex);
+        }
+      });
+      spDbgLog('fixed: ' + fixedEls.join(', '), 'w');
+      
+    }, 1500);
+  });
+  
+  // タップログ
+  document.addEventListener('click', function(e) {
+    var top = document.elementFromPoint(e.clientX, e.clientY);
+    var tgt = e.target;
+    var btn = tgt.closest('button,[onclick]');
+    if (!btn) return;
+    var fn = btn.getAttribute('onclick') || btn.id || '?';
+    var topSame = (top === tgt || top === btn || btn.contains(top));
+    spDbgLog('TAP ' + fn.slice(0,30) + (topSame ? ' ✅' : ' ⚠️top=' + (top?top.tagName+top.id:'?')), topSame?'ok':'w');
+  }, true);
+
+})();
 </script>
 
 </body>
