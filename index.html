@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: ChatGPT_Yui
-  const APP_VERSION = "v23.9.58";
+  const APP_VERSION = "v23.9.59";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-18_barcode-name-trace-r1";
+  const BUILD_ID = "2026-03-18_barcode-visibletrace-r1";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -110,7 +110,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#D50000">
-  <title>Smart Price v23.9.58</title>
+  <title>Smart Price v23.9.59</title>
   <!-- ✅ SW RESET TOOL (v22.7.0) : ?reset=sw -->
   <script>
   (function() {
@@ -5438,8 +5438,9 @@ return true;
     const rawName = (nameInput?.value || '').trim();
 
     console.log('[KIRA] aiRefineName start', { rawName });
+    spVisibleTrace('[KIRA] start', { rawName }, 'w');
 
-    if (!rawName) { showToast('商品名を入力してください', 2000); return; }
+    if (!rawName) { spVisibleTrace('[KIRA] blocked', { reason: 'rawName empty' }, 'e'); showToast('商品名を入力してください', 2000); return; }
 
     btn.textContent = '⏳';
     btn.style.pointerEvents = 'none';
@@ -5454,6 +5455,7 @@ return true;
 
     if (!apiKey) {
       console.warn('[KIRA] ANTHROPIC_API_KEY が未設定です');
+      spVisibleTrace('[KIRA] blocked', { reason: 'api key missing' }, 'e');
       showToast('APIキーが設定されていません', 3000);
       btn.textContent = '✨';
       btn.style.pointerEvents = 'auto';
@@ -5488,17 +5490,20 @@ return true;
       });
 
       console.log('[KIRA] API status', resp.status);
+      spVisibleTrace('[KIRA] API status', { status: resp.status }, resp.status === 200 ? 'ok' : 'e');
       const data = await resp.json();
       console.log('[KIRA] API raw data', data);
 
       const text = (data?.content?.[0]?.text || '').trim().replace(/```json|```/g, '').trim();
       const result = JSON.parse(text);
       console.log('[KIRA] API result', result);
+      spVisibleTrace('[KIRA] API result', result, 'w');
 
       if (result.name) nameInput.value = result.name;
 
       // ✅ maker fallback v23.9.56: hints から候補を取得してベストを選ぶ
       const hints = window.latestProductHints || {};
+      spVisibleTrace('[KIRA] has hints', { hasHints: !!window.latestProductHints, jan: (window.latestProductHints||{}).jan || '' }, 'w');
       console.log('[KIRA] maker candidates', {
         ai: result?.maker || '',
         yahoo: hints?.yahooMaker || '',
@@ -5513,10 +5518,12 @@ return true;
         hints?.existingMaker || ''
       );
       console.log('[KIRA] best maker selected', bestMaker);
+      spVisibleTrace('[KIRA] best maker', { bestMaker }, 'w');
 
       if (bestMaker && makerInput) {
         makerInput.value = bestMaker;
         console.log('[KIRA] maker assign done', makerInput.value);
+        spVisibleTrace('[KIRA] maker assign done', { maker: makerInput.value }, 'ok');
       }
 
       if (result.category && catSelect) {
@@ -5529,6 +5536,7 @@ return true;
       showToast('商品名・カテゴリ・メーカーを入力しました', 2000);
     } catch(e) {
       console.error('[KIRA] aiRefineName error', e);
+      spVisibleTrace('[KIRA] error', { message: e?.message || String(e) }, 'e');
       console.error('[KIRA] aiRefineName error message', e?.message || '');
       btn.textContent = '✨';
       showToast('AI補助に失敗しました', 2000);
@@ -5537,6 +5545,23 @@ return true;
     }
   }
   window.aiRefineName = aiRefineName;
+
+function spVisibleTrace(tag, payload, cls) {
+  try {
+    if (typeof console !== 'undefined') console.log(tag, payload);
+    var msg = '';
+    if (typeof payload === 'string') msg = payload;
+    else {
+      try { msg = JSON.stringify(payload); } catch(e) { msg = String(payload); }
+    }
+    if (typeof window.spDbgLog === 'function') {
+      window.spDbgLog(tag + (msg ? ' ' + msg : ''), cls || 'w');
+    }
+  } catch(e) {
+    try { if (typeof window.spDbgLog === 'function') window.spDbgLog(tag + ' TRACE_ERR ' + e.message, 'e'); } catch(_) {}
+  }
+}
+
 
   function cleanProductName(name) {
     if (!name) return '';
@@ -5891,6 +5916,7 @@ return true;
 
         if (isDebug()) {
           console.log('[BARCODE] start', { jan, code, curBarcode, nameAtStart, makerAtStart });
+          spVisibleTrace('[BARCODE] start', { jan, code, curBarcode }, 'w');
         }
 
         // ✅ P0: 最優先: LocalStorageキャッシュをチェック（共有DB暫定実装）
@@ -5952,6 +5978,7 @@ return true;
         yahooInfo = await lookupYahooByJan(jan);
         if (isDebug()) {
           console.log('[BARCODE] yahoo result', yahooInfo);
+          spVisibleTrace('[BARCODE] yahoo', { name: yahooInfo?.name || '', maker: yahooInfo?.maker || '', hasImage: !!yahooInfo?.imageUrl }, 'w');
       console.log('[BARCODE] yahoo result name', yahooInfo?.name || '');
         }
         
@@ -6004,10 +6031,12 @@ return true;
             rakutenInfo = await lookupRakutenByJan(jan);
             if (isDebug()) {
               console.log('[BARCODE] rakuten result', rakutenInfo);
+              spVisibleTrace('[BARCODE] rakuten', { name: rakutenInfo?.name || '', maker: rakutenInfo?.maker || '', hasImage: !!rakutenInfo?.imageUrl }, 'w');
       console.log('[BARCODE] rakuten result name', rakutenInfo?.name || '');
             }
             if (isDebug()) {
               console.log('[BARCODE] rakuten result', rakutenInfo);
+              spVisibleTrace('[BARCODE] rakuten', { name: rakutenInfo?.name || '', maker: rakutenInfo?.maker || '', hasImage: !!rakutenInfo?.imageUrl }, 'w');
       console.log('[BARCODE] rakuten result name', rakutenInfo?.name || '');
             }
             
@@ -6091,6 +6120,7 @@ return true;
             offInfo = await lookupOffByJan(jan);
             if (isDebug()) {
               console.log('[BARCODE] off result', offInfo);
+              spVisibleTrace('[BARCODE] off', { name: offInfo?.name || '', maker: offInfo?.maker || '', hasImage: !!offInfo?.imageUrl }, 'w');
       console.log('[BARCODE] off result name', offInfo?.name || '');
             }
             
@@ -6160,6 +6190,7 @@ return true;
           showToast(`[採用] ${sourceUsed}`, 3000);
           console.log("[ProcessBarcode] Source used:", sourceUsed, { yahooInfo, rakutenInfo, offInfo });
           console.log('[BARCODE] before apply to product', { jan, finalInfo, existingProduct: { name: p?.name || '', maker: p?.maker || '', imageUrl: p?.imageUrl || '', imageKey: p?.imageKey || '' } });
+          spVisibleTrace('[BARCODE] before apply', { jan, finalName: finalInfo?.name || '', finalMaker: finalInfo?.maker || '', sourceUsed }, 'w');
         }
 
         // ✅ 商品情報をDBに保存（finalInfoを使用）
@@ -6244,6 +6275,8 @@ return true;
             finalMaker: finalInfo.maker || ''
           };
           console.log('[ProductHints] latestProductHints saved', window.latestProductHints);
+          spVisibleTrace('[BARCODE] hints saved', window.latestProductHints, 'ok');
+          spVisibleTrace('[BARCODE] final name/maker', { jan, name: finalInfo?.name || '', maker: finalInfo?.maker || '', sourceUsed }, ((finalInfo?.name||'') ? 'ok' : 'e'));
           console.log('[BARCODE] finalInfo', {
             jan,
             sourceUsed,
@@ -6251,6 +6284,7 @@ return true;
             hints: window.latestProductHints
           });
           if ((!finalInfo.name || !String(finalInfo.name).trim()) || (!finalInfo.maker || !String(finalInfo.maker).trim())) {
+            spVisibleTrace('[BARCODE] weak result', { jan, name: finalInfo?.name || '', maker: finalInfo?.maker || '', sourceUsed }, 'e');
             console.warn('[BARCODE] weak result', {
               jan,
               missingName: !finalInfo.name || !String(finalInfo.name).trim(),
@@ -6324,6 +6358,7 @@ return true;
           showToast(`情報取得エラー: ${e.message}`, 5000);
           console.error('[ProcessBarcode] Error:', e);
           addErrorLog(`[Product Fetch Error] ${e.message}`);
+          spVisibleTrace('[BARCODE] fetch error', { jan, message: e.message }, 'e');
         }
         // エラー時もplaceholderを戻す
         if (nameInput) {
