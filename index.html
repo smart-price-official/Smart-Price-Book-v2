@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--APP: Smart Price
-AUTHOR: Claude
+AUTHOR: ChatGPT_Yui
 POLICY: UI_FREEZE / 単一HTML / VERSION SSOT
 NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-->
 <html lang="ja">
@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: ChatGPT_Yui
-  const APP_VERSION = "v23.9.56";
+  const APP_VERSION = "v23.9.57";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-18_maker-fallback-r1";
+  const BUILD_ID = "2026-03-18_barcode-trace-r1";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -110,7 +110,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#D50000">
-  <title>Smart Price v23.9.56</title>
+  <title>Smart Price v23.9.57</title>
   <!-- ✅ SW RESET TOOL (v22.7.0) : ?reset=sw -->
   <script>
   (function() {
@@ -5889,6 +5889,10 @@ return true;
         let finalInfo = { name: '', maker: '', imageUrl: '', imageRefType: '', areaId: '' };
         let sourceUsed = 'none'; // デバッグ用：どのソースを採用したか
 
+        if (isDebug()) {
+          console.log('[BARCODE] start', { jan, code, curBarcode, nameAtStart, makerAtStart });
+        }
+
         // ✅ P0: 最優先: LocalStorageキャッシュをチェック（共有DB暫定実装）
         const cachedData = getJanCache(jan);
         if (cachedData && cachedData.name) {
@@ -5946,6 +5950,9 @@ return true;
         // ✅ P0: 反映ラグ短縮（"先に仮反映→裏で補完"）
         // ✅ 優先順位1: Yahoo最優先（商品身元情報＋価格情報）
         yahooInfo = await lookupYahooByJan(jan);
+        if (isDebug()) {
+          console.log('[BARCODE] yahoo result', yahooInfo);
+        }
         
         if (yahooInfo) {
           // ✅ 品質スコアで採用を絞る（Yahooのスコア判定）
@@ -5994,6 +6001,12 @@ return true;
           if (yahooWeak) {
             // ✅ 優先順位2: 楽天（国内DB第2優先）
             rakutenInfo = await lookupRakutenByJan(jan);
+            if (isDebug()) {
+              console.log('[BARCODE] rakuten result', rakutenInfo);
+            }
+            if (isDebug()) {
+              console.log('[BARCODE] rakuten result', rakutenInfo);
+            }
             
             if (rakutenInfo) {
               // ✅ 不足している項目だけ補完（上書きしない）
@@ -6073,6 +6086,9 @@ return true;
             // ✅ Yahooも楽天も未取得の場合のみ、OFFを使用（第3優先）
             // ✅ OFFを使う条件: Yahooも楽天も「未取得」または「整形後も不自然」
             offInfo = await lookupOffByJan(jan);
+            if (isDebug()) {
+              console.log('[BARCODE] off result', offInfo);
+            }
             
             if (offInfo) {
               // ✅ OFFで商品身元情報を埋める（条件チェック済み・最終補助）
@@ -6139,6 +6155,7 @@ return true;
         if (isDebug()) {
           showToast(`[採用] ${sourceUsed}`, 3000);
           console.log("[ProcessBarcode] Source used:", sourceUsed, { yahooInfo, rakutenInfo, offInfo });
+          console.log('[BARCODE] before apply to product', { jan, finalInfo, existingProduct: { name: p?.name || '', maker: p?.maker || '', imageUrl: p?.imageUrl || '', imageKey: p?.imageKey || '' } });
         }
 
         // ✅ 商品情報をDBに保存（finalInfoを使用）
@@ -6223,6 +6240,20 @@ return true;
             finalMaker: finalInfo.maker || ''
           };
           console.log('[ProductHints] latestProductHints saved', window.latestProductHints);
+          console.log('[BARCODE] finalInfo', {
+            jan,
+            sourceUsed,
+            finalInfo,
+            hints: window.latestProductHints
+          });
+          if ((!finalInfo.name || !String(finalInfo.name).trim()) || (!finalInfo.maker || !String(finalInfo.maker).trim())) {
+            console.warn('[BARCODE] weak result', {
+              jan,
+              missingName: !finalInfo.name || !String(finalInfo.name).trim(),
+              missingMaker: !finalInfo.maker || !String(finalInfo.maker).trim(),
+              sourceUsed
+            });
+          }
         }
         
         // ✅ dirtyフラグで保護: ユーザーが入力し始めていたら上書きしない
