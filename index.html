@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: ChatGPT_Yui
-  const APP_VERSION = "v23.9.62";
+  const APP_VERSION = "v23.9.63";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-19_2357_safe-name-dict-r1";
+  const BUILD_ID = "2026-03-20_0008_maker-split-dict-r1";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -110,7 +110,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#D50000">
-  <title>Smart Price v23.9.62</title>
+  <title>Smart Price v23.9.63</title>
   <!-- ✅ SW RESET TOOL (v22.7.0) : ?reset=sw -->
   <script>
   (function() {
@@ -5550,12 +5550,12 @@ return true;
 
 // ✅ local-name-fallback v23.9.61: JANローカル辞書
 const JAN_NAME_HINTS = {
-  "4902105001103": "日清 チキンラーメン",
-  "4901777310159": "ヤマザキ ランチパック ピーナッツ",
-  "4902102141000": "カルビー ポテトチップス うすしお味 60g",
-  "4987244127860": "キリン 生茶 525ml",
-  "4901085043387": "コカ・コーラ 500ml"
-  // ↑ 後で追加可能
+  "4902105001103": { name: "チキンラーメン",              maker: "日清" },
+  "4901777310159": { name: "ランチパック ピーナッツ",      maker: "ヤマザキ" },
+  "4902102141000": { name: "ポテトチップス うすしお味 60g", maker: "カルビー" },
+  "4987244127860": { name: "生茶 525ml",                  maker: "キリン" },
+  "4901085043387": { name: "コカ・コーラ 500ml",           maker: "コカ・コーラ" }
+  // ↑ 後で追加可能（文字列 or {name, maker} オブジェクト 両対応）
 };
 
 // ✅ local-name-fallback v23.9.61: 弱い候補を判定
@@ -5582,7 +5582,7 @@ function cleanNameCandidate(v) {
     .trim();
 }
 
-// ✅ local-name-fallback v23.9.61: 商品名候補を優先順位で決定
+// ✅ maker-split-dict v23.9.63: 商品名候補を優先順位で決定（文字列/オブジェクト両対応）
 function guessNameFromLocalHints(jan, context) {
   spVisibleTrace('[FALLBACK] local hint start', { jan }, 'w');
 
@@ -5599,19 +5599,26 @@ function guessNameFromLocalHints(jan, context) {
     const s = cleanNameCandidate(hints[i]);
     if (!isWeakNameCandidate(s, jan)) {
       spVisibleTrace('[FALLBACK] local hint hit', { jan, name: s, src: i }, 'ok');
-      return s;
+      return { name: s, maker: '' };
     }
   }
 
-  // B. ローカル辞書
-  if (JAN_NAME_HINTS[jan]) {
-    spVisibleTrace('[FALLBACK] local hint hit (dict)', { jan, name: JAN_NAME_HINTS[jan] }, 'ok');
-    return JAN_NAME_HINTS[jan];
+  // B. ローカル辞書（文字列 or {name, maker} オブジェクト 両対応）
+  const hit = JAN_NAME_HINTS[jan];
+  if (hit) {
+    if (typeof hit === 'string') {
+      spVisibleTrace('[FALLBACK] local hint hit (dict/str)', { jan, name: hit }, 'ok');
+      return { name: hit, maker: '' };
+    }
+    if (typeof hit === 'object') {
+      spVisibleTrace('[FALLBACK] local hint hit (dict/obj)', { jan, name: hit.name || '', maker: hit.maker || '' }, 'ok');
+      return { name: hit.name || '', maker: hit.maker || '' };
+    }
   }
 
   // C. 全て失敗
   spVisibleTrace('[FALLBACK] local hint miss', { jan }, 'e');
-  return '';
+  return null;
 }
 
 // ✅ fallback v23.9.60→61: API全失敗時にJANをそのまま商品名として返す（最低保証）
@@ -6414,15 +6421,18 @@ function spVisibleTrace(tag, payload, cls) {
             imageText: '',
             detectedText: ''
           };
-          const guessedName = guessNameFromLocalHints(jan, hintContext);
+          const guessed = guessNameFromLocalHints(jan, hintContext);
 
-          if (guessedName) {
+          if (guessed && guessed.name) {
             // ローカルヒントで候補あり
-            finalInfo.name = guessedName;
+            finalInfo.name = guessed.name;
+            if (guessed.maker && !finalInfo.maker) finalInfo.maker = guessed.maker;
             sourceUsed = 'local-hint';
             const nameInputFb = document.getElementById('inputName');
-            if (nameInputFb && !nameInputFb.value) nameInputFb.value = guessedName;
-            spVisibleTrace('[BARCODE] fallback applied (local)', { name: guessedName }, 'ok');
+            if (nameInputFb && !nameInputFb.value) nameInputFb.value = guessed.name;
+            const makerInputFb = document.getElementById('inputMaker');
+            if (makerInputFb && !makerInputFb.value && guessed.maker) makerInputFb.value = guessed.maker;
+            spVisibleTrace('[BARCODE] fallback applied (local)', { name: guessed.name, maker: guessed.maker || '' }, 'ok');
           } else {
             // STEP2: ローカルヒントも空 → 最低保証でJANを入れる
             spVisibleTrace('[FALLBACK] returning jan as name', jan, 'w');
