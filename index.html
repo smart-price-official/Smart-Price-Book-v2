@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--APP: Smart Price
-AUTHOR: ChatGPT_Yui
+AUTHOR: Claude
 POLICY: UI_FREEZE / 単一HTML / VERSION SSOT
 NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-->
 <html lang="ja">
@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: ChatGPT_Yui
-  const APP_VERSION = "v23.9.59";
+  const APP_VERSION = "v23.9.60";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-18_barcode-visibletrace-r1";
+  const BUILD_ID = "2026-03-18_barcode-fallback-r1";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -110,7 +110,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#D50000">
-  <title>Smart Price v23.9.59</title>
+  <title>Smart Price v23.9.60</title>
   <!-- ✅ SW RESET TOOL (v22.7.0) : ?reset=sw -->
   <script>
   (function() {
@@ -5440,7 +5440,9 @@ return true;
     console.log('[KIRA] aiRefineName start', { rawName });
     spVisibleTrace('[KIRA] start', { rawName }, 'w');
 
-    if (!rawName) { spVisibleTrace('[KIRA] blocked', { reason: 'rawName empty' }, 'e'); showToast('商品名を入力してください', 2000); return; }
+    if (!rawName) {
+      spVisibleTrace('[KIRA] allow fallback refine', { reason: 'rawName empty, continuing' }, 'w');
+    }
 
     btn.textContent = '⏳';
     btn.style.pointerEvents = 'none';
@@ -5545,6 +5547,20 @@ return true;
     }
   }
   window.aiRefineName = aiRefineName;
+
+// ✅ fallback v23.9.60: API全失敗時にJANをそのまま商品名として返す（最低保証）
+async function fallbackFromGoogle(jan) {
+  try {
+    const url = 'https://www.google.com/search?q=' + encodeURIComponent(jan);
+    spVisibleTrace('[FALLBACK] google url', url, 'w');
+    // CORSの制限でHTMLは取得できないため、JANをそのまま返す（最低保証）
+    spVisibleTrace('[FALLBACK] returning jan as name', jan, 'w');
+    return { name: jan, maker: '' };
+  } catch(e) {
+    spVisibleTrace('[FALLBACK] error', { message: e.message }, 'e');
+    return null;
+  }
+}
 
 function spVisibleTrace(tag, payload, cls) {
   try {
@@ -6321,12 +6337,17 @@ function spVisibleTrace(tag, payload, cls) {
         if (hasData) {
           showToast("商品情報を取得しました", 3000);
         } else {
-          // 全API失敗 → JANコードをフォームに表示して手動入力を促す
-          showToast(`商品情報が見つかりませんでした\nJAN: ${jan}\n商品名・メーカーを手入力してください`, 8000);
-          const nameInput = document.getElementById('inputName');
-          if (nameInput && !nameInput.value) {
-            nameInput.placeholder = `JAN: ${jan} （商品名を入力）`;
+          // ✅ fallback v23.9.60: Google fallback（最低保証）
+          spVisibleTrace('[BARCODE] API empty → fallback', { jan }, 'e');
+          const fbResult = await fallbackFromGoogle(jan);
+          if (fbResult && fbResult.name) {
+            finalInfo.name = fbResult.name;
+            sourceUsed = 'fallback';
+            const nameInputFb = document.getElementById('inputName');
+            if (nameInputFb && !nameInputFb.value) nameInputFb.value = fbResult.name;
+            spVisibleTrace('[BARCODE] fallback applied', { name: fbResult.name }, 'ok');
           }
+          showToast(`商品情報が見つかりませんでした\nJAN: ${jan}\n商品名・メーカーを手入力してください`, 8000);
         }
         
         // ✅ P0: debug=1 時の詳細表示（LAST_JAN / SOURCE / STATUS / 取得データ）
