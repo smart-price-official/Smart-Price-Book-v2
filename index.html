@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: ChatGPT_Yui
-  const APP_VERSION = "v23.9.60";
+  const APP_VERSION = "v23.9.61";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-18_barcode-fallback-r1";
+  const BUILD_ID = "2026-03-19_2338_local-name-fallback-r1";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -110,7 +110,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#D50000">
-  <title>Smart Price v23.9.60</title>
+  <title>Smart Price v23.9.61</title>
   <!-- ✅ SW RESET TOOL (v22.7.0) : ?reset=sw -->
   <script>
   (function() {
@@ -5548,7 +5548,73 @@ return true;
   }
   window.aiRefineName = aiRefineName;
 
-// ✅ fallback v23.9.60: API全失敗時にJANをそのまま商品名として返す（最低保証）
+// ✅ local-name-fallback v23.9.61: JANローカル辞書
+const JAN_NAME_HINTS = {
+  "4902105001103": "日清 チキンラーメン 5食パック",
+  "4901777310159": "ヤマザキ ランチパック ピーナッツ",
+  "4902102141000": "カルビー ポテトチップス うすしお味 60g",
+  "4987244127860": "キリン 生茶 525ml",
+  "4901085043387": "コカ・コーラ 500ml"
+  // ↑ 後で追加可能
+};
+
+// ✅ local-name-fallback v23.9.61: 弱い候補を判定
+function isWeakNameCandidate(v, jan) {
+  const s = String(v || '').trim();
+  if (!s) return true;
+  if (s === jan) return true;
+  if (/^\d{8,14}$/.test(s)) return true;   // JAN番号そのもの
+  if (s.length < 6) return true;
+  if (/^(undefined|null|商品|不明|unknown)$/i.test(s)) return true;
+  if (/^[\d\s\-]+$/.test(s)) return true; // 数字・記号だけ
+  return false;
+}
+
+// ✅ local-name-fallback v23.9.61: 候補文字列のノイズ除去
+function cleanNameCandidate(v) {
+  return String(v || '')
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/税別|税込|%引|OFF|オフ/g, ' ')
+    .replace(/¥[\d,]+/g, ' ')
+    .replace(/\d+円/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// ✅ local-name-fallback v23.9.61: 商品名候補を優先順位で決定
+function guessNameFromLocalHints(jan, context) {
+  spVisibleTrace('[FALLBACK] local hint start', { jan }, 'w');
+
+  // A. コンテキスト候補を順番に評価
+  const hints = [
+    context && context.rawName,
+    context && context.existingName,
+    context && context.thumbAlt,
+    context && context.imageText,
+    context && context.detectedText
+  ];
+
+  for (var i = 0; i < hints.length; i++) {
+    const s = cleanNameCandidate(hints[i]);
+    if (!isWeakNameCandidate(s, jan)) {
+      spVisibleTrace('[FALLBACK] local hint hit', { jan, name: s, src: i }, 'ok');
+      return s;
+    }
+  }
+
+  // B. ローカル辞書
+  if (JAN_NAME_HINTS[jan]) {
+    spVisibleTrace('[FALLBACK] local hint hit (dict)', { jan, name: JAN_NAME_HINTS[jan] }, 'ok');
+    return JAN_NAME_HINTS[jan];
+  }
+
+  // C. 全て失敗
+  spVisibleTrace('[FALLBACK] local hint miss', { jan }, 'e');
+  return '';
+}
+
+// ✅ fallback v23.9.60→61: API全失敗時にJANをそのまま商品名として返す（最低保証）
 async function fallbackFromGoogle(jan) {
   try {
     const url = 'https://www.google.com/search?q=' + encodeURIComponent(jan);
@@ -6337,15 +6403,37 @@ function spVisibleTrace(tag, payload, cls) {
         if (hasData) {
           showToast("商品情報を取得しました", 3000);
         } else {
-          // ✅ fallback v23.9.60: Google fallback（最低保証）
+          // ✅ local-name-fallback v23.9.61: guessNameFromLocalHints → fallbackFromGoogle の順で補完
           spVisibleTrace('[BARCODE] API empty → fallback', { jan }, 'e');
-          const fbResult = await fallbackFromGoogle(jan);
-          if (fbResult && fbResult.name) {
-            finalInfo.name = fbResult.name;
-            sourceUsed = 'fallback';
+
+          // STEP1: ローカルヒントから候補を探す
+          const hintContext = {
+            rawName: nameInput ? nameInput.value : '',
+            existingName: (db.products[jan] && db.products[jan].name) ? db.products[jan].name : '',
+            thumbAlt: '',
+            imageText: '',
+            detectedText: ''
+          };
+          const guessedName = guessNameFromLocalHints(jan, hintContext);
+
+          if (guessedName) {
+            // ローカルヒントで候補あり
+            finalInfo.name = guessedName;
+            sourceUsed = 'local-hint';
             const nameInputFb = document.getElementById('inputName');
-            if (nameInputFb && !nameInputFb.value) nameInputFb.value = fbResult.name;
-            spVisibleTrace('[BARCODE] fallback applied', { name: fbResult.name }, 'ok');
+            if (nameInputFb && !nameInputFb.value) nameInputFb.value = guessedName;
+            spVisibleTrace('[BARCODE] fallback applied (local)', { name: guessedName }, 'ok');
+          } else {
+            // STEP2: ローカルヒントも空 → 最低保証でJANを入れる
+            spVisibleTrace('[FALLBACK] returning jan as name', jan, 'w');
+            const fbResult = await fallbackFromGoogle(jan);
+            if (fbResult && fbResult.name) {
+              finalInfo.name = fbResult.name;
+              sourceUsed = 'fallback-jan';
+              const nameInputFb = document.getElementById('inputName');
+              if (nameInputFb && !nameInputFb.value) nameInputFb.value = fbResult.name;
+              spVisibleTrace('[BARCODE] fallback applied (jan)', { name: fbResult.name }, 'w');
+            }
           }
           showToast(`商品情報が見つかりませんでした\nJAN: ${jan}\n商品名・メーカーを手入力してください`, 8000);
         }
