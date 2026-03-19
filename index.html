@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: ChatGPT_Yui
-  const APP_VERSION = "v23.9.61";
+  const APP_VERSION = "v23.9.62";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-19_2338_local-name-fallback-r1";
+  const BUILD_ID = "2026-03-19_2357_safe-name-dict-r1";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -110,7 +110,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#D50000">
-  <title>Smart Price v23.9.61</title>
+  <title>Smart Price v23.9.62</title>
   <!-- ✅ SW RESET TOOL (v22.7.0) : ?reset=sw -->
   <script>
   (function() {
@@ -5550,7 +5550,7 @@ return true;
 
 // ✅ local-name-fallback v23.9.61: JANローカル辞書
 const JAN_NAME_HINTS = {
-  "4902105001103": "日清 チキンラーメン 5食パック",
+  "4902105001103": "日清 チキンラーメン",
   "4901777310159": "ヤマザキ ランチパック ピーナッツ",
   "4902102141000": "カルビー ポテトチップス うすしお味 60g",
   "4987244127860": "キリン 生茶 525ml",
