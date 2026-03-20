@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: ChatGPT_Yui
-  const APP_VERSION = "v23.9.63";
+  const APP_VERSION = "v23.9.64";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-20_0008_maker-split-dict-r1";
+  const BUILD_ID = "2026-03-20_0020_history-fallback-r1";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -110,7 +110,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#D50000">
-  <title>Smart Price v23.9.63</title>
+  <title>Smart Price v23.9.64</title>
   <!-- ✅ SW RESET TOOL (v22.7.0) : ?reset=sw -->
   <script>
   (function() {
@@ -4104,6 +4104,9 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       db.products[curBarcode] = p;
       db = normalizeDb(db);
 
+      // ✅ history-fallback v23.9.64: 保存成功時にlocalStorageへ記録
+      saveToHistory(curBarcode, p.name, p.maker);
+
       saveLocalOnly();
       syncFirebasePut();
 
@@ -5582,6 +5585,45 @@ function cleanNameCandidate(v) {
     .trim();
 }
 
+// ✅ history-fallback v23.9.64: localStorage に商品名・メーカーを保存
+function saveToHistory(jan, name, maker) {
+  try {
+    const code = String(jan || '').trim();
+    const productName = String(name || '').trim();
+    const productMaker = String(maker || '').trim();
+    if (!code || !productName) return;
+
+    const raw = localStorage.getItem('sp_history') || '{}';
+    const hist = JSON.parse(raw);
+    hist[code] = { name: productName, maker: productMaker, updatedAt: Date.now() };
+    localStorage.setItem('sp_history', JSON.stringify(hist));
+    spVisibleTrace('[HISTORY] saved', { jan: code, name: productName, maker: productMaker }, 'ok');
+  } catch(e) {
+    spVisibleTrace('[HISTORY] save error', { message: e && e.message ? e.message : String(e) }, 'e');
+  }
+}
+
+// ✅ history-fallback v23.9.64: localStorage から過去の商品名・メーカーを取得
+function getFromHistory(jan) {
+  try {
+    const code = String(jan || '').trim();
+    if (!code) return null;
+
+    const raw = localStorage.getItem('sp_history');
+    if (!raw) return null;
+
+    const hist = JSON.parse(raw);
+    const hit = hist[code];
+    if (!hit || !hit.name) return null;
+
+    spVisibleTrace('[HISTORY] hit', { jan: code, name: hit.name, maker: hit.maker || '' }, 'ok');
+    return { name: String(hit.name || '').trim(), maker: String(hit.maker || '').trim() };
+  } catch(e) {
+    spVisibleTrace('[HISTORY] read error', { message: e && e.message ? e.message : String(e) }, 'e');
+    return null;
+  }
+}
+
 // ✅ maker-split-dict v23.9.63: 商品名候補を優先順位で決定（文字列/オブジェクト両対応）
 function guessNameFromLocalHints(jan, context) {
   spVisibleTrace('[FALLBACK] local hint start', { jan }, 'w');
@@ -6410,10 +6452,24 @@ function spVisibleTrace(tag, payload, cls) {
         if (hasData) {
           showToast("商品情報を取得しました", 3000);
         } else {
-          // ✅ local-name-fallback v23.9.61: guessNameFromLocalHints → fallbackFromGoogle の順で補完
+          // ✅ history-fallback v23.9.64: 過去履歴 → ローカルヒント → JAN の順で補完
           spVisibleTrace('[BARCODE] API empty → fallback', { jan }, 'e');
 
-          // STEP1: ローカルヒントから候補を探す
+          // STEP0: 過去履歴（最優先）
+          const hist = getFromHistory(jan);
+          if (hist && hist.name) {
+            spVisibleTrace('[FALLBACK] history hit', { jan, name: hist.name, maker: hist.maker || '' }, 'ok');
+            finalInfo.name = hist.name;
+            if (hist.maker && !finalInfo.maker) finalInfo.maker = hist.maker;
+            sourceUsed = 'history';
+            const nameInputH = document.getElementById('inputName');
+            if (nameInputH && !nameInputH.value) nameInputH.value = hist.name;
+            const makerInputH = document.getElementById('inputMaker');
+            if (makerInputH && !makerInputH.value && hist.maker) makerInputH.value = hist.maker;
+          }
+
+          // STEP1: 過去履歴になければローカルヒントから候補を探す
+          if (!finalInfo.name) {
           const hintContext = {
             rawName: nameInput ? nameInput.value : '',
             existingName: (db.products[jan] && db.products[jan].name) ? db.products[jan].name : '',
@@ -6445,6 +6501,7 @@ function spVisibleTrace(tag, payload, cls) {
               spVisibleTrace('[BARCODE] fallback applied (jan)', { name: fbResult.name }, 'w');
             }
           }
+          } // end if(!finalInfo.name) - STEP1/STEP2
           showToast(`商品情報が見つかりませんでした\nJAN: ${jan}\n商品名・メーカーを手入力してください`, 8000);
         }
         
