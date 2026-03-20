@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: ChatGPT_Yui
-  const APP_VERSION = "v23.9.65";
+  const APP_VERSION = "v23.9.66";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-20_0924_maker-guard-r1";
+  const BUILD_ID = "2026-03-20_0936_spdbg-fix-r1";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -8128,6 +8128,24 @@ window.importBackup   = importBackup;
     if (cntEl) cntEl.textContent = cnt + ' logs';
   }
   window.spDbgLog = spDbgLog;
+
+  // [spdbg-fix] spDbg: spDbgLog への薄いラッパー（未定義エラー防止）
+  function spDbg(tag, payload) {
+    try {
+      if (typeof spDbgLog === 'function') {
+        var suffix = '';
+        if (payload !== undefined) {
+          try { suffix = ' ' + JSON.stringify(payload); } catch(_) { suffix = ' ' + String(payload); }
+        }
+        spDbgLog(String(tag || '') + suffix);
+        return;
+      }
+      if (typeof console !== 'undefined' && console.log) {
+        console.log(tag, payload);
+      }
+    } catch(_) {}
+  }
+  window.spDbg = spDbg;
 
   window.spDbgDump = function() {
     var state = '';
