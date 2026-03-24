@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: ChatGPT_Yui
-  const APP_VERSION = "v23.9.67";
+  const APP_VERSION = "v23.9.69";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-20_0950_yahoo-name-relax-r1";
+  const BUILD_ID = "2026-03-20_2350_maker-force-sync-r1";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -5746,6 +5746,32 @@ function spVisibleTrace(tag, payload, cls) {
     return s;
   }
 
+  // [yahoo-clean-maker-sync] Yahoo商品名の通販ノイズ除去
+  function cleanYahooTitleNoise(name) {
+    let s = String(name || '');
+    s = s.replace(/送料無料/g, '');
+    s = s.replace(/ケース販売?/g, '');
+    s = s.replace(/まとめ買い/g, '');
+    s = s.replace(/セット/g, '');
+    s = s.replace(/箱/g, '');
+    s = s.replace(/\d+本(入|セット)?/g, '');
+    s = s.replace(/\s+/g, ' ').trim();
+    return s;
+  }
+
+  // [yahoo-clean-maker-sync] 商品名からメーカー名を抽出
+  function extractMakerFromName(name) {
+    if (!name) return '';
+    const MAKER_HINTS = [
+      '大塚製薬', '森永乳業', 'コカ・コーラ', 'アサヒ',
+      'キリン', 'サントリー', '伊藤園', '明治'
+    ];
+    for (const m of MAKER_HINTS) {
+      if (name.includes(m)) return m;
+    }
+    return '';
+  }
+
   // メーカー名検証（販売店名・ECサイト名を除外）
   function validateMakerName(maker) {
     if (!maker) return '';
@@ -6134,13 +6160,27 @@ function spVisibleTrace(tag, payload, cls) {
           // [yahoo-name-relax] name はスコアに関係なく、空でなければまず採用する
           const yahooNameNormalized = normalizeYahooName(yahooInfo.name, jan);
           if (yahooNameNormalized) {
-            finalInfo.name = yahooNameNormalized;
+            // [yahoo-clean-maker-sync] 通販ノイズ除去
+            const cleanedName = cleanYahooTitleNoise(yahooNameNormalized);
+            finalInfo.name = cleanedName || yahooNameNormalized;
             sourceUsed = 'yahoo';
             spDbg('[YAHOO_NAME] accepted', {
               jan: jan,
               raw: yahooInfo && yahooInfo.name ? yahooInfo.name : '',
               normalized: yahooNameNormalized
             });
+            spDbg('[YAHOO_CLEAN]', { before: yahooNameNormalized, after: finalInfo.name });
+            // [yahoo-clean-maker-sync] 商品名からメーカー同期
+            const makerFromName = extractMakerFromName(finalInfo.name);
+            if (makerFromName) {
+              spDbg('[MAKER_FORCE_SYNC]', {
+                before: finalInfo.maker,
+                after: makerFromName,
+                name: finalInfo.name
+              });
+              finalInfo.maker = makerFromName;
+            }
+            spDbg('[MAKER_SYNC]', { name: finalInfo.name, maker: makerFromName });
           } else {
             spDbg('[YAHOO_NAME] rejected', {
               jan: jan,
