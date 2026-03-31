@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: ChatGPT_Yui
-  const APP_VERSION = "v23.9.72";
+  const APP_VERSION = "v23.9.73";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-31_1920_final-route-fix-r1";
+  const BUILD_ID = "2026-03-31_2135_save-guard-relax-r1";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -110,7 +110,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#D50000">
-  <title>Smart Price v23.9.64</title>
+  <title>Smart Price v23.9.73</title>
   <!-- ✅ SW RESET TOOL (v22.7.0) : ?reset=sw -->
   <script>
   (function() {
@@ -4009,51 +4009,68 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     if (saveBtn) saveBtn.disabled = true;
     
     try {
-      if (curStore === "未設定") {
+      // [save-guard-relax] 必須チェック: JAN（curBarcode）
+      const jan = String(curBarcode || '').trim();
+      if (!jan) {
+        spDbg('[SAVE_BLOCK_REASON]', { reason: 'jan_empty', jan: jan, name: '', price: '', store: curStore });
+        showToast("バーコードが読み取れていません", 4000);
+        if (saveBtn) saveBtn.disabled = false;
+        return;
+      }
+
+      // [save-guard-relax] 必須チェック: ストア
+      if (!curStore || curStore === "未設定") {
+        spDbg('[SAVE_BLOCK_REASON]', { reason: 'store_empty', jan: jan, name: '', price: '', store: curStore });
         showToast("店名を選んでください", 4000);
         if (saveBtn) saveBtn.disabled = false;
         return;
       }
 
+      // [save-guard-relax] カテゴリ・サブカテゴリは空でも通す（ブロックしない）
       const cat = document.getElementById('inputCategory').value;
+      const safeCategory = (cat && cat !== '__NONE__') ? String(cat).trim() : '';
       if (cat === "__NONE__") {
-        showToast("カテゴリを選んでください", 4000);
-        if (saveBtn) saveBtn.disabled = false;
-        return;
+        spDbg('[SAVE_BLOCK_REASON]', { reason: 'category_empty', jan: jan, category: cat });
+        // ブロックせず空のまま続行
       }
 
       const subSel = document.getElementById('inputSubCategory');
       const needsSub = (subSel && subSel.style.display !== 'none');
       const sub = needsSub ? subSel.value : "__NONE__";
+      const safeSubCategory = (needsSub && sub && sub !== '__NONE__') ? String(sub).trim() : '';
       if (needsSub && sub === "__NONE__") {
-        showToast("サブカテゴリを選んでください", 4000);
-        if (saveBtn) saveBtn.disabled = false;
-        return;
+        spDbg('[SAVE_BLOCK_REASON]', { reason: 'subCategory_empty', jan: jan, subCategory: sub });
+        // ブロックせず空のまま続行
       }
 
-      const p = db.products[curBarcode] || { history: [] };
-      p.name = document.getElementById('inputName').value || "名称なし";
-      p.category = cat;
-      p.subCategory = needsSub ? sub : "";
-      p.maker = document.getElementById('inputMaker').value || "";
+      const p = db.products[jan] || { history: [] };
+
+      // [save-guard-relax] name が空なら JAN を仮名として使う
+      const rawName = document.getElementById('inputName').value;
+      const safeName = (rawName && String(rawName).trim()) ? String(rawName).trim() : jan;
+      p.name = safeName;
+      p.category = safeCategory;
+      p.subCategory = safeSubCategory;
+
+      // [save-guard-relax] maker は空でも通す
+      const rawMaker = document.getElementById('inputMaker').value;
+      const safeMaker = rawMaker ? String(rawMaker).trim() : '';
+      p.maker = safeMaker;
 
       // ✅ デバッグログ
       if (isDebug()) {
-        console.log("[SaveData] code:", curBarcode, "store:", curStore, "category:", cat, "subCategory:", sub);
+        console.log("[SaveData] code:", jan, "store:", curStore, "category:", safeCategory, "subCategory:", safeSubCategory);
       }
 
       // ✅ 画像（プレビュー）→ Firebase共有またはIndexedDBへ保存
       if (tempImgData && tempImgData.type === 'shared' && tempImgData.imageId) {
-        // 共有画像の場合、imageUrlに共有画像のURLを保存（参照のみ）
-        // 実際の画像データはFirebaseに保存済み
         p.imageUrl = `shared:${tempImgData.imageId}`;
         delete p.image;
-        delete p.imageKey; // 共有画像はimageKeyを使わない
+        delete p.imageKey;
       } else if (tempImgData && typeof tempImgData === 'string' && tempImgData.startsWith('data:')) {
-        // 旧方式：dataURL → IndexedDB
         const blob = dataURLtoBlob(tempImgData);
         if (blob) {
-          const key = 'img_' + String(curBarcode || '').replace(/[^\w\-]/g, '_');
+          const key = 'img_' + String(jan || '').replace(/[^\w\-]/g, '_');
           await idbPut(key, blob);
           p.imageKey = key;
         }
@@ -4067,12 +4084,25 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         delete p.image;
       }
 
+      // [save-guard-relax] 必須チェック: 価格
       const val = Number(document.getElementById('inputPrice').value);
       if (!Number.isFinite(val) || val <= 0) {
+        spDbg('[SAVE_BLOCK_REASON]', { reason: 'price_empty', jan: jan, name: safeName, price: val, store: curStore });
         showToast("価格を入力してください", 4000);
         if (saveBtn) saveBtn.disabled = false;
         return;
       }
+
+      // [save-guard-relax] 保存直前ログ
+      spDbg('[SAVE_READY]', {
+        jan: jan,
+        name: safeName,
+        maker: safeMaker,
+        category: safeCategory,
+        subCategory: safeSubCategory,
+        price: val,
+        store: curStore
+      });
 
       if (editingHistIdx !== null) {
         p.history[editingHistIdx].price = val;
@@ -4086,7 +4116,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         if(isTaxEx) finalP = Math.floor(finalP * 1.08);
         db.config.lastTax = isTaxEx ? "ex" : "in";
         
-        // ✅ ストアの税別/税込既定値を保存（一度設定したら以後自動切替）
+        // ✅ ストアの税別/税込既定値を保存
         if (curStore && curStore !== "未設定") {
           if (!db.config.storeTaxModes) db.config.storeTaxModes = {};
           db.config.storeTaxModes[curStore] = isTaxEx ? "ex" : "in";
@@ -4101,14 +4131,25 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         if (isDebug()) console.log("[SaveData] New entry added:", entry);
       }
 
-      db.products[curBarcode] = p;
+      db.products[jan] = p;
       db = normalizeDb(db);
 
-      // ✅ history-fallback v23.9.64: 保存成功時にlocalStorageへ記録
-      saveToHistory(curBarcode, p.name, p.maker);
+      // ✅ history-fallback: 保存成功時にlocalStorageへ記録
+      saveToHistory(jan, p.name, p.maker);
 
       saveLocalOnly();
       syncFirebasePut();
+
+      // [save-guard-relax] 保存成功ログ
+      spDbg('[SAVE_DONE]', {
+        jan: jan,
+        name: safeName,
+        maker: safeMaker,
+        category: safeCategory,
+        subCategory: safeSubCategory,
+        price: val,
+        store: curStore
+      });
 
       renderHistory();
       showHome();
@@ -4116,6 +4157,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       if (isDebug()) console.log("[SaveData] Save completed successfully");
       
     } catch(e) {
+      spDbg('[SAVE_BLOCK_REASON]', { reason: 'exception', message: e && e.message ? e.message : String(e) });
       showToast("保存に失敗しました", 8000);
       if (isDebug()) {
         console.error("[SaveData] Error:", e);
