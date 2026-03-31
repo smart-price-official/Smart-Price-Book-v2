@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: ChatGPT_Yui
-  const APP_VERSION = "v23.9.73";
+  const APP_VERSION = "v23.9.74";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-31_2135_save-guard-relax-r1";
+  const BUILD_ID = "2026-03-31_2200_name-stabilize-r1";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -110,7 +110,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#D50000">
-  <title>Smart Price v23.9.73</title>
+  <title>Smart Price v23.9.74</title>
   <!-- ✅ SW RESET TOOL (v22.7.0) : ?reset=sw -->
   <script>
   (function() {
@@ -5791,12 +5791,20 @@ function spVisibleTrace(tag, payload, cls) {
   // [yahoo-clean-maker-sync] Yahoo商品名の通販ノイズ除去
   function cleanYahooTitleNoise(name) {
     let s = String(name || '');
-    s = s.replace(/送料無料/g, '');
-    s = s.replace(/ケース販売?/g, '');
-    s = s.replace(/まとめ買い/g, '');
-    s = s.replace(/セット/g, '');
-    s = s.replace(/箱/g, '');
+    // ｜以降を削除
+    s = s.split('｜')[0];
+    // ノイズ単語を完全削除
+    const NOISE_WORDS = [
+      '送料無料', '買い置き', '冷凍食品', '冷凍麺', '濃厚', '辛口',
+      '赤', '花椒', 'セール', '激安', 'まとめ買い',
+      'ケース販売', 'ケース'
+    ];
+    for (const w of NOISE_WORDS) {
+      s = s.split(w).join('');
+    }
     s = s.replace(/\d+本(入|セット)?/g, '');
+    // 同じ単語の連続を削除（簡易）
+    s = s.replace(/(.+?)\s+\1/g, '$1');
     s = s.replace(/\s+/g, ' ').trim();
     return s;
   }
@@ -5820,6 +5828,33 @@ function spVisibleTrace(tag, payload, cls) {
       'オロナミンC', 'リプトン', 'チキンラーメン', '綾鷹'
     ];
     return CORE_HINTS.some(k => name.includes(k));
+  }
+
+  // [name-stabilize] 表示用に40文字を超えたら切り詰める
+  function shortenName(name) {
+    if (!name) return '';
+    return name.length > 40 ? name.slice(0, 40) : name;
+  }
+
+  // [name-stabilize] 名前が弱い（空または10文字未満）か判定
+  function isWeakResult(name) {
+    return !name || name.length < 10;
+  }
+
+  // [name-stabilize] 商品名からMAKER_MAPでメーカーを安定させる
+  function applyMakerMap(name, currentMaker) {
+    const MAKER_MAP = {
+      'マ・マー':    '日清製粉ウェルナ',
+      '日清中華':    '日清食品',
+      'スジャータ':  'スジャータめいらく',
+      'クラフト':    'クラフト'
+    };
+    for (const key in MAKER_MAP) {
+      if (name && name.includes(key)) {
+        return MAKER_MAP[key];
+      }
+    }
+    return currentMaker || '';
   }
 
   // [leading-noise-trim] 先頭ノイズのみ除去（コアは壊さない）
@@ -6381,6 +6416,15 @@ function spVisibleTrace(tag, payload, cls) {
         finalInfo.maker = candidateMaker || '';
         finalInfo.imageUrl = candidateImageUrl || '';
         sourceUsed = candidateSource || 'none';
+
+        // [name-stabilize] 名前が弱い場合でも shortenName を適用
+        if (isWeakResult(finalInfo.name)) {
+          finalInfo.name = shortenName(finalInfo.name);
+        } else {
+          finalInfo.name = shortenName(finalInfo.name);
+        }
+        // [name-stabilize] MAKER_MAP でメーカーを安定させる
+        finalInfo.maker = applyMakerMap(finalInfo.name, finalInfo.maker);
 
         spDbg('[ROUTE] final apply', {
           jan: jan,
