@@ -13,9 +13,9 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // Author: ChatGPT_Yui
-  const APP_VERSION = "v23.9.69";
+  const APP_VERSION = "v23.9.72";
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-20_2350_maker-force-sync-r1";
+  const BUILD_ID = "2026-03-31_1920_final-route-fix-r1";
   window.BUILD_ID = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
@@ -5772,6 +5772,26 @@ function spVisibleTrace(tag, payload, cls) {
     return '';
   }
 
+  // [clean-guard] ノイズ除去後にコア商品名が残っているか確認
+  function hasCoreName(name) {
+    const CORE_HINTS = [
+      'オロナミンC', 'リプトン', 'チキンラーメン', '綾鷹'
+    ];
+    return CORE_HINTS.some(k => name.includes(k));
+  }
+
+  // [leading-noise-trim] 先頭ノイズのみ除去（コアは壊さない）
+  function trimLeadingNoise(name) {
+    const LEADING_NOISE = ['送料無料', '送料込み', 'ケース販売', 'まとめ買い'];
+    let s = String(name || '');
+    for (const noise of LEADING_NOISE) {
+      if (s.startsWith(noise)) {
+        s = s.slice(noise.length).replace(/^[\s　\-・|／]+/, '').trimStart();
+      }
+    }
+    return s;
+  }
+
   // メーカー名検証（販売店名・ECサイト名を除外）
   function validateMakerName(maker) {
     if (!maker) return '';
@@ -6143,44 +6163,73 @@ function spVisibleTrace(tag, payload, cls) {
           }
         }
 
-        // ✅ P0: 反映ラグ短縮（"先に仮反映→裏で補完"）
-        // ✅ 優先順位1: Yahoo最優先（商品身元情報＋価格情報）
+        // ✅ [final-route-fix] 候補変数で一本管理し、最後に1回だけ finalInfo へ確定する
+        let candidateName = '';
+        let candidateMaker = '';
+        let candidateImageUrl = '';
+        let candidateSource = 'none';
+
+        // ✅ 優先順位1: Yahoo最優先
         yahooInfo = await lookupYahooByJan(jan);
         if (isDebug()) {
           console.log('[BARCODE] yahoo result', yahooInfo);
           spVisibleTrace('[BARCODE] yahoo', { name: yahooInfo?.name || '', maker: yahooInfo?.maker || '', hasImage: !!yahooInfo?.imageUrl }, 'w');
-      console.log('[BARCODE] yahoo result name', yahooInfo?.name || '');
+          console.log('[BARCODE] yahoo result name', yahooInfo?.name || '');
         }
-        
+        spDbg('[ROUTE] yahoo raw', {
+          jan: jan,
+          name: yahooInfo && yahooInfo.name ? yahooInfo.name : '',
+          maker: yahooInfo && yahooInfo.maker ? yahooInfo.maker : ''
+        });
+
         if (yahooInfo) {
-          // ✅ 品質スコアで採用を絞る（Yahooのスコア判定）
           const yahooTrustScore = yahooInfo.trustScore || 100;
           const yahooPackHint = yahooInfo.packHint || false;
 
-          // [yahoo-name-relax] name はスコアに関係なく、空でなければまず採用する
+          // [yahoo-name-relax] name はスコアに関係なく、空でなければまず採用
           const yahooNameNormalized = normalizeYahooName(yahooInfo.name, jan);
           if (yahooNameNormalized) {
             // [yahoo-clean-maker-sync] 通販ノイズ除去
-            const cleanedName = cleanYahooTitleNoise(yahooNameNormalized);
-            finalInfo.name = cleanedName || yahooNameNormalized;
-            sourceUsed = 'yahoo';
+            let cleanedName = cleanYahooTitleNoise(yahooNameNormalized);
+            // [leading-noise-trim] 先頭ノイズ除去
+            const beforeLeadingTrim = cleanedName;
+            cleanedName = trimLeadingNoise(cleanedName);
+            spDbg('[LEADING_NOISE_TRIM] route', {
+              jan: jan,
+              before: beforeLeadingTrim || '',
+              after: cleanedName || ''
+            });
+            if (cleanedName !== beforeLeadingTrim) {
+              spDbg('[LEADING_NOISE_TRIM]', { before: beforeLeadingTrim, after: cleanedName });
+            }
+            // [clean-guard] 削りすぎ防止：コアが消えたら元に戻す
+            if (cleanedName && !hasCoreName(cleanedName) && hasCoreName(yahooNameNormalized)) {
+              spDbg('[CLEAN_GUARD] revert', { before: yahooNameNormalized });
+              cleanedName = yahooNameNormalized;
+            }
+            candidateName = cleanedName || yahooNameNormalized;
+            candidateSource = 'yahoo';
             spDbg('[YAHOO_NAME] accepted', {
               jan: jan,
               raw: yahooInfo && yahooInfo.name ? yahooInfo.name : '',
               normalized: yahooNameNormalized
             });
-            spDbg('[YAHOO_CLEAN]', { before: yahooNameNormalized, after: finalInfo.name });
-            // [yahoo-clean-maker-sync] 商品名からメーカー同期
-            const makerFromName = extractMakerFromName(finalInfo.name);
+            spDbg('[YAHOO_CLEAN]', { before: yahooNameNormalized, after: candidateName });
+
+            // [final-route-fix] nameがYahoo由来なら、makerもまずextractMakerFromNameを優先
+            const makerFromName = extractMakerFromName(candidateName);
             if (makerFromName) {
               spDbg('[MAKER_FORCE_SYNC]', {
-                before: finalInfo.maker,
+                before: candidateMaker,
                 after: makerFromName,
-                name: finalInfo.name
+                name: candidateName
               });
-              finalInfo.maker = makerFromName;
+              candidateMaker = makerFromName;
+            } else if (yahooTrustScore >= 70) {
+              // スコアが十分なときだけYahoo APIのmakerを補助採用
+              candidateMaker = validateMakerName(yahooInfo.maker || '');
             }
-            spDbg('[MAKER_SYNC]', { name: finalInfo.name, maker: makerFromName });
+            spDbg('[MAKER_SYNC]', { name: candidateName, maker: candidateMaker });
           } else {
             spDbg('[YAHOO_NAME] rejected', {
               jan: jan,
@@ -6188,192 +6237,115 @@ function spVisibleTrace(tag, payload, cls) {
             });
           }
 
-          // ✅ Yahooが微妙（スコア低い）なら楽天を採用する
-          if (yahooTrustScore < 70 || (yahooPackHint && yahooTrustScore < 80)) {
-            // Yahooのスコアが低い場合は楽天を優先検討
-            if (isDebug()) {
-              showToast(`[Yahoo] スコア低 (${yahooTrustScore}) → 楽天検討`, 3000);
-            }
+          // 画像はスコアが十分なときのみ採用
+          if (yahooTrustScore >= 70 && !(yahooPackHint && yahooTrustScore < 80)) {
+            candidateImageUrl = yahooInfo.imageUrl || '';
+            if (isDebug()) showToast(`[Yahoo] OK (スコア:${yahooTrustScore})`, 3000);
           } else {
-            // ✅ Yahooで商品身元情報を埋める（スコアが十分な場合）
-            if (!finalInfo.name) finalInfo.name = cleanProductName(yahooInfo.name || '');
-            finalInfo.maker = validateMakerName(yahooInfo.maker || '');
-            finalInfo.imageUrl = yahooInfo.imageUrl || '';
-            sourceUsed = 'yahoo';
-
-            // ✅ P0: Yahoo取得→整形→段階更新（先に仮反映）
-            const currentJanCheck = String(curBarcode || '').trim();
-            if (currentJanCheck === jan) {
-              // ユーザーが入力していない場合のみ更新
-              if (nameInput && nameInput.value === nameAtStart && finalInfo.name) {
-                nameInput.value = finalInfo.name;
-                nameInput.placeholder = originalPlaceholder;
-              }
-              if (makerInput && makerInput.value === makerAtStart && finalInfo.maker) {
-                makerInput.value = finalInfo.maker;
-              }
-              // 画像も即座に更新（可能な場合）
-              const imgEl = document.getElementById('productImage');
-              if (imgEl && finalInfo.imageUrl && !imgEl.src) {
-                imgEl.src = finalInfo.imageUrl;
-              }
-            }
-
-            // ✅ デバッグ: Yahoo取得成功
-            if (isDebug()) {
-              showToast(`[Yahoo] OK (スコア:${yahooTrustScore})`, 3000);
-            }
+            if (isDebug()) showToast(`[Yahoo] スコア低 (${yahooTrustScore}) → 楽天検討`, 3000);
           }
 
-          // ✅ Yahoo結果が弱い/空、またはスコアが低い場合は楽天で補完
-          const yahooWeak = !finalInfo.name || !finalInfo.maker || !finalInfo.imageUrl || yahooTrustScore < 70;
+          spDbg('[ROUTE] after clean', {
+            jan: jan,
+            cleanedName: candidateName || '',
+            makerFromName: candidateMaker || ''
+          });
+
+          // ✅ Yahoo結果が弱い場合は楽天で補完
+          const yahooWeak = !candidateName || !candidateMaker || !candidateImageUrl || yahooTrustScore < 70;
           if (yahooWeak) {
-            // ✅ 優先順位2: 楽天（国内DB第2優先）
             rakutenInfo = await lookupRakutenByJan(jan);
             if (isDebug()) {
               console.log('[BARCODE] rakuten result', rakutenInfo);
               spVisibleTrace('[BARCODE] rakuten', { name: rakutenInfo?.name || '', maker: rakutenInfo?.maker || '', hasImage: !!rakutenInfo?.imageUrl }, 'w');
-      console.log('[BARCODE] rakuten result name', rakutenInfo?.name || '');
+              console.log('[BARCODE] rakuten result name', rakutenInfo?.name || '');
             }
-            if (isDebug()) {
-              console.log('[BARCODE] rakuten result', rakutenInfo);
-              spVisibleTrace('[BARCODE] rakuten', { name: rakutenInfo?.name || '', maker: rakutenInfo?.maker || '', hasImage: !!rakutenInfo?.imageUrl }, 'w');
-      console.log('[BARCODE] rakuten result name', rakutenInfo?.name || '');
-            }
-            
             if (rakutenInfo) {
-              // ✅ 不足している項目だけ補完（上書きしない）
-              if (!finalInfo.name && rakutenInfo.name) {
-                finalInfo.name = cleanProductName(rakutenInfo.name);
-                sourceUsed = 'yahoo+rakuten';
+              if (!candidateName && rakutenInfo.name) {
+                candidateName = cleanProductName(rakutenInfo.name);
+                candidateSource = 'yahoo+rakuten';
               }
-              if (!finalInfo.maker && rakutenInfo.maker) {
-                finalInfo.maker = validateMakerName(rakutenInfo.maker);
-                sourceUsed = 'yahoo+rakuten';
+              if (!candidateMaker && rakutenInfo.maker) {
+                candidateMaker = validateMakerName(rakutenInfo.maker);
+                candidateSource = 'yahoo+rakuten';
               }
-              // ✅ 画像がケース画像っぽい→楽天の単品画像があれば差し替え（スコアを下げる）
               if ((yahooInfo.packHint || yahooInfo.isCase) && rakutenInfo.imageUrl) {
-                finalInfo.imageUrl = rakutenInfo.imageUrl;
-                sourceUsed = 'yahoo+rakuten';
-                if (isDebug()) {
-                  showToast(`[楽天] ケース画像→単品画像に差し替え`, 3000);
-                }
-              } else if (!finalInfo.imageUrl && rakutenInfo.imageUrl) {
-                finalInfo.imageUrl = rakutenInfo.imageUrl;
-                sourceUsed = 'yahoo+rakuten';
+                candidateImageUrl = rakutenInfo.imageUrl;
+                candidateSource = 'yahoo+rakuten';
+                if (isDebug()) showToast(`[楽天] ケース画像→単品画像に差し替え`, 3000);
+              } else if (!candidateImageUrl && rakutenInfo.imageUrl) {
+                candidateImageUrl = rakutenInfo.imageUrl;
+                candidateSource = 'yahoo+rakuten';
               }
-
-              // ✅ P0: 楽天取得→段階更新（不足項目だけ補完）
-              const currentJanCheck2 = String(curBarcode || '').trim();
-              if (currentJanCheck2 === jan) {
-                // ユーザーが入力していない場合のみ更新
-                if (nameInput && nameInput.value === nameAtStart && finalInfo.name && !nameInput.value) {
-                  nameInput.value = finalInfo.name;
-                  nameInput.placeholder = originalPlaceholder;
-                }
-                if (makerInput && makerInput.value === makerAtStart && finalInfo.maker && !makerInput.value) {
-                  makerInput.value = finalInfo.maker;
-                }
-                // 画像も即座に更新（可能な場合）
-                const imgEl = document.getElementById('productImage');
-                if (imgEl && finalInfo.imageUrl && (!imgEl.src || imgEl.src.includes('placeholder'))) {
-                  imgEl.src = finalInfo.imageUrl;
-                }
-              }
-
-              if (isDebug()) {
-                showToast(`[楽天] 補完OK`, 3000);
-              }
+              if (isDebug()) showToast(`[楽天] 補完OK`, 3000);
             }
           }
         } else {
-          // ✅ Yahooが未取得の場合
-          // ✅ 優先順位2: 楽天（国内DB第2優先）
+          // ✅ Yahoo未取得 → 楽天
           rakutenInfo = await lookupRakutenByJan(jan);
-          
           if (rakutenInfo) {
-            // ✅ 楽天で商品身元情報を埋める
-            finalInfo.name = cleanProductName(rakutenInfo.name || '');
-            finalInfo.maker = validateMakerName(rakutenInfo.maker || '');
-            finalInfo.imageUrl = rakutenInfo.imageUrl || '';
-            sourceUsed = 'rakuten';
-
-            // ✅ P0: 楽天取得→段階更新（先に仮反映）
-            const currentJanCheck3 = String(curBarcode || '').trim();
-            if (currentJanCheck3 === jan) {
-              // ユーザーが入力していない場合のみ更新
-              if (nameInput && nameInput.value === nameAtStart && finalInfo.name) {
-                nameInput.value = finalInfo.name;
-                nameInput.placeholder = originalPlaceholder;
-              }
-              if (makerInput && makerInput.value === makerAtStart && finalInfo.maker) {
-                makerInput.value = finalInfo.maker;
-              }
-              // 画像も即座に更新（可能な場合）
-              const imgEl = document.getElementById('productImage');
-              if (imgEl && finalInfo.imageUrl && !imgEl.src) {
-                imgEl.src = finalInfo.imageUrl;
-              }
-            }
+            candidateName = cleanProductName(rakutenInfo.name || '');
+            candidateMaker = validateMakerName(rakutenInfo.maker || '');
+            candidateImageUrl = rakutenInfo.imageUrl || '';
+            candidateSource = 'rakuten';
           } else {
-            // ✅ Yahooも楽天も未取得の場合のみ、OFFを使用（第3優先）
-            // ✅ OFFを使う条件: Yahooも楽天も「未取得」または「整形後も不自然」
+            // ✅ 楽天も未取得 → OFF（最終補助）
             offInfo = await lookupOffByJan(jan);
             if (isDebug()) {
               console.log('[BARCODE] off result', offInfo);
               spVisibleTrace('[BARCODE] off', { name: offInfo?.name || '', maker: offInfo?.maker || '', hasImage: !!offInfo?.imageUrl }, 'w');
-      console.log('[BARCODE] off result name', offInfo?.name || '');
+              console.log('[BARCODE] off result name', offInfo?.name || '');
             }
-            
             if (offInfo) {
-              // ✅ OFFで商品身元情報を埋める（条件チェック済み・最終補助）
-              // OFFは「タイトル確定」ではなく、カテゴリ・成分・補助画像の穴埋めに寄せる（主役にしない）
-              // 日本語名がある、または日本向けデータっぽい時だけ採用
-              // 画像が"自撮り/ユーザー投稿"っぽい（雑・暗い・斜め・背景あり等）場合は採用しない
-              if (offInfo.name && offInfo.name.trim()) {
-                // 既にYahoo/楽天で名前が取れている場合は上書きしない（補助として使う）
-                if (!finalInfo.name || finalInfo.name.trim().length < 3) {
-                  finalInfo.name = cleanProductName(offInfo.name);
-                  sourceUsed = 'off';
-                }
+              if (offInfo.name && offInfo.name.trim() && (!candidateName || candidateName.trim().length < 3)) {
+                candidateName = cleanProductName(offInfo.name);
+                candidateSource = 'off';
               }
-              if (offInfo.maker && offInfo.maker.trim() && !finalInfo.maker) {
-                finalInfo.maker = validateMakerName(offInfo.maker);
-                if (sourceUsed === 'none') sourceUsed = 'off';
+              if (offInfo.maker && offInfo.maker.trim() && !candidateMaker) {
+                candidateMaker = validateMakerName(offInfo.maker);
+                if (candidateSource === 'none') candidateSource = 'off';
               }
-              // 画像は最後の手段（自撮り/ユーザー投稿っぽい場合は採用しない）
-              if (offInfo.imageUrl && offInfo.imageUrl.trim() && !finalInfo.imageUrl) {
-                // 画像URLに "front" が含まれる、または明らかに商品正面画像の場合のみ採用
+              if (offInfo.imageUrl && offInfo.imageUrl.trim() && !candidateImageUrl) {
                 if (offInfo.imageUrl.includes('front') || offInfo.imageUrl.includes('image_front')) {
-                  finalInfo.imageUrl = offInfo.imageUrl;
-                  if (sourceUsed === 'none') sourceUsed = 'off';
+                  candidateImageUrl = offInfo.imageUrl;
+                  if (candidateSource === 'none') candidateSource = 'off';
                 }
               }
-
-              // ✅ P0: OFF取得→段階更新（最後の補助）
-              const currentJanCheck4 = String(curBarcode || '').trim();
-              if (currentJanCheck4 === jan) {
-                // ユーザーが入力していない場合のみ更新
-                if (nameInput && nameInput.value === nameAtStart && finalInfo.name && !nameInput.value) {
-                  nameInput.value = finalInfo.name;
-                  nameInput.placeholder = originalPlaceholder;
-                }
-                if (makerInput && makerInput.value === makerAtStart && finalInfo.maker && !makerInput.value) {
-                  makerInput.value = finalInfo.maker;
-                }
-                // 画像も即座に更新（可能な場合）
-                const imgEl = document.getElementById('productImage');
-                if (imgEl && finalInfo.imageUrl && (!imgEl.src || imgEl.src.includes('placeholder'))) {
-                  imgEl.src = finalInfo.imageUrl;
-                }
-              }
-
-              if (isDebug() && sourceUsed === 'off') {
-                showToast(`[OFF] 最終補助として採用`, 3000);
-              }
+              if (isDebug() && candidateSource === 'off') showToast(`[OFF] 最終補助として採用`, 3000);
             }
           }
         }
+
+        // 履歴fallback候補ログ
+        {
+          const hist = (p && Array.isArray(p.history) && p.history.length > 0) ? p.history[p.history.length - 1] : null;
+          spDbg('[ROUTE] history candidate', {
+            jan: jan,
+            name: hist && hist.name ? hist.name : '',
+            maker: hist && hist.maker ? hist.maker : ''
+          });
+        }
+
+        // [final-route-fix] sourceがyahooのときmakerが別経路に流れないよう最終同期
+        if (candidateSource === 'yahoo' && candidateName) {
+          const syncedMaker = extractMakerFromName(candidateName);
+          if (syncedMaker) {
+            candidateMaker = syncedMaker;
+          }
+        }
+
+        // [final-route-fix] 最終確定：候補変数 → finalInfo へ1回だけ代入
+        finalInfo.name = candidateName || '';
+        finalInfo.maker = candidateMaker || '';
+        finalInfo.imageUrl = candidateImageUrl || '';
+        sourceUsed = candidateSource || 'none';
+
+        spDbg('[ROUTE] final apply', {
+          jan: jan,
+          finalName: finalInfo.name,
+          finalMaker: finalInfo.maker,
+          sourceUsed: sourceUsed
+        });
 
         // ✅ P0: 古い結果の上書き防止（現在のJANと一致する時だけ反映）
         const currentJan = String(curBarcode || '').trim();
