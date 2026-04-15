@@ -18,8 +18,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.78";
-  const BUILD_ID    = "2026-04-15_1528_data-integrity-check-r1";
+  const APP_VERSION = "v23.9.79";
+  const BUILD_ID    = "2026-04-15_1540_jan-maker-nonjan-toast-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -6057,6 +6057,54 @@ function spVisibleTrace(tag, payload, cls) {
   }
 
   // JANコード先頭桁からメーカーを特定（GS1ジャパン登録情報ベース）
+  // ===== [jan-maker-nonjan-toast] JAN検証・メーカー補助推定 =====
+
+  function normalizeJANInput(code) {
+    return String(code || '').replace(/\D/g, '').trim();
+  }
+
+  function calcJanCheckDigit(base) {
+    const digits = String(base).replace(/\D/g, '');
+    let sum = 0;
+    const reversed = digits.split('').reverse();
+    for (let i = 0; i < reversed.length; i++) {
+      const n = Number(reversed[i] || 0);
+      sum += (i % 2 === 0) ? n * 3 : n;
+    }
+    return (10 - (sum % 10)) % 10;
+  }
+
+  function isValidJAN8(code) {
+    const s = normalizeJANInput(code);
+    if (!/^\d{8}$/.test(s)) return false;
+    return calcJanCheckDigit(s.slice(0, 7)) === Number(s[7]);
+  }
+
+  function isValidJAN13(code) {
+    const s = normalizeJANInput(code);
+    if (!/^\d{13}$/.test(s)) return false;
+    return calcJanCheckDigit(s.slice(0, 12)) === Number(s[12]);
+  }
+
+  function isLikelyJAN(code) {
+    const s = normalizeJANInput(code);
+    return isValidJAN8(s) || isValidJAN13(s);
+  }
+
+  function showNonJanToast() {
+    const msg = 'このバーコードは、ストアオリジナルのバーコードの可能性があります';
+    if (typeof showToast === 'function') { showToast(msg, 5000); return; }
+    console.log('[NON_JAN_TOAST]', msg);
+  }
+
+  // guessMakerFromJAN: 既存lookupMakerByJanの補助ラッパー
+  // メーカーが未確定のときだけ使う補助推定
+  function guessMakerFromJAN(jan) {
+    return lookupMakerByJan(jan) || '';
+  }
+
+  // ===== [jan-maker-nonjan-toast] ここまで =====
+
   function lookupMakerByJan(jan) {
     if (!jan || jan.length < 7) return '';
 
@@ -6248,27 +6296,32 @@ function spVisibleTrace(tag, payload, cls) {
   async function processBarcodeData(code) {
     // ✅ P0: JAN正規化（数字のみに統一・空白・ハイフン除去）
     let jan = normalizeJan(code);
-    
+
+    // [jan-maker-nonjan-toast] 生バーコードログ
+    spDbg('[BARCODE_RAW]', { raw: code, normalized: jan });
+
     // ✅ P0: 桁数チェック（EAN-13: 13桁 / EAN-8: 8桁 / UPC-A: 12→13桁変換済み）
     if (jan.length !== 13 && jan.length !== 8) {
-      const errorMsg = `バーコードが不正です（8桁または13桁ではありません）: ${jan}（元: ${code}）`;
-      showToast(errorMsg, 5000);
+      // [jan-maker-nonjan-toast] 桁数が合わない → 非JAN扱い
+      spDbg('[NON_JAN_DETECTED]', { code: jan, reason: 'invalid_length' });
+      showNonJanToast();
       if (isDebug()) {
         console.error("[ProcessBarcode] Invalid JAN length:", jan, "original:", code);
-        addErrorLog(`[JAN Invalid] ${errorMsg}`);
+        addErrorLog(`[JAN Invalid] ${jan}`);
       }
-      return; // 13桁でない場合は処理を中止
+      return;
     }
-    
+
     // ✅ P0: チェックデジット検証
     if (!validateJanCheckDigit(jan)) {
-      const errorMsg = `バーコードのチェックデジットが不正です: ${jan}`;
-      showToast(errorMsg, 5000);
+      // [jan-maker-nonjan-toast] チェックデジット不正 → 非JAN扱い
+      spDbg('[NON_JAN_DETECTED]', { code: jan, reason: 'checkdigit_invalid' });
+      showNonJanToast();
       if (isDebug()) {
         console.error("[ProcessBarcode] Invalid check digit:", jan);
-        addErrorLog(`[JAN Check Digit Error] ${errorMsg}`);
+        addErrorLog(`[JAN Check Digit Error] ${jan}`);
       }
-      return; // チェックデジット不正の場合は処理を中止
+      return;
     }
     
     // ✅ P0: debug=1 時の詳細表示
@@ -6648,7 +6701,15 @@ function spVisibleTrace(tag, payload, cls) {
             });
           } else {
             // 商品名があるときだけ補助候補として使う
-            if (janMakerHint) {
+            // [jan-maker-nonjan-toast] guessMakerFromJAN で補助推定
+            const guessedMaker = guessMakerFromJAN(jan);
+            if (guessedMaker) {
+              finalInfo.maker = guessedMaker;
+              spDbg('[MAKER_GUESSED_FROM_JAN]', {
+                jan: jan,
+                guessedMaker: guessedMaker
+              });
+            } else if (janMakerHint) {
               finalInfo.maker = janMakerHint;
               spDbg('[MAKER_GUARD] apply jan maker hint', {
                 jan: jan,
