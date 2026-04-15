@@ -6,48 +6,79 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 <html lang="ja">
 <head>
 <!-- SW GUARD: prevent old Service Worker from serving stale index.html -->
-<script>
 
+<!-- VERSION SSOT CORE: APP_VERSION/BUILD_IDのみ編集可。他は自動生成。 -->
+<script id="version-ssot-core">
+/*
+APP: Smart Price VERSION SSOT CORE
+AUTHOR: Yui + Claude
+*/
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
-  // Author: ChatGPT_Yui
-  const APP_VERSION = "v23.9.74";
+  // ===== 正本（ここだけ編集可） =====
+  const APP_VERSION = "v23.9.78";
+  const BUILD_ID    = "2026-04-15_1528_data-integrity-check-r1";
+  // ===================================
   window.APP_VERSION = APP_VERSION;
-  const BUILD_ID = "2026-03-31_2200_name-stabilize-r1";
-  window.BUILD_ID = BUILD_ID;
+  window.BUILD_ID    = BUILD_ID;
   const FULL_VERSION = `${APP_VERSION} [${BUILD_ID}]`;
   window.FULL_VERSION = FULL_VERSION;
 
-  function setHeaderVersionBadge(){
-    const badge = document.getElementById('versionBadge') || document.getElementById('version-badge');
-    if(!badge) return;
-
-    const isMobile = window.matchMedia && window.matchMedia('(max-width: 640px)').matches;
-
-    // ✅ 設定モーダル表示中は、スマホでも「フル表示」へ戻す（class/show だけに頼らず computedStyle で判定）
-    const modal = document.getElementById('settingsModal');
-    let isSettingsOpen = false;
-    try{
-      if(modal){
-        const cs = window.getComputedStyle ? getComputedStyle(modal) : null;
-        const disp = cs ? cs.display : (modal.style ? modal.style.display : '');
-        const vis  = cs ? cs.visibility : '';
-        const op   = cs ? parseFloat(cs.opacity || '1') : 1;
-        isSettingsOpen = (disp !== 'none') && (vis !== 'hidden') && (op > 0.01);
-        if(modal.classList && modal.classList.contains('show')) isSettingsOpen = true;
-        const ah = modal.getAttribute ? modal.getAttribute('aria-hidden') : null;
-        if(ah === 'false') isSettingsOpen = true;
+  // ===== 全箇所自動適用 =====
+  function applyVersionEverywhere() {
+    try {
+      // ① title（自動生成）
+      document.title = `Smart Price ${APP_VERSION}`;
+      // ② versionBadge（自動生成）
+      const badge = document.getElementById('versionBadge') || document.getElementById('version-badge');
+      if (badge) {
+        const isMobile = window.matchMedia && window.matchMedia('(max-width: 640px)').matches;
+        const modal = document.getElementById('settingsModal');
+        let isSettingsOpen = false;
+        try {
+          if (modal) {
+            const cs = getComputedStyle(modal);
+            const disp = cs.display, vis = cs.visibility, op = parseFloat(cs.opacity || '1');
+            isSettingsOpen = (disp !== 'none') && (vis !== 'hidden') && (op > 0.01);
+            if (modal.classList && modal.classList.contains('show')) isSettingsOpen = true;
+            const ah = modal.getAttribute('aria-hidden');
+            if (ah === 'false') isSettingsOpen = true;
+          }
+        } catch(_) {}
+        badge.textContent = (isMobile && !isSettingsOpen) ? APP_VERSION : FULL_VERSION;
       }
-    }catch(e){}
-
-    // ✅ スマホは通常「バージョン番号だけ」。ただし設定画面表示中はフル表示。
-    badge.textContent = (isMobile && !isSettingsOpen) ? APP_VERSION : FULL_VERSION;
+      // ③ debug用（自動生成）
+      window.VERSION_INFO = FULL_VERSION;
+      // ④ data-version属性（自動生成）
+      document.querySelectorAll('[data-version]').forEach(el => {
+        el.textContent = APP_VERSION;
+      });
+      // ⑤ debugモード時body属性（自動生成）
+      try {
+        const params = new URLSearchParams(location.search);
+        if (params.get('debug') === '1') {
+          document.body.setAttribute('data-app-version', APP_VERSION);
+          document.body.setAttribute('data-build-id', BUILD_ID);
+        }
+      } catch(_) {}
+    } catch(e) {
+      console.warn('[VERSION][ERROR]', e);
+    }
   }
-  
-  // グローバルに公開
-  window.setHeaderVersionBadge = setHeaderVersionBadge;
+
+  // setHeaderVersionBadge は applyVersionEverywhere へ統一（後方互換エイリアス）
+  window.setHeaderVersionBadge = applyVersionEverywhere;
+  window.applyVersionEverywhere = applyVersionEverywhere;
+
+  // DOMContentLoaded + resize で自動実行
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', applyVersionEverywhere);
+  } else {
+    applyVersionEverywhere();
+  }
+  window.addEventListener('resize', applyVersionEverywhere);
   
   try {
     const url = new URL(location.href);
@@ -110,7 +141,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#D50000">
-  <title>Smart Price v23.9.74</title>
+  <title>Smart Price</title><!-- VERSION SSOT: applyVersionEverywhere() が自動上書き -->
   <!-- ✅ SW RESET TOOL (v22.7.0) : ?reset=sw -->
   <script>
   (function() {
@@ -2236,20 +2267,12 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 
   // ✅ P0: VERSION表示を最優先で実行（loadConfigより先）
   document.addEventListener('DOMContentLoaded', () => {
-    setHeaderVersionBadge();
-    window.addEventListener('resize', setHeaderVersionBadge);
+    if (typeof window.applyVersionEverywhere === 'function') window.applyVersionEverywhere();
     try {
+      // version-badge（別ID）への後方互換
       const versionBadge = document.getElementById('version-badge');
-      if (versionBadge) {
-        versionBadge.textContent = FULL_VERSION;
-      }
-      
-      // document.titleを更新（debug=1の時だけBUILD_IDも併記）
-      if (isDebug()) {
-        document.title = `Smart Price ${FULL_VERSION} / ${BUILD_ID}`;
-      } else {
-        document.title = `Smart Price ${window.FULL_VERSION||window.APP_VERSION||window.VERSION_INFO||""}`;
-      }
+      if (versionBadge) versionBadge.textContent = window.FULL_VERSION || '';
+      // [VERSION SSOT] document.title は applyVersionEverywhere が自動設定済み
     } catch(e) {
       if (isDebug()) console.warn('[DOMContentLoaded] version update error:', e);
     }
@@ -2791,9 +2814,70 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     return `${base}/smart_price_images/${encodeURIComponent(code)}.json`;
   }
 
+  // ===== [data-integrity-check] 整合性チェック関数 =====
+
+  function validateHistoryEntry(entry) {
+    if (!entry || typeof entry !== 'object') {
+      return { ok: false, reason: 'entry_invalid' };
+    }
+    if (!Number.isFinite(Number(entry.price)) || Number(entry.price) <= 0) {
+      return { ok: false, reason: 'price_invalid' };
+    }
+    if (!entry.store || !String(entry.store).trim()) {
+      return { ok: false, reason: 'store_empty' };
+    }
+    if (!Number.isFinite(Number(entry.ts))) {
+      return { ok: false, reason: 'ts_invalid' };
+    }
+    return { ok: true };
+  }
+
+  function validateProductRecord(product) {
+    if (!product || typeof product !== 'object') {
+      return { ok: false, reason: 'product_invalid' };
+    }
+    if (!Array.isArray(product.history)) {
+      return { ok: false, reason: 'history_not_array' };
+    }
+    if (product.name && String(product.name).length > 120) {
+      return { ok: false, reason: 'name_too_long' };
+    }
+    if (product.maker && String(product.maker).length > 80) {
+      return { ok: false, reason: 'maker_too_long' };
+    }
+    if (product.imageUrl && String(product.imageUrl).startsWith('data:')) {
+      return { ok: false, reason: 'imageUrl_data_url' };
+    }
+    if (product.imageKey && typeof product.imageKey !== 'string') {
+      return { ok: false, reason: 'imageKey_invalid' };
+    }
+    return { ok: true };
+  }
+
+  function validateDbLight(db) {
+    if (!db || typeof db !== 'object') {
+      return { ok: false, reason: 'db_invalid' };
+    }
+    if (!db.products || typeof db.products !== 'object') {
+      return { ok: false, reason: 'products_invalid' };
+    }
+    return { ok: true };
+  }
+
+  // ===== [data-integrity-check] ここまで =====
+
   async function syncFirebasePut() {
     if(!fbUrl) return;
     try {
+      // [data-integrity-check] PUT前 DB 整合性チェック
+      const dbCheck = validateDbLight(db);
+      if (!dbCheck.ok) {
+        spDbg('[DATA_INTEGRITY_BLOCK]', {
+          level: 'db',
+          reason: dbCheck.reason
+        });
+        throw new Error('DB integrity check failed: ' + dbCheck.reason);
+      }
       const uid = getOrCreateUserId();
       const targetUrl = scopeUrlByUser(getSafeUrl(fbUrl), uid);
       const payload = stripForCloud(db);
@@ -3394,7 +3478,9 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       if (normalized && normalized !== '|') {
         renderedNormalizedKeys.add(normalized);
       }
-      const hlist = (it.history||[]).filter(h => (!h.uid) || (h.uid===currentAuthUid));
+      const hlist = (it.history||[])
+        .filter(h => (!h.uid) || (h.uid===currentAuthUid))
+        .filter(h => validateHistoryEntry(h).ok); // [data-integrity-check] 壊れたentryを除外
       if(!hlist.length) continue;
       const last = hlist[hlist.length-1];
       const div = document.createElement('div');
@@ -4124,8 +4210,30 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
             console.log('[StoreTaxMode] Saved:', curStore, '→', db.config.storeTaxModes[curStore]);
           }
         }
-        const entry = { price: finalP, store: curStore, ts: Date.now() };
-        if(curPos) { entry.lat = curPos.lat; entry.lng = curPos.lng; }
+        const entry = {
+          price: finalP,
+          store: curStore,
+          ts: Date.now(),
+          appVersion: window.APP_VERSION || '',
+          buildId: window.BUILD_ID || '',
+          savedAtVersion: window.FULL_VERSION || ''
+        };
+        if(curPos) {
+          entry.lat = curPos.lat;
+          entry.lng = curPos.lng;
+        }
+        // [data-integrity-check] 保存前 entry 整合性チェック
+        const entryCheck = validateHistoryEntry(entry);
+        if (!entryCheck.ok) {
+          spDbg('[DATA_INTEGRITY_BLOCK]', {
+            level: 'entry',
+            reason: entryCheck.reason,
+            entry: entry
+          });
+          showToast('保存データに不整合があります', 5000);
+          if (saveBtn) saveBtn.disabled = false;
+          return;
+        }
         p.history.push(entry);
         showToast("保存完了", 2000);
         if (isDebug()) console.log("[SaveData] New entry added:", entry);
@@ -4150,6 +4258,25 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         price: val,
         store: curStore
       });
+
+      // [ssot-fix-save-version-log] どの版で保存したかを記録
+      spDbg('[SAVE_VERSION]', {
+        jan: jan,
+        appVersion: window.APP_VERSION || '',
+        buildId: window.BUILD_ID || '',
+        savedAtVersion: window.FULL_VERSION || ''
+      });
+
+      // [data-integrity-check] 保存後 product 整合性チェック（警告のみ）
+      const productCheck = validateProductRecord(p);
+      if (!productCheck.ok) {
+        spDbg('[DATA_INTEGRITY_WARN]', {
+          level: 'product',
+          reason: productCheck.reason,
+          jan: jan,
+          product: p
+        });
+      }
 
       renderHistory();
       showHome();
@@ -5847,7 +5974,17 @@ function spVisibleTrace(tag, payload, cls) {
       'マ・マー':    '日清製粉ウェルナ',
       '日清中華':    '日清食品',
       'スジャータ':  'スジャータめいらく',
-      'クラフト':    'クラフト'
+      'クラフト':    'クラフト',
+      '松永製菓':    '松永製菓',
+      '湖池屋':      '湖池屋',
+      'カルビー':    'カルビー',
+      'ギンビス':    'ギンビス',
+      '森永製菓':    '森永製菓',
+      '明治':        '明治',
+      'グリコ':      'グリコ',
+      'キリン':      'キリン',
+      '伊藤園':      '伊藤園',
+      'アサヒ':      'アサヒ'
     };
     for (const key in MAKER_MAP) {
       if (name && name.includes(key)) {
@@ -5855,6 +5992,29 @@ function spVisibleTrace(tag, payload, cls) {
       }
     }
     return currentMaker || '';
+  }
+
+  // [maker-image-fix] 確定したメーカー名を商品名から除去する
+  function stripMakerFromName(name, maker) {
+    let s = String(name || '').trim();
+    const m = String(maker || '').trim();
+    if (!s || !m) return s;
+    const escaped = m.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    s = s.replace(new RegExp(escaped, 'g'), '').trim();
+    s = s.replace(/\s{2,}/g, ' ').trim();
+    s = s.replace(/^[\-・|｜\s]+/, '').replace(/[\-・|｜\s]+$/, '').trim();
+    return s;
+  }
+
+  // [maker-image-fix] previewImg への画像反映を1か所に集約
+  function applyPreviewImage(url) {
+    const img = document.getElementById('previewImg');
+    if (!img) return;
+    img.src = url || '';
+    spDbg('[IMAGE_APPLY]', {
+      applied: !!url,
+      imageUrl: url || ''
+    });
   }
 
   // [leading-noise-trim] 先頭ノイズのみ除去（コアは壊さない）
@@ -6417,14 +6577,24 @@ function spVisibleTrace(tag, payload, cls) {
         finalInfo.imageUrl = candidateImageUrl || '';
         sourceUsed = candidateSource || 'none';
 
-        // [name-stabilize] 名前が弱い場合でも shortenName を適用
-        if (isWeakResult(finalInfo.name)) {
-          finalInfo.name = shortenName(finalInfo.name);
-        } else {
-          finalInfo.name = shortenName(finalInfo.name);
-        }
-        // [name-stabilize] MAKER_MAP でメーカーを安定させる
+        // [name-stabilize / maker-image-fix] 名前・メーカー・画像の最終整形
+        // 1. まず shortenName で beforeStrip を保持（削りすぎ救済用）
+        const beforeStrip = shortenName(finalInfo.name);
+        // 2. MAKER_MAP でメーカーを先に確定
         finalInfo.maker = applyMakerMap(finalInfo.name, finalInfo.maker);
+        // 3. 確定したメーカー名を商品名から削除
+        const stripped = stripMakerFromName(finalInfo.name, finalInfo.maker);
+        // 4. 削った結果が空なら元の短縮名を救済として使う
+        finalInfo.name = stripped || beforeStrip;
+        // 5. 最終的に40文字で切り詰め
+        finalInfo.name = shortenName(finalInfo.name);
+
+        // [maker-image-fix] 画像URL確定ログ
+        spDbg('[IMAGE_ROUTE_FINAL]', {
+          jan: jan,
+          imageUrl: finalInfo.imageUrl || '',
+          hasImage: !!finalInfo.imageUrl
+        });
 
         spDbg('[ROUTE] final apply', {
           jan: jan,
@@ -6670,11 +6840,14 @@ function spVisibleTrace(tag, payload, cls) {
           showToast(debugMsg, 5000);
         }
         
-        // ✅ 画像も更新（既存のopenForm処理と統合）
-        const prevImg = document.getElementById('previewImg');
-        if (prevImg && finalInfo.imageUrl) {
-          prevImg.src = finalInfo.imageUrl;
-        }
+        // ✅ 画像も更新（applyPreviewImage で集約）
+        applyPreviewImage(finalInfo.imageUrl || '');
+        spDbg('[IMAGE_MISS_REASON]', {
+          jan: jan,
+          yahooHasImage: !!(yahooInfo && yahooInfo.imageUrl),
+          finalHasImage: !!finalInfo.imageUrl,
+          previewApplied: !!(document.getElementById('previewImg') && document.getElementById('previewImg').src)
+        });
       } catch(e) {
         // ✅ P0: 取得失敗時のメッセージ（常に表示）
         showToast(`商品情報を取得できませんでした`, 5000);
