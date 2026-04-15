@@ -18,8 +18,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.80";
-  const BUILD_ID    = "2026-04-15_1612_image-download-jan-r1";
+  const APP_VERSION = "v23.9.81";
+  const BUILD_ID    = "2026-04-15_1700_history-copy-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -1145,6 +1145,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
     <div id="debugBackupButtons" style="display:none;">
       <button class="btn btn-success w-100 py-2 fw-bold mb-2" onclick="exportBackup()">バックアップ出力</button>
       <button class="btn btn-info w-100 py-2 fw-bold mb-2" onclick="importBackup()">バックアップ読み込み</button>
+      <button class="btn btn-outline-light w-100 py-2 fw-bold mb-2" onclick="copyHistoryData()">📋 データコピー（JSON）</button>
     </div>
     <button class="btn btn-link text-secondary w-100" data-action="close-settings">閉じる</button>
   </div>
@@ -8408,6 +8409,40 @@ function importBackup() {
     inp.click();
   } catch(e) { showToast('バックアップ読み込みに失敗しました', 5000); }
 }
+
+// [history-copy] 履歴データをJSON形式でクリップボードにコピー
+async function copyHistoryData() {
+  try {
+    if (!db || !db.products) {
+      showToast('データがありません', 3000);
+      return;
+    }
+    const rows = [];
+    Object.keys(db.products).forEach(jan => {
+      const p = db.products[jan];
+      if (!p || !Array.isArray(p.history)) return;
+      p.history.forEach(h => {
+        rows.push({
+          jan: jan,
+          name: String(p.name || ''),
+          maker: String(p.maker || ''),
+          price: h.price !== undefined ? h.price : '',
+          store: String(h.store || ''),
+          image: String(p.imageUrl || ''),
+          createdAt: h.ts ? new Date(h.ts).toISOString() : ''
+        });
+      });
+    });
+    const json = JSON.stringify(rows, null, 2);
+    await navigator.clipboard.writeText(json);
+    spDbg('[COPY_HISTORY_DATA]', { count: rows.length });
+    showToast(`📋 ${rows.length}件のデータをコピーしました`, 3000);
+  } catch(e) {
+    spDbg('[COPY_HISTORY_ERROR]', { message: e && e.message ? e.message : String(e) });
+    showToast('コピーに失敗しました', 4000);
+  }
+}
+window.copyHistoryData = copyHistoryData;
 
 // 家族共有コード保存
 function spSaveFamilyCode() {
