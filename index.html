@@ -18,8 +18,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.79";
-  const BUILD_ID    = "2026-04-15_1540_jan-maker-nonjan-toast-r1";
+  const APP_VERSION = "v23.9.80";
+  const BUILD_ID    = "2026-04-15_1612_image-download-jan-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -6955,6 +6955,44 @@ function spVisibleTrace(tag, payload, cls) {
   }
 
   // ✅ 検索ボタン：商品コード＋商品名で画像検索を開く
+  // [image-download-jan] 画像をJANコード名で保存する
+  async function downloadImageWithJan(imageUrl, jan) {
+    try {
+      const res = await fetch(imageUrl, { mode: 'cors' });
+      const blob = await res.blob();
+
+      let ext = 'jpg';
+      const type = String(blob.type || '').toLowerCase();
+      if (type.includes('png')) ext = 'png';
+      else if (type.includes('webp')) ext = 'webp';
+      else if (type.includes('gif')) ext = 'gif';
+      else if (type.includes('jpeg') || type.includes('jpg')) ext = 'jpg';
+
+      const safeJan = String(jan || curBarcode || 'image').replace(/[^0-9A-Za-z_-]/g, '') || 'image';
+      const fileName = `${safeJan}.${ext}`;
+
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => { try { URL.revokeObjectURL(blobUrl); } catch(_) {} }, 1000);
+
+      spDbg('[IMAGE_DOWNLOAD_NAME]', { jan: safeJan, fileName, type });
+      showToast(`画像を保存しました: ${fileName}`, 3000);
+    } catch(e) {
+      console.error('[IMAGE_DOWNLOAD]', e);
+      spDbg('[IMAGE_DOWNLOAD_ERROR]', {
+        jan: String(jan || curBarcode || ''),
+        message: e && e.message ? e.message : String(e)
+      });
+      showToast('画像の保存に失敗しました', 4000);
+    }
+  }
+  window.downloadImageWithJan = downloadImageWithJan;
+
   async function searchImageWeb() {
     const name = (document.getElementById('inputName')?.value || '').trim();
     const code = String(curBarcode || '').trim();
