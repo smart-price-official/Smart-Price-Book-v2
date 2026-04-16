@@ -18,8 +18,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.81";
-  const BUILD_ID    = "2026-04-15_1700_history-copy-r1";
+  const APP_VERSION = "v23.9.85";
+  const BUILD_ID    = "2026-04-16_0000_scan-ux-improve-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -2446,6 +2446,31 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
     } catch (e) {}
   }
 
+  // [scan-ux-improve] STEP1: スキャン即時アニメーション
+  function showScanAnimation() {
+    try {
+      // スキャンラインを一瞬光らせる
+      const scanLine = document.querySelector('.scan-line, [class*="scan"]');
+      if (scanLine) {
+        scanLine.style.opacity = '1';
+        scanLine.style.background = '#ff5252';
+        setTimeout(() => {
+          try { scanLine.style.background = ''; } catch(_) {}
+        }, 300);
+      }
+      // カメラ枠をフラッシュ
+      const camBox = document.getElementById('camera-container') ||
+                     document.getElementById('cameraContainer') ||
+                     document.querySelector('.camera-box, .scan-box, #reader');
+      if (camBox) {
+        camBox.style.outline = '3px solid #ff5252';
+        setTimeout(() => {
+          try { camBox.style.outline = ''; } catch(_) {}
+        }, 300);
+      }
+    } catch(_) {}
+  }
+
   function showToast(message, ms, opts) {
     try {
       const host = __toastEnsureContainer();
@@ -3224,13 +3249,42 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
   }
 
   // ========= Category UI =========
+  // [scan-ux-improve] STEP3: カテゴリ履歴保存・並び替え
+  function saveCategoryHistory(category) {
+    if (!category || category === '__NONE__' || category === 'ADD') return;
+    try {
+      let history = JSON.parse(localStorage.getItem('categoryHistory') || '[]');
+      history = history.filter(c => c !== category);
+      history.unshift(category);
+      if (history.length > 10) history.pop();
+      localStorage.setItem('categoryHistory', JSON.stringify(history));
+      spDbg('[CATEGORY_HISTORY_SAVED]', { category, history });
+    } catch(_) {}
+  }
+
+  function sortCategories(categories) {
+    try {
+      const history = JSON.parse(localStorage.getItem('categoryHistory') || '[]');
+      return [...categories].sort((a, b) => {
+        const ia = history.indexOf(a);
+        const ib = history.indexOf(b);
+        if (ia === -1 && ib === -1) return 0;
+        if (ia === -1) return 1;
+        if (ib === -1) return -1;
+        return ia - ib;
+      });
+    } catch(_) {
+      return categories;
+    }
+  }
+
   async function initCategorySelect() {
     db = normalizeDb(db);
     const sel = document.getElementById('inputCategory');
     const sub = document.getElementById('inputSubCategory');
     if(!sel) return;
 
-    const cats = Object.keys(db.config.categoryTree || {});
+    const cats = sortCategories(Object.keys(db.config.categoryTree || {}));
     sel.innerHTML = `<option value="__NONE__">カテゴリを選ぶ</option>` +
       cats.map(c => `<option value="${c}">${c}</option>`).join('') +
       `<option value="ADD">+ 追記</option>`;
@@ -3359,8 +3413,10 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     
     const customStores = db.config.customStores || [];
     
-    // ✅ 近隣店舗候補を統合（nearbyStoreNames）
-    const nearbyStores = (Array.isArray(window.nearbyStoreNames) && window.nearbyStoreNames.length > 0) ? window.nearbyStoreNames : [];
+    // ✅ 近隣店舗候補を統合（nearbyStoreNames）- [gps-store-label-fix] canonicalStoreName で正規化
+    const nearbyStores = (Array.isArray(window.nearbyStoreNames) && window.nearbyStoreNames.length > 0)
+      ? window.nearbyStoreNames.map(s => canonicalStoreName(s)).filter(Boolean)
+      : [];
     // ✅ 候補を統合（未設定は先頭固定）
     const storeNames = [...new Set([...manualPriority, ...customStores, ...nearbyStores, ...sortedFreq])]
       .filter(s => s && s !== '未設定');
@@ -4245,6 +4301,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
 
       // ✅ history-fallback: 保存成功時にlocalStorageへ記録
       saveToHistory(jan, p.name, p.maker);
+      // [scan-ux-improve] STEP3: カテゴリ履歴保存
+      saveCategoryHistory(safeCategory);
 
       saveLocalOnly();
       syncFirebasePut();
@@ -5024,6 +5082,128 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     return !NG.some(ng => name.includes(ng));
   }
 
+  // ===== [gps-store-label-generic] 汎用GPS店名ラベル生成アルゴリズム =====
+
+  function normalizeStoreLabel(raw) {
+    if (!raw) return '';
+    let s = String(raw).trim();
+    // 空白整理
+    s = s.replace(/\s+/g, ' ').trim();
+    // 末尾の不要記号整理
+    s = s.replace(/[\-–—]+$/g, '').trim();
+    return s;
+  }
+
+  // 弱い候補判定（特定チェーン名は決め打ちしない）
+  function isWeakStoreLabel(label) {
+    const s = String(label || '').trim().toLowerCase();
+    if (!s) return true;
+    if (s.length <= 2) return true;
+    const weakWords = [
+      'shop', 'store', 'branch', 'main',
+      '本店', '支店', '店', '店舗'
+    ];
+    if (weakWords.includes(s)) return true;
+    return false;
+  }
+
+  // 重複除去（大文字小文字無視）
+  function dedupeLabels(labels) {
+    const out = [];
+    const seen = new Set();
+    for (const label of labels) {
+      const key = String(label || '').trim().toLowerCase();
+      if (!key) continue;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(label);
+    }
+    return out;
+  }
+
+  // 汎用店名ラベル組み立て（チェーン名決め打ちなし）
+  function buildNearbyStoreLabel(storeObj) {
+    if (!storeObj) return '';
+    // 文字列で渡された場合はそのまま正規化
+    if (typeof storeObj === 'string') return normalizeStoreLabel(storeObj);
+    if (typeof storeObj !== 'object') return '';
+
+    // チェーン系候補（ブランド・運営者名）
+    const chainCandidates = dedupeLabels([
+      storeObj.chain,
+      storeObj.brand,
+      storeObj.company,
+      storeObj.group,
+      storeObj.operator
+    ].map(v => normalizeStoreLabel(String(v || ''))).filter(Boolean));
+
+    // 支店系候補（表示名・店舗名・固有名）
+    const branchCandidates = dedupeLabels([
+      storeObj.branch,
+      storeObj.storeName,
+      storeObj.shopName,
+      storeObj.displayName,
+      storeObj.name,
+      storeObj.title
+    ].map(v => normalizeStoreLabel(String(v || ''))).filter(Boolean));
+
+    spDbg('[GPS_STORE_CHAIN_CANDIDATES]', chainCandidates);
+    spDbg('[GPS_STORE_BRANCH_CANDIDATES]', branchCandidates);
+
+    // Step1: 強いチェーン名を探す
+    let chain = '';
+    for (const c of chainCandidates) {
+      if (!isWeakStoreLabel(c)) { chain = c; break; }
+    }
+
+    // Step2: 強い支店名を探す
+    let branch = '';
+    for (const b of branchCandidates) {
+      if (isWeakStoreLabel(b)) continue;
+      // chainと同一なら飛ばす
+      if (chain && b.toLowerCase() === chain.toLowerCase()) continue;
+      // chainを含む完全名なら最優先で返す
+      if (chain && b.toLowerCase().includes(chain.toLowerCase())) {
+        spDbg('[GPS_STORE_LABEL_PICKED]', { chain, branch: b, result: b, reason: 'fullname' });
+        return b;
+      }
+      branch = b;
+      break;
+    }
+
+    // Step3: chain + branch 両方あれば連結
+    if (chain && branch) {
+      const result = `${chain}${branch}`;
+      spDbg('[GPS_STORE_LABEL_PICKED]', { chain, branch, result, reason: 'concat' });
+      return result;
+    }
+
+    // Step4: 全候補から最も長い強い候補を返す
+    const allStrong = dedupeLabels([...chainCandidates, ...branchCandidates])
+      .filter(v => !isWeakStoreLabel(v));
+    if (allStrong.length > 0) {
+      allStrong.sort((a, b) => b.length - a.length);
+      const result = allStrong[0];
+      spDbg('[GPS_STORE_LABEL_PICKED]', { chain, branch, result, reason: 'longest' });
+      return result;
+    }
+
+    // Step5: fallback（弱い候補でも空より優先）
+    const rawAll = dedupeLabels([...chainCandidates, ...branchCandidates]);
+    const result = rawAll[0] || '';
+    spDbg('[GPS_STORE_LABEL_PICKED]', { chain, branch, result, reason: 'fallback' });
+    return result;
+  }
+
+  // 表示前の正規化（汎用・特定チェーン決め打ちなし）
+  function canonicalStoreName(name) {
+    const s = normalizeStoreLabel(name);
+    if (!s) return '';
+    return s;
+  }
+
+  // ===== [gps-store-label-generic] ここまで =====
+
   async function fetchNearbyStores() {
     try {
       const proxyUrl = (window.SP_CONFIG && window.SP_CONFIG.yahooProxyExecUrl) ? window.SP_CONFIG.yahooProxyExecUrl.trim() : '';
@@ -5048,8 +5228,21 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         const json = await res.json();
         if (json && json.ok && Array.isArray(json.stores)) {
           if (isDebug()) console.log('[FetchStores] GPS result:', json.stores.length, 'stores');
-          // ✅ trim() + 空要素除去
-          return json.stores.map(s => String(s.name || '').trim()).filter(isShoppingStore);
+          // [gps-store-label-fix] 店名を buildNearbyStoreLabel で組み立て・空除去
+          const rawCandidates = json.stores;
+          const labels = rawCandidates.map(s => {
+            spDbg('[GPS_STORE_RAW]', s);
+            const label = buildNearbyStoreLabel(s);
+            spDbg('[GPS_STORE_LABEL]', { raw: s, label });
+            if (!label) {
+              spDbg('[GPS_STORE_LABEL_EMPTY]', { storeObj: s });
+              return null;
+            }
+            return label;
+          }).filter(v => typeof v === 'string' && v.trim());
+          const filtered = labels.filter(isShoppingStore);
+          spDbg('[GPS_STORE_LIST_FINAL]', filtered);
+          return filtered;
         }
         return [];
       }
@@ -5069,8 +5262,20 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         const json = await res.json();
         if (json && json.ok && Array.isArray(json.stores)) {
           if (isDebug()) console.log('[FetchStores] Area result:', json.stores.length, 'stores');
-          // ✅ trim() + 空要素除去
-          return json.stores.map(s => String(s.name || '').trim()).filter(isShoppingStore);
+          // [gps-store-label-fix] 店名を buildNearbyStoreLabel で組み立て・空除去
+          const labels = json.stores.map(s => {
+            spDbg('[GPS_STORE_RAW]', s);
+            const label = buildNearbyStoreLabel(s);
+            spDbg('[GPS_STORE_LABEL]', { raw: s, label });
+            if (!label) {
+              spDbg('[GPS_STORE_LABEL_EMPTY]', { storeObj: s });
+              return null;
+            }
+            return label;
+          }).filter(v => typeof v === 'string' && v.trim());
+          const filtered = labels.filter(isShoppingStore);
+          spDbg('[GPS_STORE_LIST_FINAL]', filtered);
+          return filtered;
         } else if (json && !json.ok) {
           // エラー時（例：使用できないアドレス）
           if (isDebug()) {
@@ -6298,6 +6503,11 @@ function spVisibleTrace(tag, payload, cls) {
     // ✅ P0: JAN正規化（数字のみに統一・空白・ハイフン除去）
     let jan = normalizeJan(code);
 
+    // [scan-ux-improve] STEP1: UIを先に動かす（非同期処理より前）
+    showScanAnimation();
+    showToast(`📷 ${jan}`, 1500);
+    spDbg('[SCAN] immediate UI done', { jan });
+
     // [jan-maker-nonjan-toast] 生バーコードログ
     spDbg('[BARCODE_RAW]', { raw: code, normalized: jan });
 
@@ -6911,8 +7121,9 @@ function spVisibleTrace(tag, payload, cls) {
           previewApplied: !!(document.getElementById('previewImg') && document.getElementById('previewImg').src)
         });
       } catch(e) {
-        // ✅ P0: 取得失敗時のメッセージ（常に表示）
-        showToast(`商品情報を取得できませんでした`, 5000);
+        // [scan-ux-improve] STEP4: catchでも必ずトースト表示
+        showToast('エラーが発生しました', 5000);
+        spDbg('[ERROR]', { message: e && e.message ? e.message : String(e), jan: jan || '' });
         if (isDebug()) {
           showToast(`情報取得エラー: ${e.message}`, 5000);
           console.error('[ProcessBarcode] Error:', e);
