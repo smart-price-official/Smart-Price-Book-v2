@@ -18,8 +18,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.85";
-  const BUILD_ID    = "2026-04-16_0000_scan-ux-improve-r1";
+  const APP_VERSION = "v23.9.89";
+  const BUILD_ID    = "2026-04-17_image-flow-unify-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -329,6 +329,23 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
         top: 15%; 
         opacity: 0.6; 
       } 
+    }
+
+    /* [fix3points] スキャン成功フラッシュアニメーション */
+    @keyframes scan-flash {
+      0%   { border-color: #ff5252; box-shadow: 0 0 0 4000px rgba(0,0,0,0.65), 0 0 0 3px #ff5252, 0 0 24px 6px rgba(255,82,82,0.9); }
+      50%  { border-color: #fff;    box-shadow: 0 0 0 4000px rgba(0,0,0,0.45), 0 0 0 5px #fff,    0 0 40px 10px rgba(255,255,255,0.8); }
+      100% { border-color: #ff5252; box-shadow: 0 0 0 4000px rgba(0,0,0,0.65); }
+    }
+    .scan-frame.flash {
+      animation: scan-flash 0.4s ease-out !important;
+    }
+    @keyframes laser-flash {
+      0%   { background: linear-gradient(180deg, rgba(255,255,255,0.5), #fff, rgba(255,255,255,0.5)); box-shadow: 0 0 20px 6px rgba(255,255,255,1); height: 6px; }
+      100% { background: linear-gradient(180deg, rgba(255,0,0,0.3), rgba(255,0,0,1), rgba(255,0,0,0.3)); box-shadow: 0 0 8px 1px rgba(255,0,0,0.8); height: 3px; }
+    }
+    .scan-laser.flash {
+      animation: laser-flash 0.4s ease-out !important;
     }
 
     /* モーダル基本 */
@@ -2446,27 +2463,32 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
     } catch (e) {}
   }
 
-  // [scan-ux-improve] STEP1: スキャン即時アニメーション
+  // [fix3points] 修正③: スキャン成功アニメーション（CSSクラス切り替え方式）
   function showScanAnimation() {
     try {
-      // スキャンラインを一瞬光らせる
-      const scanLine = document.querySelector('.scan-line, [class*="scan"]');
-      if (scanLine) {
-        scanLine.style.opacity = '1';
-        scanLine.style.background = '#ff5252';
-        setTimeout(() => {
-          try { scanLine.style.background = ''; } catch(_) {}
-        }, 300);
+      spDbg('[SCAN_UI_ANIMATION_START]', {});
+      const frame = document.querySelector('.scan-frame');
+      const laser = document.querySelector('.scan-laser');
+      if (frame) {
+        frame.classList.remove('flash');
+        void frame.offsetWidth;
+        frame.classList.add('flash');
+        setTimeout(() => { try { frame.classList.remove('flash'); } catch(_) {} }, 450);
       }
-      // カメラ枠をフラッシュ
-      const camBox = document.getElementById('camera-container') ||
-                     document.getElementById('cameraContainer') ||
-                     document.querySelector('.camera-box, .scan-box, #reader');
-      if (camBox) {
-        camBox.style.outline = '3px solid #ff5252';
+      if (laser) {
+        laser.classList.remove('flash');
+        void laser.offsetWidth;
+        laser.classList.add('flash');
         setTimeout(() => {
-          try { camBox.style.outline = ''; } catch(_) {}
-        }, 300);
+          try { laser.classList.remove('flash'); spDbg('[SCAN_UI_ANIMATION_END]', {}); } catch(_) {}
+        }, 450);
+      }
+      if (!frame && !laser) {
+        const area = document.getElementById('camera-area');
+        if (area) {
+          area.style.outline = '4px solid #fff';
+          setTimeout(() => { try { area.style.outline = ''; spDbg('[SCAN_UI_ANIMATION_END]', {}); } catch(_) {} }, 400);
+        }
       }
     } catch(_) {}
   }
@@ -3284,7 +3306,11 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     const sub = document.getElementById('inputSubCategory');
     if(!sel) return;
 
-    const cats = sortCategories(Object.keys(db.config.categoryTree || {}));
+    // [v85fix] 修正④: 重複除去してから履歴順ソート
+    const rawCats = Object.keys(db.config.categoryTree || {});
+    const uniqueCategories = [...new Set(rawCats)];
+    const cats = sortCategories(uniqueCategories);
+    spDbg('[CATEGORY_LIST_FINAL]', cats);
     sel.innerHTML = `<option value="__NONE__">カテゴリを選ぶ</option>` +
       cats.map(c => `<option value="${c}">${c}</option>`).join('') +
       `<option value="ADD">+ 追記</option>`;
@@ -3470,7 +3496,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
 
   // ========= Home History =========
   function placeholderImg() {
-    return 'https://placehold.jp/24/333/ccc/68x68.png?text=NoImage';
+    // [v85fix] 修正⑤: エラーっぽいマークをやめて自然なNoImage表示
+    return "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='68' height='68' viewBox='0 0 68 68'%3E%3Crect width='68' height='68' fill='%23333'/%3E%3Ctext x='34' y='36' text-anchor='middle' dominant-baseline='middle' fill='%23888' font-size='9' font-family='sans-serif'%3ENo Image%3C/text%3E%3C/svg%3E";
   }
 
   // ✅ renderHistory() の二重起動防止
@@ -4128,7 +4155,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     renderStoreList();
     document.getElementById('calcOptionArea').style.display = "none";
     document.getElementById('saveBtn').innerText = "変更確定";
-    document.getElementById('delHistBtn').style.display = "block";
+    // [v85fix] 修正⑥: テキスト「削除」ボタンは非表示（ゴミ箱ボタンのみ）
+    document.getElementById('delHistBtn').style.display = "none";
     document.getElementById('storeJumpBtn').style.display = "block";
 
     renderDetailHistory(p.history);
@@ -5121,14 +5149,29 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     return out;
   }
 
-  // 汎用店名ラベル組み立て（チェーン名決め打ちなし）
+  // [refix] 修正②: 汎用店名ラベル組み立て — 「完全な店名」を最優先
   function buildNearbyStoreLabel(storeObj) {
     if (!storeObj) return '';
     // 文字列で渡された場合はそのまま正規化
     if (typeof storeObj === 'string') return normalizeStoreLabel(storeObj);
     if (typeof storeObj !== 'object') return '';
 
-    // チェーン系候補（ブランド・運営者名）
+    // 全フィールドを正規化して収集（順番は情報量の多い方を優先）
+    const allFields = dedupeLabels([
+      storeObj.displayName,
+      storeObj.name,
+      storeObj.storeName,
+      storeObj.shopName,
+      storeObj.title,
+      storeObj.branch,
+      storeObj.chain,
+      storeObj.brand,
+      storeObj.company,
+      storeObj.group,
+      storeObj.operator
+    ].map(v => normalizeStoreLabel(String(v || ''))).filter(Boolean));
+
+    // チェーン系（chain/brand/company/group/operatorを分類）
     const chainCandidates = dedupeLabels([
       storeObj.chain,
       storeObj.brand,
@@ -5137,7 +5180,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       storeObj.operator
     ].map(v => normalizeStoreLabel(String(v || ''))).filter(Boolean));
 
-    // 支店系候補（表示名・店舗名・固有名）
+    // 支店系（displayName/name等を分類）
     const branchCandidates = dedupeLabels([
       storeObj.branch,
       storeObj.storeName,
@@ -5150,19 +5193,28 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     spDbg('[GPS_STORE_CHAIN_CANDIDATES]', chainCandidates);
     spDbg('[GPS_STORE_BRANCH_CANDIDATES]', branchCandidates);
 
-    // Step1: 強いチェーン名を探す
+    // Step1: 強い候補を全て集め、長さ順に並べる（完全名優先）
+    const allStrong = dedupeLabels(allFields).filter(v => !isWeakStoreLabel(v));
+    allStrong.sort((a, b) => b.length - a.length);
+
+    // Step2: 最も長い強い候補が5文字以上なら完全名として採用（最優先）
+    if (allStrong.length > 0 && allStrong[0].length >= 5) {
+      const result = allStrong[0];
+      spDbg('[GPS_STORE_LABEL_PICKED]', { result, reason: 'longest_strong' });
+      return result;
+    }
+
+    // Step3: チェーン名を探す
     let chain = '';
     for (const c of chainCandidates) {
       if (!isWeakStoreLabel(c)) { chain = c; break; }
     }
 
-    // Step2: 強い支店名を探す
+    // Step4: 支店名を探して完全名判定・連結
     let branch = '';
     for (const b of branchCandidates) {
       if (isWeakStoreLabel(b)) continue;
-      // chainと同一なら飛ばす
       if (chain && b.toLowerCase() === chain.toLowerCase()) continue;
-      // chainを含む完全名なら最優先で返す
       if (chain && b.toLowerCase().includes(chain.toLowerCase())) {
         spDbg('[GPS_STORE_LABEL_PICKED]', { chain, branch: b, result: b, reason: 'fullname' });
         return b;
@@ -5171,27 +5223,28 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       break;
     }
 
-    // Step3: chain + branch 両方あれば連結
     if (chain && branch) {
-      const result = `${chain}${branch}`;
+      const result = chain + branch;
       spDbg('[GPS_STORE_LABEL_PICKED]', { chain, branch, result, reason: 'concat' });
       return result;
     }
 
-    // Step4: 全候補から最も長い強い候補を返す
-    const allStrong = dedupeLabels([...chainCandidates, ...branchCandidates])
-      .filter(v => !isWeakStoreLabel(v));
+    // Step5: 短い強い候補でも採用
     if (allStrong.length > 0) {
-      allStrong.sort((a, b) => b.length - a.length);
       const result = allStrong[0];
-      spDbg('[GPS_STORE_LABEL_PICKED]', { chain, branch, result, reason: 'longest' });
+      spDbg('[GPS_STORE_LABEL_PICKED]', { result, reason: 'short_strong' });
       return result;
     }
 
-    // Step5: fallback（弱い候補でも空より優先）
-    const rawAll = dedupeLabels([...chainCandidates, ...branchCandidates]);
-    const result = rawAll[0] || '';
-    spDbg('[GPS_STORE_LABEL_PICKED]', { chain, branch, result, reason: 'fallback' });
+    // Step6: 最終fallback（弱くても空より優先）
+    const directName = normalizeStoreLabel(String(storeObj.name || storeObj.displayName || storeObj.storeName || ''));
+    const rawAll = dedupeLabels(allFields);
+    const result = rawAll[0] || directName || '';
+    if (!result) {
+      spDbg('[GPS_STORE_LABEL_EMPTY]', { storeObj });
+    } else {
+      spDbg('[GPS_STORE_LABEL_PICKED]', { result, reason: 'fallback' });
+    }
     return result;
   }
 
@@ -6217,6 +6270,15 @@ function spVisibleTrace(tag, payload, cls) {
     const img = document.getElementById('previewImg');
     if (!img) return;
     img.src = url || '';
+    // [fix3points] 修正②: 画像URLがhttpならdblclickでJAN名ダウンロード
+    if (url && url.startsWith('http')) {
+      img.title = 'ダブルタップで保存（JAN名）';
+      img.ondblclick = () => { downloadImageWithJan(url, curBarcode || ''); };
+      img.dataset.imageUrl = url;
+    } else {
+      img.ondblclick = null;
+      img.title = '';
+    }
     spDbg('[IMAGE_APPLY]', {
       applied: !!url,
       imageUrl: url || ''
@@ -7217,10 +7279,14 @@ function spVisibleTrace(tag, payload, cls) {
 
     const url = `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(q)}`;
     window.open(url, '_blank', 'noopener');
-    showToast('画像検索を開いたよ。画像を保存して「フォルダ」から選んでね', 7000);
+    // [image-flow-unify] 修正③: 正しい操作案内に変更
+    showToast('画像を長押しして保存してください', 7000);
   }
 
-  // ✅ 画像をアップロード（SNS共有用：Firebaseに保存）
+  // [image-flow-unify] downloadImageFromUrl を削除（導線を①のみに統一）
+
+  // ✅ [image-flow-unify] 画像保存の正式ルート（唯一の導線）
+  // 処理順: ①画像選択 → ②blob生成 → ③JAN名でダウンロード → ④IndexedDB保存 → ⑤Firebase保存
   async function handleImage(input) {
     if (!input || !input.files || !input.files[0]) {
       return;
@@ -7235,6 +7301,26 @@ function spVisibleTrace(tag, payload, cls) {
         showToast("画像の読み込みに失敗しました", 8000);
         return;
       }
+
+      // [refix] 修正①: 既存フローのままJAN名でダウンロード保存
+      try {
+        const safeJan = String(curBarcode || 'image').replace(/[^0-9A-Za-z_-]/g, '') || 'image';
+        let ext = 'jpg';
+        const type = String(blob.type || '').toLowerCase();
+        if (type.includes('png')) ext = 'png';
+        else if (type.includes('webp')) ext = 'webp';
+        else if (type.includes('gif')) ext = 'gif';
+        const fileName = safeJan + '.' + ext;
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => { try { URL.revokeObjectURL(blobUrl); } catch(_) {} }, 1000);
+        spDbg('[IMAGE_DOWNLOAD_NAME]', { jan: safeJan, fileName, type });
+      } catch(_) {}
 
       // プレビュー表示
       const prev = document.getElementById('previewImg');
