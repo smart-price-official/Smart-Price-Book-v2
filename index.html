@@ -18,8 +18,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.89";
-  const BUILD_ID    = "2026-04-17_image-flow-unify-r1";
+  const APP_VERSION = "v23.9.92";
+  const BUILD_ID    = "2026-04-17_1645_imagePicker-fix-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -1173,6 +1173,19 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 </div>
 
 <!-- 生活圏設定モーダル -->
+<!-- [image-picker] 画像候補ピッカーモーダル -->
+<div id="imagePickerModal" class="modal" style="z-index:99500;">
+  <div class="modal-content" style="max-width:380px; width:95%; max-height:85vh; overflow-y:auto; background:#1a1a1a; border-radius:16px; padding:16px;">
+    <h5 class="text-white mb-3 text-center" style="font-size:1rem;">📷 画像を選ぶ</h5>
+    <div id="imagePickerGrid" style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px; min-height:80px;">
+      <div class="text-secondary text-center py-4" style="grid-column:1/-1;">読み込み中…</div>
+    </div>
+    <div class="mt-3 d-flex gap-2">
+      <button class="btn btn-outline-secondary flex-grow-1" onclick="closeImagePickerModal()">閉じる</button>
+    </div>
+  </div>
+</div>
+
 <div id="homeCityModal" class="modal">
   <div class="modal-content">
     <h5 class="text-white mb-3 text-center">生活圏の設定</h5>
@@ -3300,15 +3313,41 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     }
   }
 
+  // [triple-fix] 修正③: カテゴリ名正規化（前後空白・連続空白・全角スペース除去）
+  function normalizeCategoryName(name) {
+    return String(name || '')
+      .trim()
+      .replace(/\s+/g, ' ')
+      .replace(/　/g, ' ')
+      .trim();
+  }
+
   async function initCategorySelect() {
     db = normalizeDb(db);
     const sel = document.getElementById('inputCategory');
     const sub = document.getElementById('inputSubCategory');
     if(!sel) return;
 
-    // [v85fix] 修正④: 重複除去してから履歴順ソート
-    const rawCats = Object.keys(db.config.categoryTree || {});
-    const uniqueCategories = [...new Set(rawCats)];
+    // [triple-fix] 修正③: categoryTreeキーも正規化して重複解消
+    const rawTree = db.config.categoryTree || {};
+    const cleanTree = {};
+    Object.keys(rawTree).forEach(key => {
+      const normalized = normalizeCategoryName(key);
+      if (!normalized) return;
+      if (!cleanTree[normalized]) {
+        cleanTree[normalized] = rawTree[key];
+      } else {
+        // 重複キーのサブカテゴリをマージ
+        const merged = [...new Set([...(cleanTree[normalized] || []), ...(rawTree[key] || [])])];
+        cleanTree[normalized] = merged;
+      }
+    });
+    db.config.categoryTree = cleanTree;
+
+    const rawCats = Object.keys(cleanTree);
+    const normalizedCats = rawCats.map(normalizeCategoryName).filter(Boolean);
+    spDbg('[CATEGORY_NORMALIZED]', normalizedCats);
+    const uniqueCategories = [...new Set(normalizedCats)];
     const cats = sortCategories(uniqueCategories);
     spDbg('[CATEGORY_LIST_FINAL]', cats);
     sel.innerHTML = `<option value="__NONE__">カテゴリを選ぶ</option>` +
@@ -4276,7 +4315,18 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       });
 
       if (editingHistIdx !== null) {
-        p.history[editingHistIdx].price = val;
+        // [triple-fix] 修正②: 編集時も taxMode を見て再計算
+        const disc = Number(document.getElementById('inputDisc').value || 0);
+        let finalP = Math.floor(val * (1 - disc/100));
+        const isTaxEx = document.getElementById('taxEx').checked;
+        if (isTaxEx) finalP = Math.floor(finalP * 1.08);
+        spDbg('[EDIT_TAX_RECALC]', {
+          mode: isTaxEx ? 'ex' : 'in',
+          input: val,
+          output: finalP,
+          editingHistIdx
+        });
+        p.history[editingHistIdx].price = finalP;
         p.history[editingHistIdx].store = curStore;
         showToast("変更を反映しました", 2000);
         if (isDebug()) console.log("[SaveData] History updated:", editingHistIdx);
@@ -7231,8 +7281,17 @@ function spVisibleTrace(tag, payload, cls) {
   // ✅ 検索ボタン：商品コード＋商品名で画像検索を開く
   // [image-download-jan] 画像をJANコード名で保存する
   async function downloadImageWithJan(imageUrl, jan) {
+    const safeJan = String(jan || curBarcode || 'image').replace(/[^0-9A-Za-z_-]/g, '') || 'image';
     try {
-      const res = await fetch(imageUrl, { mode: 'cors' });
+      // まず cors で試みる
+      let res;
+      try {
+        res = await fetch(imageUrl, { mode: 'cors' });
+      } catch(corsErr) {
+        // [imagePicker-fix] CORS失敗時は no-cors でフォールバック
+        spDbg('[IMAGE_DOWNLOAD_CORS_FAIL]', { url: imageUrl, message: corsErr && corsErr.message ? corsErr.message : String(corsErr) });
+        res = await fetch(imageUrl, { mode: 'no-cors' });
+      }
       const blob = await res.blob();
 
       let ext = 'jpg';
@@ -7242,7 +7301,6 @@ function spVisibleTrace(tag, payload, cls) {
       else if (type.includes('gif')) ext = 'gif';
       else if (type.includes('jpeg') || type.includes('jpg')) ext = 'jpg';
 
-      const safeJan = String(jan || curBarcode || 'image').replace(/[^0-9A-Za-z_-]/g, '') || 'image';
       const fileName = `${safeJan}.${ext}`;
 
       const blobUrl = URL.createObjectURL(blob);
@@ -7254,36 +7312,122 @@ function spVisibleTrace(tag, payload, cls) {
       a.remove();
       setTimeout(() => { try { URL.revokeObjectURL(blobUrl); } catch(_) {} }, 1000);
 
-      spDbg('[IMAGE_DOWNLOAD_NAME]', { jan: safeJan, fileName, type });
-      showToast(`画像を保存しました: ${fileName}`, 3000);
+      spDbg('[IMAGE_DOWNLOAD_NAME]', { jan: safeJan, fileName, type, url: imageUrl });
+      showToast(`保存: ${fileName}`, 2000);
+      return true; // 成功
     } catch(e) {
       console.error('[IMAGE_DOWNLOAD]', e);
       spDbg('[IMAGE_DOWNLOAD_ERROR]', {
-        jan: String(jan || curBarcode || ''),
+        jan: safeJan,
+        url: imageUrl,
         message: e && e.message ? e.message : String(e)
       });
       showToast('画像の保存に失敗しました', 4000);
+      return false; // 失敗
     }
   }
   window.downloadImageWithJan = downloadImageWithJan;
 
-  async function searchImageWeb() {
-    const name = (document.getElementById('inputName')?.value || '').trim();
-    const code = String(curBarcode || '').trim();
+  // ===== [image-picker] 画像候補ピッカー =====
 
-    const q = (code && name) ? `${code} ${name}` : (code || name);
-    if (!q) {
-      showToast('商品コード（13桁）か商品名を入れてね', 6000);
+  function openImagePickerModal() {
+    const modal = document.getElementById('imagePickerModal');
+    if (modal) modal.classList.add('show-modal');
+  }
+
+  function closeImagePickerModal() {
+    const modal = document.getElementById('imagePickerModal');
+    if (modal) modal.classList.remove('show-modal');
+  }
+  window.closeImagePickerModal = closeImagePickerModal;
+
+  // 画像候補URLをYahoo/楽天/OFFの既存取得結果から収集
+  async function getImageCandidates(jan) {
+    const candidates = [];
+    spDbg('[IMAGE_PICKER_OPEN]', { jan });
+    try {
+      // Yahoo
+      const yahoo = await lookupYahooByJan(jan);
+      if (yahoo && yahoo.imageUrl) candidates.push(yahoo.imageUrl);
+    } catch(_) {}
+    try {
+      // 楽天
+      const rakuten = await lookupRakutenByJan(jan);
+      if (rakuten && rakuten.imageUrl) candidates.push(rakuten.imageUrl);
+    } catch(_) {}
+    try {
+      // OpenFoodFacts
+      const off = await lookupOffByJan(jan);
+      if (off && off.imageUrl) candidates.push(off.imageUrl);
+    } catch(_) {}
+    // キャッシュからも収集
+    try {
+      const cached = getJanCache(jan);
+      if (cached && cached.imageUrl && cached.imageUrl.startsWith('http')) {
+        candidates.push(cached.imageUrl);
+      }
+    } catch(_) {}
+    const unique = [...new Set(candidates.filter(u => u && u.startsWith('http')))];
+    spDbg('[IMAGE_PICKER_CANDIDATES]', { count: unique.length, jan });
+    return unique;
+  }
+
+  // 候補画像をタップしたときの処理
+  async function selectImageCandidate(url) {
+    if (!curBarcode) {
+      showToast('バーコードがありません', 4000);
+      return;
+    }
+    spDbg('[IMAGE_PICKER_SELECTED]', { jan: curBarcode, url });
+    // [imagePicker-fix] モーダルを先に閉じずに試みる（失敗時は選び直せるよう）
+    try {
+      const ok = await downloadImageWithJan(url, curBarcode);
+      if (ok) {
+        // 成功時のみモーダルを閉じる
+        closeImagePickerModal();
+        applyPreviewImage(url);
+      } else {
+        // 失敗時はモーダルを開いたまま → 別画像を選べる
+        spDbg('[IMAGE_PICKER_DOWNLOAD_FAIL]', { jan: curBarcode, url });
+        showToast('この画像は保存できませんでした。別の画像を選んでください', 4000);
+      }
+    } catch(e) {
+      spDbg('[IMAGE_PICKER_DOWNLOAD_FAIL]', { jan: curBarcode, url, message: e && e.message ? e.message : String(e) });
+      showToast('画像保存に失敗しました。別の画像を選んでください', 4000);
+    }
+  }
+  window.selectImageCandidate = selectImageCandidate;
+
+  // 虫メガネ → 画像ピッカーモーダルを開く
+  async function searchImageWeb() {
+    if (!curBarcode) {
+      showToast('バーコードがありません', 4000);
+      return;
+    }
+    openImagePickerModal();
+    const grid = document.getElementById('imagePickerGrid');
+    if (grid) grid.innerHTML = '<div class="text-secondary text-center py-4" style="grid-column:1/-1;">読み込み中…</div>';
+
+    const candidates = await getImageCandidates(curBarcode);
+
+    if (!grid) return;
+    if (!candidates.length) {
+      spDbg('[IMAGE_PICKER_EMPTY]', { jan: curBarcode });
+      grid.innerHTML = '<div class="text-secondary text-center py-4" style="grid-column:1/-1;">画像候補が見つかりませんでした</div>';
       return;
     }
 
-    const url = `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(q)}`;
-    window.open(url, '_blank', 'noopener');
-    // [image-flow-unify] 修正③: 正しい操作案内に変更
-    showToast('画像を長押しして保存してください', 7000);
+    grid.innerHTML = candidates.map(url => `
+      <div onclick="selectImageCandidate('${url.replace(/'/g, "&#39;")}')"
+           style="cursor:pointer; border-radius:8px; overflow:hidden; background:#333; aspect-ratio:1; display:flex; align-items:center; justify-content:center;">
+        <img src="${url}" loading="lazy" referrerpolicy="no-referrer"
+             style="width:100%; height:100%; object-fit:contain;"
+             onerror="this.parentElement.style.display='none'">
+      </div>
+    `).join('');
   }
 
-  // [image-flow-unify] downloadImageFromUrl を削除（導線を①のみに統一）
+  // ===== [image-picker] ここまで =====
 
   // ✅ [image-flow-unify] 画像保存の正式ルート（唯一の導線）
   // 処理順: ①画像選択 → ②blob生成 → ③JAN名でダウンロード → ④IndexedDB保存 → ⑤Firebase保存
