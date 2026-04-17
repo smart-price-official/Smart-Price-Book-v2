@@ -18,8 +18,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.92";
-  const BUILD_ID    = "2026-04-17_1645_imagePicker-fix-r1";
+  const APP_VERSION = "v23.9.94";
+  const BUILD_ID    = "2026-04-17_1723_imagePicker-fallback-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -7341,34 +7341,125 @@ function spVisibleTrace(tag, payload, cls) {
   }
   window.closeImagePickerModal = closeImagePickerModal;
 
-  // 画像候補URLをYahoo/楽天/OFFの既存取得結果から収集
+  // [imagePicker-debug] 画像候補URLを複数ソースから収集
   async function getImageCandidates(jan) {
-    const candidates = [];
-    spDbg('[IMAGE_PICKER_OPEN]', { jan });
+    spDbg('[IMAGE_CANDIDATES_START]', { jan });
+
+    const yahooCandidates = [];
+    const rakutenCandidates = [];
+    const offCandidates = [];
+    const cacheCandidates = [];
+
+    // ① DBから既存imageUrlを収集（最速・プロキシ不要）
     try {
-      // Yahoo
-      const yahoo = await lookupYahooByJan(jan);
-      if (yahoo && yahoo.imageUrl) candidates.push(yahoo.imageUrl);
-    } catch(_) {}
-    try {
-      // 楽天
-      const rakuten = await lookupRakutenByJan(jan);
-      if (rakuten && rakuten.imageUrl) candidates.push(rakuten.imageUrl);
-    } catch(_) {}
-    try {
-      // OpenFoodFacts
-      const off = await lookupOffByJan(jan);
-      if (off && off.imageUrl) candidates.push(off.imageUrl);
-    } catch(_) {}
-    // キャッシュからも収集
+      const p = db && db.products && db.products[jan];
+      if (p && p.imageUrl && typeof p.imageUrl === 'string' && p.imageUrl.startsWith('http')) {
+        cacheCandidates.push(p.imageUrl);
+      }
+      // historyのimageUrlも収集
+      if (p && Array.isArray(p.history)) {
+        p.history.forEach(h => {
+          if (h && h.imageUrl && typeof h.imageUrl === 'string' && h.imageUrl.startsWith('http')) {
+            cacheCandidates.push(h.imageUrl);
+          }
+        });
+      }
+    } catch(e) { spDbg('[IMAGE_SOURCE_DB_ERR]', { jan, err: String(e) }); }
+
+    // ② getJanCacheからも収集
     try {
       const cached = getJanCache(jan);
-      if (cached && cached.imageUrl && cached.imageUrl.startsWith('http')) {
-        candidates.push(cached.imageUrl);
+      if (cached && cached.imageUrl && typeof cached.imageUrl === 'string' && cached.imageUrl.startsWith('http')) {
+        cacheCandidates.push(cached.imageUrl);
+      }
+    } catch(e) { spDbg('[IMAGE_SOURCE_CACHE_ERR]', { jan, err: String(e) }); }
+
+    // ③ latestProductHints（直近スキャン結果）からも収集
+    try {
+      const hints = window.latestProductHints;
+      if (hints && hints.jan === jan && hints.imageUrl && hints.imageUrl.startsWith('http')) {
+        cacheCandidates.push(hints.imageUrl);
       }
     } catch(_) {}
-    const unique = [...new Set(candidates.filter(u => u && u.startsWith('http')))];
-    spDbg('[IMAGE_PICKER_CANDIDATES]', { count: unique.length, jan });
+
+    spDbg('[IMAGE_SOURCE_CACHE]', { jan, count: cacheCandidates.length, candidates: cacheCandidates });
+
+    // ④ Yahoo API（プロキシ経由）
+    try {
+      const yahoo = await lookupYahooByJan(jan);
+      if (yahoo && yahoo.imageUrl && typeof yahoo.imageUrl === 'string' && yahoo.imageUrl.startsWith('http')) {
+        yahooCandidates.push(yahoo.imageUrl);
+      }
+    } catch(e) { spDbg('[IMAGE_SOURCE_YAHOO_ERR]', { jan, err: String(e) }); }
+    spDbg('[IMAGE_SOURCE_YAHOO]', { jan, count: yahooCandidates.length, candidates: yahooCandidates });
+
+    // ⑤ 楽天API（プロキシ経由）
+    try {
+      const rakuten = await lookupRakutenByJan(jan);
+      if (rakuten && rakuten.imageUrl && typeof rakuten.imageUrl === 'string' && rakuten.imageUrl.startsWith('http')) {
+        rakutenCandidates.push(rakuten.imageUrl);
+      }
+    } catch(e) { spDbg('[IMAGE_SOURCE_RAKUTEN_ERR]', { jan, err: String(e) }); }
+    spDbg('[IMAGE_SOURCE_RAKUTEN]', { jan, count: rakutenCandidates.length, candidates: rakutenCandidates });
+
+    // ⑥ OpenFoodFacts API
+    try {
+      const off = await lookupOffByJan(jan);
+      if (off && off.imageUrl && typeof off.imageUrl === 'string' && off.imageUrl.startsWith('http')) {
+        offCandidates.push(off.imageUrl);
+      }
+    } catch(e) { spDbg('[IMAGE_SOURCE_OFF_ERR]', { jan, err: String(e) }); }
+    spDbg('[IMAGE_SOURCE_OFF]', { jan, count: offCandidates.length, candidates: offCandidates });
+
+    // 全候補を結合（DB/キャッシュ優先）
+    const rawCandidates = [
+      ...cacheCandidates,
+      ...yahooCandidates,
+      ...rakutenCandidates,
+      ...offCandidates
+    ];
+    spDbg('[IMAGE_CANDIDATES_RAW]', rawCandidates);
+
+    // フィルタ: http/https URLのみ（最小限）
+    const filtered = rawCandidates.filter(u => typeof u === 'string' && (u.startsWith('http://') || u.startsWith('https://')));
+    spDbg('[IMAGE_CANDIDATES_FILTERED]', filtered);
+
+    const unique = [...new Set(filtered)];
+    spDbg('[IMAGE_CANDIDATES_FINAL]', { jan, count: unique.length, candidates: unique });
+
+    // [imagePicker-fallback] 修正①②④: 候補0件でもUXを止めない — fallback生成
+    if (unique.length === 0) {
+      spDbg('[IMAGE_FALLBACK_CREATE]', { jan });
+      const fallbacks = [];
+
+      // latestProductHints からの安全参照
+      try {
+        if (window.latestProductHints && window.latestProductHints.imageUrl &&
+            typeof window.latestProductHints.imageUrl === 'string' &&
+            window.latestProductHints.imageUrl.startsWith('http')) {
+          fallbacks.push(window.latestProductHints.imageUrl);
+        }
+      } catch(_) {}
+
+      // DB内の既存画像を再スキャン（全productを対象）
+      try {
+        const p = db && db.products && db.products[jan];
+        if (p && p.imageUrl && typeof p.imageUrl === 'string' && p.imageUrl.startsWith('http')) {
+          fallbacks.push(p.imageUrl);
+        }
+      } catch(_) {}
+
+      // Google画像検索URLをfallbackとして生成（最終手段）
+      if (!fallbacks.length) {
+        const googleFallback = `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(String(jan || ''))}`;
+        fallbacks.push(googleFallback);
+      }
+
+      const finalCandidates = [...new Set(fallbacks)];
+      spDbg('[IMAGE_FALLBACK_FINAL]', { jan, count: finalCandidates.length, candidates: finalCandidates });
+      return finalCandidates;
+    }
+
     return unique;
   }
 
@@ -7400,7 +7491,9 @@ function spVisibleTrace(tag, payload, cls) {
 
   // 虫メガネ → 画像ピッカーモーダルを開く
   async function searchImageWeb() {
+    spDbg('[IMAGE_PICKER_OPEN]', { jan: curBarcode });
     if (!curBarcode) {
+      spDbg('[IMAGE_PICKER_RETURN]', { reason: 'no_jan', jan: curBarcode });
       showToast('バーコードがありません', 4000);
       return;
     }
@@ -7408,11 +7501,18 @@ function spVisibleTrace(tag, payload, cls) {
     const grid = document.getElementById('imagePickerGrid');
     if (grid) grid.innerHTML = '<div class="text-secondary text-center py-4" style="grid-column:1/-1;">読み込み中…</div>';
 
-    const candidates = await getImageCandidates(curBarcode);
+    let candidates = [];
+    try {
+      candidates = await getImageCandidates(curBarcode);
+    } catch(err) {
+      spDbg('[IMAGE_PICKER_RETURN]', { reason: 'exception', jan: curBarcode, error: String(err) });
+    }
 
     if (!grid) return;
+    // [imagePicker-fallback] 修正⑤: no_candidates で return しない（fallbackが保証されているため）
     if (!candidates.length) {
-      spDbg('[IMAGE_PICKER_EMPTY]', { jan: curBarcode });
+      // ここには来ないはずだが念のため
+      spDbg('[IMAGE_PICKER_RETURN]', { reason: 'no_candidates_unexpected', jan: curBarcode });
       grid.innerHTML = '<div class="text-secondary text-center py-4" style="grid-column:1/-1;">画像候補が見つかりませんでした</div>';
       return;
     }
