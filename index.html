@@ -18,8 +18,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.94";
-  const BUILD_ID    = "2026-04-17_1723_imagePicker-fallback-r1";
+  const APP_VERSION = "v23.9.95";
+  const BUILD_ID    = "2026-04-17_multifix-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -3297,6 +3297,38 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     } catch(_) {}
   }
 
+  // [multifix] ⑥: JANプレフィックスからカテゴリを推定
+  function inferCategoryFromJan(jan) {
+    if (!jan || !/^\d{8,14}$/.test(jan)) return '';
+    // まず履歴から同一JANのカテゴリを検索
+    try {
+      const p = db && db.products && db.products[jan];
+      if (p && p.category && p.category !== '__NONE__') return p.category;
+    } catch(_) {}
+    // JANプレフィックス → カテゴリ推定（主要メーカー対応）
+    const JAN_CAT = [
+      { prefix: '4901777', cat: '食品' },   // 日清食品
+      { prefix: '4902102', cat: '菓子' },   // カルビー
+      { prefix: '4901085', cat: '食品' },   // 明治
+      { prefix: '4904001', cat: '日用品' }, // 花王
+      { prefix: '4904810', cat: '飲料' },   // ヤクルト
+      { prefix: '4905009', cat: '飲料' },   // アサヒ飲料
+      { prefix: '4907897', cat: '飲料' },   // サントリー
+      { prefix: '4905516', cat: '食品' },   // カゴメ
+      { prefix: '4902201', cat: '食品' },   // ハウス食品
+      { prefix: '4903301', cat: '食品' },   // キッコーマン
+    ];
+    for (const row of JAN_CAT) {
+      if (jan.startsWith(row.prefix)) {
+        // DBのカテゴリツリーに存在する場合のみ返す
+        if (db && db.config && db.config.categoryTree && db.config.categoryTree[row.cat]) {
+          return row.cat;
+        }
+      }
+    }
+    return '';
+  }
+
   function sortCategories(categories) {
     try {
       const history = JSON.parse(localStorage.getItem('categoryHistory') || '[]');
@@ -3793,7 +3825,17 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     if (!exists) {
       document.getElementById('inputName').value = "";
       document.getElementById('inputMaker').value = "";
-      if (catSel) catSel.value = "__NONE__";
+      // [multifix] ⑥: カテゴリ自動入力
+      const inferredCat = inferCategoryFromJan(code);
+      if (catSel) {
+        if (inferredCat && [...catSel.options].some(o => o.value === inferredCat)) {
+          catSel.value = inferredCat;
+          initSubCategorySelect(inferredCat);
+          spDbg('[CATEGORY_AUTO_INFER]', { jan: code, category: inferredCat });
+        } else {
+          catSel.value = "__NONE__";
+        }
+      }
       if (subSel) { subSel.style.display = 'none'; subSel.value = "__NONE__"; }
       const prev = document.getElementById('previewImg');
       if (prev) {
@@ -4220,12 +4262,22 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     
     try {
       // [save-guard-relax] 必須チェック: JAN（curBarcode）
-      const jan = String(curBarcode || '').trim();
+      // [multifix] ④: JANなしでも商品名があれば M_プレフィックスで仮登録
+      let jan = String(curBarcode || '').trim();
       if (!jan) {
-        spDbg('[SAVE_BLOCK_REASON]', { reason: 'jan_empty', jan: jan, name: '', price: '', store: curStore });
-        showToast("バーコードが読み取れていません", 4000);
-        if (saveBtn) saveBtn.disabled = false;
-        return;
+        const tmpName = (document.getElementById('inputName')?.value || '').trim();
+        if (tmpName) {
+          // 商品名ベースのM_コードで仮登録
+          jan = 'M_' + tmpName.slice(0, 20).replace(/[^\w\u3040-\u9FFF]/g, '_');
+          curBarcode = jan;
+          spDbg('[MANUAL_ENTRY_JAN]', { jan, name: tmpName });
+          showToast('商品名で仮登録します', 2000);
+        } else {
+          spDbg('[SAVE_BLOCK_REASON]', { reason: 'jan_empty', jan: jan, name: '', price: '', store: curStore });
+          showToast("バーコードか商品名を入力してください", 4000);
+          if (saveBtn) saveBtn.disabled = false;
+          return;
+        }
       }
 
       // [save-guard-relax] 必須チェック: ストア
@@ -7517,7 +7569,22 @@ function spVisibleTrace(tag, payload, cls) {
       return;
     }
 
-    grid.innerHTML = candidates.map(url => `
+    // [multifix] ①⑦: 候補を最大6件に絞る
+    const displayCandidates = candidates.slice(0, 6);
+
+    // [multifix] ⑦: 候補1件 → 自動反映してモーダルを開かない
+    if (displayCandidates.length === 1) {
+      closeImagePickerModal();
+      const autoUrl = displayCandidates[0];
+      spDbg('[IMAGE_PICKER_AUTO_APPLY]', { jan: curBarcode, url: autoUrl });
+      applyPreviewImage(autoUrl);
+      showToast('画像を自動反映しました', 2000);
+      // バックグラウンドでダウンロード保存も試みる
+      downloadImageWithJan(autoUrl, curBarcode).catch(() => {});
+      return;
+    }
+
+    grid.innerHTML = displayCandidates.map(url => `
       <div onclick="selectImageCandidate('${url.replace(/'/g, "&#39;")}')"
            style="cursor:pointer; border-radius:8px; overflow:hidden; background:#333; aspect-ratio:1; display:flex; align-items:center; justify-content:center;">
         <img src="${url}" loading="lazy" referrerpolicy="no-referrer"
