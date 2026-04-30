@@ -18,8 +18,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.95";
-  const BUILD_ID    = "2026-04-17_multifix-r1";
+  const APP_VERSION = "v23.9.97";
+  const BUILD_ID    = "2026-04-30_localconfirmed-gpsdebug-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -811,6 +811,59 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   padding: 3px 8px; z-index: 100000000; border: 1px solid #0f0;
   border-radius: 4px 4px 0 0; cursor: pointer;
 }
+
+/* === GPS診断パネル (debug=1のみ表示) === */
+#gps-debug-panel {
+  display: none;
+  background: #0a1a0a;
+  border: 1px solid #2a4a2a;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 6px 10px 0 10px;
+  font-size: 11px;
+  font-family: monospace;
+  color: #8f8;
+}
+#gps-debug-panel.visible { display: block; }
+#gps-debug-title {
+  color: #4f4; font-weight: bold; font-size: 12px;
+  margin-bottom: 6px; border-bottom: 1px solid #2a4a2a; padding-bottom: 4px;
+}
+#gps-debug-content { line-height: 1.7; }
+#gps-debug-content .dbg-ok  { color: #4f4; }
+#gps-debug-content .dbg-err { color: #f55; }
+#gps-debug-content .dbg-warn{ color: #fa0; }
+#gps-debug-content .dbg-key { color: #8af; }
+#gps-debug-textarea {
+  display: none;
+  width: 100%;
+  min-height: 120px;
+  max-height: 220px;
+  background: #0d0d0d;
+  color: #8f8;
+  border: 1px solid #2a4a2a;
+  border-radius: 6px;
+  font-size: 10px;
+  font-family: monospace;
+  padding: 6px 8px;
+  margin-top: 8px;
+  box-sizing: border-box;
+  resize: vertical;
+}
+#gps-debug-copy-btn {
+  display: none;
+  margin-top: 6px;
+  padding: 8px 14px;
+  background: #1a3a1a;
+  color: #4f4;
+  border: 1px solid #2a4a2a;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: bold;
+  cursor: pointer;
+  width: 100%;
+}
+#gps-debug-copy-btn:active { background: #2a5a2a; }
 </style>
 
 <script>
@@ -836,6 +889,14 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 </header>
 
 <div class="store-area"><div id="store-list" class="store-list"></div></div>
+
+<!-- GPS診断パネル (debug=1のみ表示) -->
+<div id="gps-debug-panel">
+  <div id="gps-debug-title">📡 GPS診断ログ</div>
+  <div id="gps-debug-content"><span class="dbg-warn">GPS未実行</span></div>
+  <textarea id="gps-debug-textarea" readonly></textarea>
+  <button id="gps-debug-copy-btn" onclick="spGpsDebugCopy()">📋 GPS診断をコピー</button>
+</div>
 
 <div class="container p-3">
   <div id="mainView">
@@ -2199,6 +2260,120 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
     }
   }
 
+  // ========= [lookup-aiflow] Server Confirmed Product DB (Firebase RTDB) =========
+  /**
+   * [lookup-aiflow] サーバー（Firebase RTDB）から確定商品データを取得する
+   * パス: confirmed_products/{jan}
+   * @param {string} jan
+   * @returns {object|null} { confirmedName, confirmedMaker, confirmedCategory, aiNormalizedAt, aiConfidence } or null
+   */
+  async function lookupServerConfirmedProduct(jan) {
+    if (!jan) return null;
+    try {
+      if (!isFirebaseReady || !firebaseDb) {
+        spDbg('[LOOKUP_SERVER] Firebase not ready', { jan });
+        return null;
+      }
+      const ref = firebaseDb.ref(`confirmed_products/${jan}`);
+      const snap = await ref.once('value');
+      if (!snap.exists()) {
+        spDbg('[LOOKUP_SERVER] no data', { jan });
+        return null;
+      }
+      const data = snap.val();
+      if (!data || !data.confirmedName) return null;
+      spDbg('[LOOKUP_SERVER_HIT]', { jan, confirmedName: data.confirmedName, confirmedMaker: data.confirmedMaker || '' });
+      console.log('[LOOKUP_SERVER_HIT]', jan, data);
+      return data;
+    } catch(e) {
+      spDbg('[LOOKUP_SERVER] error', { jan, msg: e && e.message ? e.message : String(e) });
+      return null;
+    }
+  }
+
+  /**
+   * [lookup-aiflow] AI正規化結果をサーバー（Firebase RTDB）へ保存する
+   * パス: confirmed_products/{jan}
+   * @param {string} jan
+   * @param {object} data { confirmedName, confirmedMaker, confirmedCategory, aiConfidence, sourceCandidates }
+   */
+  async function saveServerConfirmedProduct(jan, data) {
+    if (!jan || !data || !data.confirmedName) return;
+    try {
+      if (!isFirebaseReady || !firebaseDb) {
+        spDbg('[SAVE_SERVER] Firebase not ready', { jan });
+        return;
+      }
+      const record = {
+        jan: jan,
+        confirmedName: data.confirmedName || '',
+        confirmedMaker: data.confirmedMaker || '',
+        confirmedCategory: data.confirmedCategory || '',
+        aiNormalizedAt: Date.now(),
+        aiConfidence: data.aiConfidence || 1.0,
+        sourceCandidates: data.sourceCandidates || []
+      };
+      const ref = firebaseDb.ref(`confirmed_products/${jan}`);
+      await ref.set(record);
+      spDbg('[SAVE_SERVER] saved', { jan, confirmedName: record.confirmedName });
+      console.log('[SAVE_SERVER] confirmed product saved', jan, record);
+    } catch(e) {
+      spDbg('[SAVE_SERVER] error', { jan, msg: e && e.message ? e.message : String(e) });
+    }
+  }
+
+  /**
+   * [lookup-aiflow] AI正規化をGAS経由で実行する（クライアントにAPIキーを持たない）
+   * GAS URL は SP_CONFIG.kiraGasExecUrl に設定する
+   * @param {string} jan
+   * @param {string[]} nameCandidates 候補商品名配列
+   * @param {string[]} makerCandidates 候補メーカー名配列
+   * @param {string[]} sources 取得元配列 e.g. ['yahoo','rakuten']
+   * @param {string} catOptions カテゴリ選択肢文字列
+   * @returns {object|null} { name, maker, category } or null
+   */
+  async function callAiViаGas(jan, nameCandidates, makerCandidates, sources, catOptions) {
+    const gasUrl = (window.SP_CONFIG && window.SP_CONFIG.kiraGasExecUrl)
+      ? window.SP_CONFIG.kiraGasExecUrl.trim() : '';
+    if (!gasUrl) {
+      spDbg('[AI_NORMALIZE_CALL] kiraGasExecUrl not set', { jan });
+      console.warn('[AI_NORMALIZE_CALL] kiraGasExecUrl が SP_CONFIG に未設定です');
+      return null;
+    }
+    spDbg('[AI_NORMALIZE_CALL]', { jan, nameCandidates, makerCandidates, sources });
+    console.log('[AI_NORMALIZE_CALL]', { jan, nameCandidates, makerCandidates, sources });
+    try {
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), 20000);
+      const res = await fetch(gasUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'normalizeProduct',
+          jan: jan,
+          nameCandidates: nameCandidates,
+          makerCandidates: makerCandidates,
+          sources: sources,
+          catOptions: catOptions || ''
+        }),
+        signal: controller.signal
+      });
+      clearTimeout(tid);
+      if (!res.ok) {
+        spDbg('[AI_NORMALIZE_CALL] GAS error', { jan, status: res.status });
+        return null;
+      }
+      const json = await res.json();
+      if (!json || !json.name) return null;
+      spDbg('[AI_NORMALIZE_DONE]', { jan, name: json.name, maker: json.maker || '', category: json.category || '' });
+      console.log('[AI_NORMALIZE_DONE]', jan, json);
+      return json; // { name, maker, category }
+    } catch(e) {
+      spDbg('[AI_NORMALIZE_CALL] fetch error', { jan, msg: e && e.message ? e.message : String(e) });
+      return null;
+    }
+  }
+
   // ========= App State =========
   let db = { products: {}, config: JSON.parse(JSON.stringify(DEFAULT_CONFIG)) };
   let curBarcode = null, curStore = "未設定";
@@ -2376,6 +2551,11 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
         setTimeout(() => {
           showToast(`DEBUG:${FULL_VERSION} / ${BUILD_ID} / Firebase:${isFirebaseReady?'ON':'OFF'}`, 4000);
         }, 300);
+        // GPS診断パネルを初期表示（debug=1時のみ）
+        try {
+          const gpsPanel = document.getElementById('gps-debug-panel');
+          if (gpsPanel) gpsPanel.classList.add('visible');
+        } catch(e) {}
       } else {
         document.body.removeAttribute('data-debug');
       }
@@ -4506,53 +4686,268 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     return R * c;
   }
 
+  // ===== GPS診断システム (v23.9.97 gpsdebug-r1) =====
+
+  // GPS診断データを保持するオブジェクト
+  window._gpsDebugData = null;
+
+  // GPS診断パネルを更新する
+  function updateGpsDebugPanel(data) {
+    try {
+      if (!isDebug()) return;
+      const panel = document.getElementById('gps-debug-panel');
+      const content = document.getElementById('gps-debug-content');
+      const textarea = document.getElementById('gps-debug-textarea');
+      const copyBtn = document.getElementById('gps-debug-copy-btn');
+      if (!panel || !content) return;
+
+      panel.classList.add('visible');
+      window._gpsDebugData = data;
+
+      let html = '';
+      // GPS結果
+      if (data.gps.ok) {
+        html += `<div class="dbg-ok">✅ GPS取得成功</div>`;
+        html += `<div><span class="dbg-key">lat</span>: ${data.gps.lat}</div>`;
+        html += `<div><span class="dbg-key">lng</span>: ${data.gps.lng}</div>`;
+        html += `<div><span class="dbg-key">accuracy</span>: ${data.gps.accuracy} m</div>`;
+        html += `<div><span class="dbg-key">timestamp</span>: ${data.gps.timestamp}</div>`;
+        html += `<div><span class="dbg-key">elapsed</span>: ${data.gps.elapsedMs} ms</div>`;
+      } else {
+        html += `<div class="dbg-err">❌ GPS失敗</div>`;
+      }
+      // 設定
+      html += `<div><span class="dbg-key">生活圏</span>: ${data.settings.homeCity || '(未設定)'}</div>`;
+      html += `<div><span class="dbg-key">GPS範囲</span>: ${data.settings.gpsRange} m</div>`;
+      // ストア候補
+      html += `<div><span class="dbg-key">raw店舗</span>: ${data.stores.raw.length}件 [${data.stores.raw.slice(0,3).join(', ')}${data.stores.raw.length > 3 ? '...' : ''}]</div>`;
+      html += `<div><span class="dbg-key">normalized</span>: ${data.stores.normalized.length}件 [${data.stores.normalized.slice(0,3).join(', ')}${data.stores.normalized.length > 3 ? '...' : ''}]</div>`;
+      html += `<div><span class="dbg-key">final</span>: ${data.stores.final.length}件 [${data.stores.final.slice(0,3).join(', ')}${data.stores.final.length > 3 ? '...' : ''}]</div>`;
+      // エラー
+      if (data.error) {
+        html += `<div class="dbg-err">⚠️ エラー: ${data.error.message} (code=${data.error.code})</div>`;
+      }
+      content.innerHTML = html;
+
+      // textarea と コピーボタン表示
+      const jsonStr = JSON.stringify(data, null, 2);
+      textarea.value = jsonStr;
+      textarea.style.display = 'block';
+      copyBtn.style.display = 'block';
+    } catch(e) {
+      console.warn('[GPS_DEBUG] updateGpsDebugPanel error:', e);
+    }
+  }
+
+  // GPS診断をコピーする
+  window.spGpsDebugCopy = function() {
+    try {
+      const textarea = document.getElementById('gps-debug-textarea');
+      if (!textarea) return;
+      const text = textarea.value;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => {
+          try { showToast('📋 GPS診断をコピーしました', 2000); } catch(e) {}
+        }).catch(() => {
+          textarea.select(); document.execCommand('copy');
+          try { showToast('📋 コピーしました', 2000); } catch(e) {}
+        });
+      } else {
+        textarea.select(); document.execCommand('copy');
+        try { showToast('📋 コピーしました', 2000); } catch(e) {}
+      }
+    } catch(e) {}
+  };
+
+  // GPS診断ログをlocalStorageに保存（最新10件）
+  function saveGpsDebugLog(data) {
+    try {
+      const key = 'smartPrice_gpsDebugLogs';
+      let logs = [];
+      try {
+        const stored = localStorage.getItem(key);
+        if (stored) logs = JSON.parse(stored);
+        if (!Array.isArray(logs)) logs = [];
+      } catch(e) { logs = []; }
+      logs.unshift(data);
+      if (logs.length > 10) logs = logs.slice(0, 10);
+      localStorage.setItem(key, JSON.stringify(logs));
+    } catch(e) {}
+  }
+
+  // GPS失敗時の日本語エラーメッセージ
+  function getGpsErrorMessage(err, nearbyCount, normalizedCount) {
+    if (!err) {
+      if (nearbyCount === 0) return '近隣ストア候補が取得できませんでした';
+      if (normalizedCount === 0) return '店名候補は取得できたが、正規化後に0件になりました';
+      return null;
+    }
+    if (err.code === 1) return '位置情報の許可がありません';
+    if (err.code === 2) return 'GPS取得がタイムアウトしました（位置情報を取得できません）';
+    if (err.code === 3) return 'GPS取得がタイムアウトしました';
+    return `GPSエラー: ${err.message}`;
+  }
+
+  // ===== toggleGps (v23.9.97 gpsdebug-r1) =====
   async function toggleGps() {
     if(!isGpsOn) {
-      isGpsOn = true; lastGpsTime = "…"; renderStoreList(); 
+      isGpsOn = true; lastGpsTime = "…"; renderStoreList();
       showToast("GPS取得中…", 3000);
-      
+
       if (!navigator.geolocation) {
-        showToast("GPS機能が利用できません", 5000);
+        const errMsg = 'GPS機能が利用できません';
+        showToast(errMsg, 5000);
         isGpsOn = false; renderStoreList();
+        if (isDebug()) {
+          spDbg('[GPS_DEBUG_START]', { at: Date.now() });
+          const d = {
+            appVersion: window.APP_VERSION || '',
+            buildId: window.BUILD_ID || '',
+            url: location.href,
+            userAgent: navigator.userAgent,
+            gps: { ok: false, lat: null, lng: null, accuracy: null, timestamp: null, elapsedMs: 0 },
+            settings: {
+              homeCity: (db && db.config && db.config.homeCity) ? db.config.homeCity : '',
+              gpsRange: (db && db.config && db.config.gpsRange) ? db.config.gpsRange : 500
+            },
+            stores: { raw: [], normalized: [], final: [] },
+            error: { message: errMsg, code: -1 }
+          };
+          spDbg('[GPS_DEBUG_ERROR]', { message: errMsg, code: -1 });
+          updateGpsDebugPanel(d);
+          saveGpsDebugLog(d);
+        }
         return;
       }
 
+      const gpsStartMs = Date.now();
+      spDbg('[GPS_DEBUG_START]', { at: gpsStartMs });
+
       navigator.geolocation.getCurrentPosition(async (pos) => {
-        curPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        const d = new Date(); lastGpsTime = `${d.getHours()}:${d.getMinutes().toString().padStart(2,'0')}`;
-        
-        // ✅ GPS取得成功後、近隣店舗を取得してリストを更新
+        const elapsedMs = Date.now() - gpsStartMs;
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const accuracy = pos.coords.accuracy;
+        const timestamp = new Date(pos.timestamp).toISOString();
+
+        curPos = { lat, lng };
+        const d2 = new Date(); lastGpsTime = `${d2.getHours()}:${d2.getMinutes().toString().padStart(2,'0')}`;
+
+        spDbg('[GPS_DEBUG_POSITION]', { lat, lng, accuracy, timestamp });
+
+        // 精度チェック
+        if (accuracy > 500) {
+          showToast(`⚠️ 現在地の精度が低すぎます（${Math.round(accuracy)}m）`, 5000);
+        }
+
+        // 近隣店舗取得
+        let rawStores = [];
+        let normalizedStores = [];
+        let finalStores = [];
+        let storeError = null;
+
         try {
+          // fetchNearbyStores内部のspDbgを利用しつつ、raw/normalized/finalを収集する
+          // rawStoresはfetchNearbyStores前に直接取得
+          const proxyUrl = (window.SP_CONFIG && window.SP_CONFIG.yahooProxyExecUrl) ? window.SP_CONFIG.yahooProxyExecUrl.trim() : '';
+          if (proxyUrl) {
+            const radiusKm = 5;
+            const limit = 40;
+            const reqUrl = `${proxyUrl}?action=stores&lat=${lat}&lng=${lng}&radius_km=${radiusKm}&limit=${limit}`;
+            try {
+              const res = await fetchWithTimeout(reqUrl, { cache: 'no-store' }, 15000);
+              if (res.ok) {
+                const json = await res.json();
+                if (json && json.ok && Array.isArray(json.stores)) {
+                  rawStores = json.stores.map(s => {
+                    if (typeof s === 'string') return s;
+                    return s.displayName || s.name || s.storeName || s.shopName || s.title || JSON.stringify(s);
+                  });
+                  spDbg('[GPS_DEBUG_STORE_RAW]', rawStores);
+
+                  normalizedStores = json.stores.map(s => buildNearbyStoreLabel(s)).filter(v => typeof v === 'string' && v.trim());
+                  spDbg('[GPS_DEBUG_STORE_NORMALIZED]', normalizedStores);
+
+                  finalStores = normalizedStores.filter(isShoppingStore);
+                  spDbg('[GPS_DEBUG_STORE_FINAL]', finalStores);
+                }
+              }
+            } catch(fe) {
+              storeError = { message: fe.message, code: -2 };
+              spDbg('[GPS_DEBUG_ERROR]', storeError);
+            }
+          }
+
           const nearbyStores = await fetchNearbyStores();
           if (nearbyStores && nearbyStores.length > 0) {
             window.nearbyStoreNames = nearbyStores;
             showToast(`📍 近隣の店舗 ${nearbyStores.length}件 取得しました`, 3000);
-            if (isDebug()) console.log('[GPS] Nearby stores loaded:', nearbyStores.length);
           } else {
-            showToast('近隣の店舗が見つかりませんでした', 4000);
+            const warnMsg = getGpsErrorMessage(null, rawStores.length, normalizedStores.length);
+            if (warnMsg) showToast(warnMsg, 5000);
           }
         } catch(e) {
+          storeError = { message: e.message, code: -3 };
+          spDbg('[GPS_DEBUG_ERROR]', storeError);
           if (isDebug()) console.warn('[GPS] fetchNearbyStores failed:', e);
         }
-        
+
         renderStoreList();
-        
-        const msg = isDebug() 
-          ? `GPS取得成功（${curPos.lat.toFixed(4)}, ${curPos.lng.toFixed(4)}）` 
+
+        const dbgData = {
+          appVersion: window.APP_VERSION || '',
+          buildId: window.BUILD_ID || '',
+          url: location.href,
+          userAgent: navigator.userAgent,
+          gps: { ok: true, lat, lng, accuracy, timestamp, elapsedMs },
+          settings: {
+            homeCity: (db && db.config && db.config.homeCity) ? db.config.homeCity : '',
+            gpsRange: (db && db.config && db.config.gpsRange) ? db.config.gpsRange : 500
+          },
+          stores: { raw: rawStores, normalized: normalizedStores, final: finalStores },
+          error: storeError
+        };
+
+        if (isDebug()) {
+          updateGpsDebugPanel(dbgData);
+          saveGpsDebugLog(dbgData);
+        }
+
+        const msg = isDebug()
+          ? `GPS取得成功（${lat.toFixed(4)}, ${lng.toFixed(4)} ±${Math.round(accuracy)}m）`
           : "GPS取得成功";
         showToast(msg, 2000);
+
       }, (err) => {
-        const errMsg = err.code === 1 ? "位置情報の取得が拒否されました" :
-                      err.code === 2 ? "位置情報が取得できませんでした" :
-                      err.code === 3 ? "位置情報の取得がタイムアウトしました" :
-                      `GPSエラー: ${err.message}`;
+        const elapsedMs = Date.now() - gpsStartMs;
+        const errMsg = getGpsErrorMessage(err, 0, 0);
         showToast(errMsg, 8000);
+        spDbg('[GPS_DEBUG_ERROR]', { message: errMsg, code: err.code });
         isGpsOn = false; curPos = null; lastGpsTime = ""; renderStoreList();
+
+        if (isDebug()) {
+          const dbgData = {
+            appVersion: window.APP_VERSION || '',
+            buildId: window.BUILD_ID || '',
+            url: location.href,
+            userAgent: navigator.userAgent,
+            gps: { ok: false, lat: null, lng: null, accuracy: null, timestamp: null, elapsedMs },
+            settings: {
+              homeCity: (db && db.config && db.config.homeCity) ? db.config.homeCity : '',
+              gpsRange: (db && db.config && db.config.gpsRange) ? db.config.gpsRange : 500
+            },
+            stores: { raw: [], normalized: [], final: [] },
+            error: { message: errMsg, code: err.code }
+          };
+          updateGpsDebugPanel(dbgData);
+          saveGpsDebugLog(dbgData);
+        }
       }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
     } else {
-      isGpsOn = false; curPos = null; lastGpsTime = ""; 
+      isGpsOn = false; curPos = null; lastGpsTime = "";
       window.nearbyStoreNames = []; // GPS OFF時は近隣店舗候補もクリア
-      renderStoreList(); 
+      // debug=1時は診断パネルを非表示にしない（記録は残す）
+      renderStoreList();
       showToast("GPS OFF", 1500);
     }
   }
@@ -5963,7 +6358,7 @@ return true;
   }
 
   async function aiRefineName() {
-    // === KIRA FIX v23.9.56 ===
+    // === [lookup-aiflow] v23.9.96: GAS経由AI呼び出しに変更（APIキーはGAS側で管理）===
     const nameInput = document.getElementById('inputName');
     const makerInput = document.getElementById('inputMaker');
     const catSelect = document.getElementById('inputCategory');
@@ -5983,62 +6378,113 @@ return true;
     // カテゴリ選択肢を取得
     const catOptions = catSelect ? Array.from(catSelect.options).map(o => o.value).filter(v => v).join('、') : '';
 
-    // APIキー取得（window.ANTHROPIC_API_KEY が未定義の場合は空文字）
-    const apiKey = (typeof window.ANTHROPIC_API_KEY !== 'undefined' && window.ANTHROPIC_API_KEY)
-      ? window.ANTHROPIC_API_KEY
-      : '';
+    // [lookup-aiflow] GAS URL チェック（APIキー直書き廃止）
+    const gasUrl = (window.SP_CONFIG && window.SP_CONFIG.kiraGasExecUrl)
+      ? window.SP_CONFIG.kiraGasExecUrl.trim() : '';
 
-    if (!apiKey) {
-      console.warn('[KIRA] ANTHROPIC_API_KEY が未設定です');
-      spVisibleTrace('[KIRA] blocked', { reason: 'api key missing' }, 'e');
-      showToast('APIキーが設定されていません', 3000);
+    if (!gasUrl) {
+      console.warn('[KIRA] kiraGasExecUrl が SP_CONFIG に未設定です');
+      spVisibleTrace('[KIRA] blocked', { reason: 'kiraGasExecUrl not set' }, 'e');
+      showToast('AI補助の設定が未完了です（config.json に kiraGasExecUrl を追加してください）', 4000);
       btn.textContent = '✨';
       btn.style.pointerEvents = 'auto';
       return;
     }
 
+    // [lookup-aiflow] 現在のJANを取得（サーバー保存用）
+    const currentJan = String(curBarcode || '').trim();
+
+    // [lookup-aiflow] ローカル・サーバーに確定データがあればAIスキップ
+    if (currentJan) {
+      const localConf = getJanCache(currentJan);
+      if (localConf && localConf.name && String(localConf.name).trim().length > 3) {
+        spDbg('[AI_NORMALIZE_SKIP_LOCAL]', { jan: currentJan, name: localConf.name });
+        console.log('[AI_NORMALIZE_SKIP_LOCAL]', currentJan, localConf.name);
+        if (nameInput && !nameInput.value) nameInput.value = localConf.name;
+        if (makerInput && !makerInput.value && localConf.maker) makerInput.value = localConf.maker;
+        btn.textContent = '✅';
+        setTimeout(() => { btn.textContent = '✨'; }, 2000);
+        showToast('確定済みデータを反映しました', 2000);
+        btn.style.pointerEvents = 'auto';
+        return;
+      }
+      // サーバー確定チェック
+      const serverConf = await lookupServerConfirmedProduct(currentJan);
+      if (serverConf && serverConf.confirmedName) {
+        spDbg('[AI_NORMALIZE_SKIP_SERVER]', { jan: currentJan, name: serverConf.confirmedName });
+        console.log('[AI_NORMALIZE_SKIP_SERVER]', currentJan, serverConf.confirmedName);
+        if (nameInput && !nameInput.value) nameInput.value = serverConf.confirmedName;
+        if (makerInput && !makerInput.value && serverConf.confirmedMaker) makerInput.value = serverConf.confirmedMaker;
+        if (serverConf.confirmedCategory && catSelect) {
+          for (let opt of catSelect.options) {
+            if (opt.value === serverConf.confirmedCategory) { catSelect.value = serverConf.confirmedCategory; break; }
+          }
+        }
+        // ローカルにも保存（次回はLOCAL_HIT）
+        setJanCache(currentJan, {
+          name: serverConf.confirmedName,
+          maker: serverConf.confirmedMaker || '',
+          imageUrl: '',
+          source: 'server-confirmed'
+        });
+        btn.textContent = '✅';
+        setTimeout(() => { btn.textContent = '✨'; }, 2000);
+        showToast('サーバー確定データを反映しました', 2000);
+        btn.style.pointerEvents = 'auto';
+        return;
+      }
+    }
+
+    // [lookup-aiflow] 候補収集（hints から）
+    const hints = window.latestProductHints || {};
+    const nameCandidates = [rawName].filter(Boolean);
+    const makerCandidates = [
+      hints?.yahooMaker || '',
+      hints?.rakutenMaker || '',
+      hints?.existingMaker || ''
+    ].filter(Boolean);
+    const sources = [];
+    if (hints?.yahooMaker) sources.push('yahoo');
+    if (hints?.rakutenMaker) sources.push('rakuten');
+
+    spDbg('[AI_NORMALIZE_CALL]', { jan: currentJan, nameCandidates, makerCandidates, sources });
+    console.log('[AI_NORMALIZE_CALL]', { jan: currentJan, nameCandidates, makerCandidates, sources });
+
     try {
-      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      // [lookup-aiflow] GAS経由でAI呼び出し（APIキーはGAS側）
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), 20000);
+      const resp = await fetch(gasUrl, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 300,
-          system: `あなたはスーパーの価格比較アプリのアシスタントです。
-商品名から以下をJSON形式で返してください：
-- name: 整形済み商品名（まとめ売り表記・EC販促情報を除去、内容量は残す）
-- maker: メーカー名（不明なら空文字）
-- category: カテゴリ（選択肢から最も近いものを1つ選ぶ。選択肢にない場合は空文字）
-必ずJSON only、余計な説明なし。`,
-          messages: [{
-            role: 'user',
-            content: `商品名: ${rawName}
-カテゴリ選択肢: ${catOptions}
-
-→ JSON:`
-          }]
-        })
+          action: 'normalizeProduct',
+          jan: currentJan,
+          nameCandidates: nameCandidates,
+          makerCandidates: makerCandidates,
+          sources: sources,
+          catOptions: catOptions
+        }),
+        signal: controller.signal
       });
+      clearTimeout(tid);
 
-      console.log('[KIRA] API status', resp.status);
-      spVisibleTrace('[KIRA] API status', { status: resp.status }, resp.status === 200 ? 'ok' : 'e');
-      const data = await resp.json();
-      console.log('[KIRA] API raw data', data);
+      console.log('[KIRA] GAS status', resp.status);
+      spVisibleTrace('[KIRA] GAS status', { status: resp.status }, resp.status === 200 ? 'ok' : 'e');
 
-      const text = (data?.content?.[0]?.text || '').trim().replace(/```json|```/g, '').trim();
-      const result = JSON.parse(text);
-      console.log('[KIRA] API result', result);
-      spVisibleTrace('[KIRA] API result', result, 'w');
+      if (!resp.ok) {
+        throw new Error(`GAS HTTP ${resp.status}`);
+      }
+
+      const result = await resp.json();
+      console.log('[KIRA] GAS result', result);
+      spVisibleTrace('[KIRA] GAS result', result, 'w');
+      spDbg('[AI_NORMALIZE_DONE]', { jan: currentJan, name: result?.name || '', maker: result?.maker || '' });
 
       if (result.name) nameInput.value = result.name;
 
-      // ✅ maker fallback v23.9.56: hints から候補を取得してベストを選ぶ
-      const hints = window.latestProductHints || {};
-      spVisibleTrace('[KIRA] has hints', { hasHints: !!window.latestProductHints, jan: (window.latestProductHints||{}).jan || '' }, 'w');
+      // ✅ maker fallback: hints から候補を取得してベストを選ぶ
+      spVisibleTrace('[KIRA] has hints', { hasHints: !!window.latestProductHints, jan: currentJan }, 'w');
       console.log('[KIRA] maker candidates', {
         ai: result?.maker || '',
         yahoo: hints?.yahooMaker || '',
@@ -6066,6 +6512,26 @@ return true;
           if (opt.value === result.category) { catSelect.value = result.category; break; }
         }
       }
+
+      // [lookup-aiflow] AI結果をサーバーへ保存（次回以降AI呼ばない）
+      if (currentJan && result.name) {
+        await saveServerConfirmedProduct(currentJan, {
+          confirmedName: result.name,
+          confirmedMaker: bestMaker || result.maker || '',
+          confirmedCategory: result.category || '',
+          aiConfidence: result.confidence || 1.0,
+          sourceCandidates: sources
+        });
+        // ローカルにも保存
+        setJanCache(currentJan, {
+          name: result.name,
+          maker: bestMaker || result.maker || '',
+          imageUrl: '',
+          source: 'ai-normalized'
+        });
+        spDbg('[AI_NORMALIZE_DONE] saved to server+local', { jan: currentJan, name: result.name });
+      }
+
       btn.textContent = '✅';
       setTimeout(() => { btn.textContent = '✨'; }, 2000);
       showToast('商品名・カテゴリ・メーカーを入力しました', 2000);
@@ -6774,8 +7240,98 @@ function spVisibleTrace(tag, payload, cls) {
           spVisibleTrace('[BARCODE] start', { jan, code, curBarcode }, 'w');
         }
 
-        // ✅ P0: 最優先: LocalStorageキャッシュをチェック（共有DB暫定実装）
+        // ========= [lookup-aiflow] STEP 1: ローカル確定データ（LocalStorage + db.products） =========
+        // 既にローカルに確定名がある場合はここで終了（AIも外部APIも呼ばない）
         const cachedData = getJanCache(jan);
+        // db.products にも確定名があれば優先
+        const localConfirmedName = (p && p.name && String(p.name).trim().length > 3)
+          ? p.name
+          : (cachedData && cachedData.name && String(cachedData.name).trim().length > 3 ? cachedData.name : null);
+
+        if (localConfirmedName) {
+          spDbg('[LOOKUP_LOCAL_HIT]', { jan, name: localConfirmedName });
+          console.log('[LOOKUP_LOCAL_HIT]', jan, localConfirmedName);
+          // ローカルから復元
+          finalInfo.name = localConfirmedName;
+          finalInfo.maker = (p && p.maker) ? p.maker : (cachedData ? cachedData.maker || '' : '');
+          finalInfo.imageUrl = (p && p.imageUrl) ? p.imageUrl : (cachedData ? cachedData.imageUrl || '' : '');
+          finalInfo.imageRefType = cachedData ? (cachedData.imageRefType || '') : '';
+          finalInfo.areaId = cachedData ? (cachedData.areaId || '') : '';
+          sourceUsed = 'local';
+
+          // フォームに即反映
+          const currentJanCheckL = String(curBarcode || '').trim();
+          if (currentJanCheckL === jan) {
+            if (nameInput && nameInput.value === nameAtStart && finalInfo.name) {
+              nameInput.value = finalInfo.name;
+              nameInput.placeholder = originalPlaceholder;
+            }
+            if (makerInput && makerInput.value === makerAtStart && finalInfo.maker) {
+              makerInput.value = finalInfo.maker;
+            }
+          }
+          if (isDebug()) {
+            showToast(`[ローカル確定] ${finalInfo.name.substring(0, 20)}`, 2500);
+            console.log('[LOOKUP_LOCAL_HIT] applied', { jan, finalInfo });
+          }
+          applyPreviewImage(finalInfo.imageUrl || '');
+          // DBへの同期保存（既にあるはずだが念のため）
+          if (finalInfo.name && (!p.name || !p.name.trim())) p.name = finalInfo.name;
+          if (finalInfo.maker && (!p.maker || !p.maker.trim())) p.maker = finalInfo.maker;
+          db.products[jan] = p;
+          saveLocalOnly();
+          processBarcodeInFlight.delete(jan);
+          return; // ✅ ローカルHIT → AI・外部API呼ばない
+        }
+
+        // ========= [lookup-aiflow] STEP 2: サーバー確定データ（Firebase RTDB） =========
+        spDbg('[LOOKUP_EXTERNAL_START]', { jan, reason: 'local miss' });
+        const serverConfirmed = await lookupServerConfirmedProduct(jan);
+        if (serverConfirmed && serverConfirmed.confirmedName) {
+          spDbg('[LOOKUP_SERVER_HIT]', { jan, confirmedName: serverConfirmed.confirmedName });
+          console.log('[LOOKUP_SERVER_HIT]', jan, serverConfirmed);
+          spDbg('[AI_NORMALIZE_SKIP_SERVER]', { jan });
+
+          finalInfo.name = serverConfirmed.confirmedName || '';
+          finalInfo.maker = serverConfirmed.confirmedMaker || '';
+          sourceUsed = 'server-confirmed';
+
+          // ローカルに保存（次回はLOCAL_HITになる）
+          setJanCache(jan, {
+            name: finalInfo.name,
+            maker: finalInfo.maker,
+            imageUrl: finalInfo.imageUrl || '',
+            imageRefType: '',
+            source: 'server-confirmed'
+          });
+          if (finalInfo.name && (!p.name || !p.name.trim())) p.name = finalInfo.name;
+          if (finalInfo.maker && (!p.maker || !p.maker.trim())) p.maker = finalInfo.maker;
+          db.products[jan] = p;
+          saveLocalOnly();
+
+          // フォームに即反映
+          const currentJanCheckS = String(curBarcode || '').trim();
+          if (currentJanCheckS === jan) {
+            if (nameInput && nameInput.value === nameAtStart && finalInfo.name) {
+              nameInput.value = finalInfo.name;
+              nameInput.placeholder = originalPlaceholder;
+            }
+            if (makerInput && makerInput.value === makerAtStart && finalInfo.maker) {
+              makerInput.value = finalInfo.maker;
+            }
+          }
+          if (isDebug()) {
+            showToast(`[サーバー確定] ${finalInfo.name.substring(0, 20)}`, 2500);
+          }
+          applyPreviewImage(finalInfo.imageUrl || '');
+          processBarcodeInFlight.delete(jan);
+          return; // ✅ サーバーHIT → AI・外部API呼ばない
+        }
+
+        // ========= [lookup-aiflow] STEP 3以降: 外部候補取得（既存ロジックに続く） =========
+        spDbg('[LOOKUP_EXTERNAL_START]', { jan, reason: 'server miss' });
+
+        // ✅ P0: 最優先: LocalStorageキャッシュをチェック（旧キャッシュ互換 / 外部候補取得前に軽量チェック）
         if (cachedData && cachedData.name) {
           // キャッシュから復元
           finalInfo.name = cachedData.name || '';
