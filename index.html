@@ -18,8 +18,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.98";
-  const BUILD_ID    = "2026-04-30_image-diagnostics-r1";
+  const APP_VERSION = "v23.9.99";
+  const BUILD_ID    = "2026-04-30_image-save-gps-fix";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -3946,7 +3946,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         </div>` : '';
       div.innerHTML = `
         <div class="d-flex align-items-center">
-          <img id="${imgId}" src="${imgSrc}" class="prod-thumb" referrerpolicy="no-referrer">
+          <img id="${imgId}" src="${imgSrc}" class="prod-thumb" referrerpolicy="no-referrer" onerror="this.src=placeholderImg();this.onerror=null;">
           <div class="flex-grow-1 overflow-hidden">
             <div class="fw-bold text-white small text-truncate">${it.name || ''}</div>
             <div class="text-secondary" style="font-size:0.6rem;">${last.store || '未設定'}</div>
@@ -5819,11 +5819,13 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
 
   // ===== [gps-store-label-generic] ここまで =====
 
+  // ===== fetchNearbyStores (v23.9.99 image-save-gps-fix: gpsRange反映・診断ログ追加) =====
   async function fetchNearbyStores() {
     try {
       const proxyUrl = (window.SP_CONFIG && window.SP_CONFIG.yahooProxyExecUrl) ? window.SP_CONFIG.yahooProxyExecUrl.trim() : '';
-      
+
       if (!proxyUrl) {
+        spDbg('[GPS] stores loaded', { result: 'no_proxy', count: 0 });
         if (isDebug()) console.log('[FetchStores] Proxy URL not configured');
         showToast('店舗検索サーバーが未設定です（config.json）', 6000);
         return [];
@@ -5831,19 +5833,23 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
 
       // 優先順位1: GPS座標（curPos）
       if (isGpsOn && curPos && curPos.lat && curPos.lng) {
-        const radiusKm = 5; // GPS時は5km
+        // gpsRange設定値(m)をkm換算して使用（設定未設定時は500m=0.5km）
+        const gpsRangeM = (db && db.config && db.config.gpsRange) ? Number(db.config.gpsRange) : 500;
+        const radiusKm = Math.max(0.1, gpsRangeM / 1000); // 最小0.1km保証
         const limit = 40;
         const requestUrl = `${proxyUrl}?action=stores&lat=${curPos.lat}&lng=${curPos.lng}&radius_km=${radiusKm}&limit=${limit}`;
-        
+
+        spDbg('[GPS] stores loaded', { mode: 'gps', lat: curPos.lat, lng: curPos.lng, radiusKm, url: requestUrl });
         if (isDebug()) console.log('[FetchStores] GPS mode:', requestUrl);
-        
+
         const res = await fetchWithTimeout(requestUrl, { cache: 'no-store' }, 15000);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        
+
         const json = await res.json();
+        spDbg('[GPS] distance calc', { responseOk: !!(json && json.ok), rawCount: json && json.stores ? json.stores.length : 0 });
+
         if (json && json.ok && Array.isArray(json.stores)) {
           if (isDebug()) console.log('[FetchStores] GPS result:', json.stores.length, 'stores');
-          // [gps-store-label-fix] 店名を buildNearbyStoreLabel で組み立て・空除去
           const rawCandidates = json.stores;
           const labels = rawCandidates.map(s => {
             spDbg('[GPS_STORE_RAW]', s);
@@ -5855,29 +5861,34 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
             }
             return label;
           }).filter(v => typeof v === 'string' && v.trim());
+
+          spDbg('[GPS] filtered stores', { beforeFilter: labels.length });
           const filtered = labels.filter(isShoppingStore);
-          spDbg('[GPS_STORE_LIST_FINAL]', filtered);
+          spDbg('[GPS] final stores', filtered);
           return filtered;
         }
+        spDbg('[GPS] final stores', []);
         return [];
       }
 
       // 優先順位2: 生活圏（area）
       const area = (db && db.config && db.config.homeCity) ? String(db.config.homeCity).trim() : '';
       if (area) {
-        const radiusKm = 15; // area時は15km
+        const radiusKm = 15; // area時は15km固定
         const limit = 40;
         const requestUrl = `${proxyUrl}?action=stores&area=${encodeURIComponent(area)}&radius_km=${radiusKm}&limit=${limit}`;
-        
+
+        spDbg('[GPS] stores loaded', { mode: 'area', area, radiusKm, url: requestUrl });
         if (isDebug()) console.log('[FetchStores] Area mode:', area, requestUrl);
-        
+
         const res = await fetchWithTimeout(requestUrl, { cache: 'no-store' }, 15000);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        
+
         const json = await res.json();
+        spDbg('[GPS] distance calc', { responseOk: !!(json && json.ok), rawCount: json && json.stores ? json.stores.length : 0 });
+
         if (json && json.ok && Array.isArray(json.stores)) {
           if (isDebug()) console.log('[FetchStores] Area result:', json.stores.length, 'stores');
-          // [gps-store-label-fix] 店名を buildNearbyStoreLabel で組み立て・空除去
           const labels = json.stores.map(s => {
             spDbg('[GPS_STORE_RAW]', s);
             const label = buildNearbyStoreLabel(s);
@@ -5888,26 +5899,30 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
             }
             return label;
           }).filter(v => typeof v === 'string' && v.trim());
+
+          spDbg('[GPS] filtered stores', { beforeFilter: labels.length });
           const filtered = labels.filter(isShoppingStore);
-          spDbg('[GPS_STORE_LIST_FINAL]', filtered);
+          spDbg('[GPS] final stores', filtered);
           return filtered;
         } else if (json && !json.ok) {
-          // エラー時（例：使用できないアドレス）
+          spDbg('[GPS] final stores', { error: json.error || 'unknown' });
           if (isDebug()) {
             console.log('[FetchStores] Area failed:', json.error || 'unknown');
             showToast('店舗検索失敗: ' + (json.error || 'unknown'), 10000);
           }
-          // GPSへのフォールバックは、すでに上で試しているので、ここでは空配列を返す
           return [];
         }
+        spDbg('[GPS] final stores', []);
         return [];
       }
 
       // GPS/areaどちらもない場合
+      spDbg('[GPS] stores loaded', { result: 'no_gps_no_area', count: 0 });
       if (isDebug()) console.log('[FetchStores] No GPS or area configured');
       return [];
 
     } catch(e) {
+      spDbg('[GPS] final stores', { error: String(e) });
       if (isDebug()) {
         console.error('[FetchStores] Error:', e);
       }
@@ -8476,18 +8491,22 @@ function spVisibleTrace(tag, payload, cls) {
         imgDiagSaveLog(window._imgDiagData);
       }
     } else {
-      // 通常版: 既存フロー（変更なし）
+      // 通常版: diagnoseAndSaveImage を通して保存（タスク①修正）
+      // diagCandidateはログ/UI更新なしの軽量オブジェクトとして生成
+      const diagCandidate = { url, source: 'unknown', preview: '-', fetch: '-', blob: '-', indexedDb: '-', firebase: '-', apply: '-', reason: null };
+      applyPreviewImage(url);
       try {
-        const ok = await downloadImageWithJan(url, curBarcode);
-        if (ok) {
+        const result = await diagnoseAndSaveImage(url, jan, diagCandidate);
+        if (result.ok) {
           closeImagePickerModal();
-          applyPreviewImage(url);
+          showToast('📷 画像を保存しました', 2000);
         } else {
-          spDbg('[IMAGE_PICKER_DOWNLOAD_FAIL]', { jan: curBarcode, url });
-          showToast('この画像は保存できませんでした。別の画像を選んでください', 4000);
+          spDbg('[IMAGE_PICKER_DOWNLOAD_FAIL]', { jan, url, reason: result.reason });
+          const userMsg = result.userMsg || 'この画像は保存できませんでした。別の画像を選んでください';
+          showToast(userMsg, 5000);
         }
       } catch(e) {
-        spDbg('[IMAGE_PICKER_DOWNLOAD_FAIL]', { jan: curBarcode, url, message: e && e.message ? e.message : String(e) });
+        spDbg('[IMAGE_PICKER_DOWNLOAD_FAIL]', { jan, url, message: e && e.message ? e.message : String(e) });
         showToast('画像保存に失敗しました。別の画像を選んでください', 4000);
       }
     }
