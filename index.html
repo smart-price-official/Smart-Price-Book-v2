@@ -18,8 +18,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.101";
-  const BUILD_ID    = "2026-04-30_log-lock-gps-raw-r1";
+  const APP_VERSION = "v23.9.102";
+  const BUILD_ID    = "2026-04-30_image-internal-ai-gps-fix-r2";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -865,19 +865,25 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 }
 #gps-debug-copy-btn:active { background: #2a5a2a; }
 
-/* === 画像診断パネル (debug=1のみ・モーダルとは独立して保持) === */
+/* === 画像診断パネル (v23.9.101: ログ固定化 - モーダルの外で固定表示) === */
 #img-diag-panel {
   display: none;
+  position: fixed;
+  bottom: 80px;
+  right: 10px;
+  width: 340px;
+  max-width: calc(100vw - 20px);
   background: #0a0a1a;
-  border: 1px solid #2a2a4a;
+  border: 2px solid #2a2a4a;
   border-radius: 10px;
   padding: 10px 12px;
-  margin: 6px 10px 0 10px;
   font-size: 11px;
   font-family: monospace;
   color: #aaf;
-  max-height: 320px;
+  max-height: 400px;
   overflow-y: auto;
+  z-index: 99600;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
 }
 #img-diag-panel.visible { display: block; }
 #img-diag-title {
@@ -954,17 +960,6 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   <div id="gps-debug-content"><span class="dbg-warn">GPS未実行</span></div>
   <textarea id="gps-debug-textarea" readonly></textarea>
   <button id="gps-debug-copy-btn" onclick="spGpsDebugCopy()">📋 GPS診断をコピー</button>
-</div>
-
-<!-- 画像診断パネル独立エリア (debug=1のみ・モーダルを閉じてもログ保持) -->
-<div id="img-diag-panel">
-  <div id="img-diag-title" style="display:flex; justify-content:space-between; align-items:center;">
-    <span>🔬 画像診断ログ</span>
-    <button onclick="imgDiagHide()" style="background:#2a2a4a; border:none; color:#aaf; padding:2px 8px; border-radius:4px; font-size:10px; cursor:pointer;">✕</button>
-  </div>
-  <div id="img-diag-content"><span style="color:#888;">診断待機中…</span></div>
-  <textarea id="img-diag-textarea" readonly></textarea>
-  <button id="img-diag-copy-btn" onclick="spImgDiagCopy()">📋 画像診断をコピー</button>
 </div>
 
 <div class="container p-3">
@@ -1316,6 +1311,16 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   </div>
 </div>
 
+<!-- v23.9.101: 画像診断パネル（モーダルの外に独立配置・ログ固定化） -->
+<div id="img-diag-panel">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; border-bottom:1px solid #2a2a4a; padding-bottom:4px;">
+    <div id="img-diag-title" style="color:#88f; font-weight:bold; font-size:12px;">🔬 画像診断</div>
+    <button onclick="imgDiagHide()" style="background:#2a2a4a; border:none; color:#aaf; padding:2px 8px; border-radius:4px; font-size:10px; cursor:pointer;">✕</button>
+  </div>
+  <div id="img-diag-content"><span style="color:#888;">診断待機中…</span></div>
+  <textarea id="img-diag-textarea" readonly></textarea>
+  <button id="img-diag-copy-btn" onclick="spImgDiagCopy()">📋 画像診断をコピー</button>
+</div>
 
 <div id="homeCityModal" class="modal">
   <div class="modal-content">
@@ -4758,6 +4763,20 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
 
   // ===== GPS診断システム (v23.9.97 gpsdebug-r1) =====
 
+  // v23.9.102: URLの b= パラメータを最新の BUILD_ID に更新する
+  function getCurrentUrlWithLatestBuild() {
+    try {
+      const url = new URL(location.href);
+      const currentBuildId = window.BUILD_ID || '';
+      if (currentBuildId) {
+        url.searchParams.set('b', currentBuildId);
+      }
+      return url.href;
+    } catch(e) {
+      return location.href;
+    }
+  }
+
   // GPS診断データを保持するオブジェクト
   window._gpsDebugData = null;
 
@@ -4873,7 +4892,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
           const d = {
             appVersion: window.APP_VERSION || '',
             buildId: window.BUILD_ID || '',
-            url: location.href,
+            url: getCurrentUrlWithLatestBuild(), // v23.9.102: 最新のBUILD_IDでURLを更新
             userAgent: navigator.userAgent,
             gps: { ok: false, lat: null, lng: null, accuracy: null, timestamp: null, elapsedMs: 0 },
             settings: {
@@ -4915,6 +4934,15 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         let normalizedStores = [];
         let finalStores = [];
         let storeError = null;
+        
+        // v23.9.102: GPS診断情報を収集するための変数
+        let gpsHttpStatus = null;
+        let gpsStatusText = '';
+        let gpsResponseOk = null;
+        let gpsRawTextPreview = '';
+        let gpsResponseKeys = [];
+        let gpsHasStoresArray = false;
+        let gpsRequestUrl = '';
 
         try {
           // fetchNearbyStores内部のspDbgを利用しつつ、raw/normalized/finalを収集する
@@ -4925,36 +4953,41 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
             const radiusKm = getGpsRadiusKm();
             const limit = 40;
             const reqUrl = `${proxyUrl}?action=stores&lat=${lat}&lng=${lng}&radius_km=${radiusKm}&limit=${limit}`;
+            gpsRequestUrl = reqUrl; // v23.9.102: リクエストURLを記録
             
             // v23.9.100: 詳細診断ログを追加
             spDbg('[GPS_DEBUG_REQUEST]', { requestUrl: reqUrl, radiusKm, lat, lng });
-            spDbg('[GPS] requestUrl', { url: reqUrl, radiusKm });
             
             try {
               const res = await fetchWithTimeout(reqUrl, { cache: 'no-store' }, 15000);
               
+              // v23.9.102: HTTPステータスを記録
+              gpsHttpStatus = res.status;
+              gpsStatusText = res.statusText || '';
+              gpsResponseOk = res.ok;
+              
               // v23.9.100: HTTPステータスをログ
               spDbg('[GPS_DEBUG_HTTP_STATUS]', { status: res.status, ok: res.ok });
-              spDbg('[GPS] httpStatus', { status: res.status, ok: res.ok });
               
               if (res.ok) {
                 const rawText = await res.text();
+                gpsRawTextPreview = rawText.substring(0, 500); // v23.9.102: レスポンスプレビューを記録
                 spDbg('[GPS_DEBUG_RAW_TEXT_LENGTH]', rawText.length);
                 
                 let json;
                 try {
                   json = JSON.parse(rawText);
+                  gpsResponseKeys = Object.keys(json || []); // v23.9.102: レスポンスキーを記録
                   spDbg('[GPS_DEBUG_JSON_OK]', true);
-                  spDbg('[GPS_DEBUG_RESPONSE_KEYS]', Object.keys(json || {}));
-                  spDbg('[GPS] rawResponseKeys', Object.keys(json || {}));
+                  spDbg('[GPS_DEBUG_RESPONSE_KEYS]', gpsResponseKeys);
                 } catch(parseErr) {
                   spDbg('[GPS_DEBUG_JSON_PARSE_ERROR]', { message: parseErr.message });
                   throw parseErr;
                 }
                 
                 if (json && json.ok && Array.isArray(json.stores)) {
+                  gpsHasStoresArray = true; // v23.9.102: stores配列の存在を記録
                   spDbg('[GPS_DEBUG_STORE_ARRAY_EXISTS]', true);
-                  spDbg('[GPS] storeArrayExists', { exists: true, length: json.stores.length, jsonOk: true });
                   spDbg('[GPS_DEBUG_STORE_ARRAY_LENGTH]', json.stores.length);
                   
                   rawStores = json.stores.map(s => {
@@ -4965,11 +4998,9 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
 
                   normalizedStores = json.stores.map(s => buildNearbyStoreLabel(s)).filter(v => typeof v === 'string' && v.trim());
                   spDbg('[GPS_DEBUG_STORE_NORMALIZED]', normalizedStores);
-                  spDbg('[GPS] normalizedCount', { count: normalizedStores.length });
 
                   finalStores = normalizedStores.filter(isShoppingStore);
                   spDbg('[GPS_DEBUG_STORE_FINAL]', finalStores);
-                  spDbg('[GPS] finalCount', { count: finalStores.length });
                 } else {
                   spDbg('[GPS_DEBUG_STORE_ARRAY_EXISTS]', false);
                   spDbg('[GPS_DEBUG_UNEXPECTED_RESPONSE]', json);
@@ -4997,10 +5028,27 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
 
         renderStoreList();
 
+        // v23.9.102: storesDebugを追加（収集した情報を反映）
+        const storesDebug = {
+          requestUrl: gpsRequestUrl,
+          httpStatus: gpsHttpStatus,
+          statusText: gpsStatusText,
+          responseOk: gpsResponseOk,
+          rawTextPreview: gpsRawTextPreview,
+          responseKeys: gpsResponseKeys,
+          hasStoresArray: gpsHasStoresArray,
+          storeArrayExists: gpsHasStoresArray,
+          rawCount: rawStores.length,
+          beforeLabelFilter: rawStores.length,
+          afterLabelFilter: normalizedStores.length,
+          afterShoppingFilter: finalStores.length,
+          finalCount: finalStores.length
+        };
+
         const dbgData = {
           appVersion: window.APP_VERSION || '',
           buildId: window.BUILD_ID || '',
-          url: location.href,
+          url: getCurrentUrlWithLatestBuild(), // v23.9.102: 最新のBUILD_IDでURLを更新
           userAgent: navigator.userAgent,
           gps: { ok: true, lat, lng, accuracy, timestamp, elapsedMs },
           settings: {
@@ -5008,6 +5056,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
             gpsRange: (db && db.config && db.config.gpsRange) ? db.config.gpsRange : 500
           },
           stores: { raw: rawStores, normalized: normalizedStores, final: finalStores },
+          storesDebug: storesDebug, // v23.9.102: 詳細診断情報を追加
           error: storeError
         };
 
@@ -5032,7 +5081,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
           const dbgData = {
             appVersion: window.APP_VERSION || '',
             buildId: window.BUILD_ID || '',
-            url: location.href,
+            url: getCurrentUrlWithLatestBuild(), // v23.9.102: 最新のBUILD_IDでURLを更新
             userAgent: navigator.userAgent,
             gps: { ok: false, lat: null, lng: null, accuracy: null, timestamp: null, elapsedMs },
             settings: {
@@ -5863,50 +5912,12 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     return Math.max(0.1, gpsRangeM / 1000); // 最小0.1km保証
   }
 
-  // ===== fetchNearbyStores (v23.9.101: GPS_STORE_FETCH_* ログ追加) =====
+  // ===== fetchNearbyStores (v23.9.100: getGpsRadiusKm使用) =====
   async function fetchNearbyStores() {
-
-    // 共通フェッチ＋ログ関数
-    async function _fetchStores(requestUrl, mode) {
-      spDbg('[GPS_STORE_FETCH_START]', { mode });
-      spDbg('[GPS_STORE_FETCH_URL]', { url: requestUrl });
-      spDbg('[GPS] stores loaded', { mode, url: requestUrl });
-
-      const res = await fetchWithTimeout(requestUrl, { cache: 'no-store' }, 15000);
-      spDbg('[GPS_STORE_FETCH_STATUS]', { status: res.status, ok: res.ok, statusText: res.statusText || '' });
-
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      // レスポンス本文を保持してJSONパース
-      let rawText = '';
-      let json = null;
-      try {
-        rawText = await res.clone().text();
-        json = JSON.parse(rawText);
-      } catch(pe) {
-        spDbg('[GPS_STORE_FETCH_RESPONSE]', { parseError: pe.message, rawText: rawText.slice(0, 300) });
-        throw pe;
-      }
-      spDbg('[GPS_STORE_FETCH_RESPONSE]', {
-        ok: !!(json && json.ok),
-        keys: Object.keys(json || {}),
-        storeArrayExists: !!(json && Array.isArray(json.stores)),
-        hasStoresArray: !!(json && json.stores && Array.isArray(json.stores)),
-        rawCount: json && json.stores ? json.stores.length : 0,
-        rawTextLength: rawText.length,
-        rawTextPreview: rawText.substring(0, 500)
-      });
-      spDbg('[GPS_STORE_FETCH_COUNT]', { count: json && json.stores ? json.stores.length : 0 });
-      spDbg('[GPS] distance calc', { responseOk: !!(json && json.ok), rawCount: json && json.stores ? json.stores.length : 0 });
-
-      return json;
-    }
-
     try {
       const proxyUrl = (window.SP_CONFIG && window.SP_CONFIG.yahooProxyExecUrl) ? window.SP_CONFIG.yahooProxyExecUrl.trim() : '';
 
       if (!proxyUrl) {
-        spDbg('[GPS_STORE_FETCH_START]', { mode: 'no_proxy' });
         spDbg('[GPS] stores loaded', { result: 'no_proxy', count: 0 });
         if (isDebug()) console.log('[FetchStores] Proxy URL not configured');
         showToast('店舗検索サーバーが未設定です（config.json）', 6000);
@@ -5915,37 +5926,78 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
 
       // 優先順位1: GPS座標（curPos）
       if (isGpsOn && curPos && curPos.lat && curPos.lng) {
+        // v23.9.101: GPS取得開始ログ
+        spDbg('[GPS_STORE_FETCH_START]', { lat: curPos.lat, lng: curPos.lng });
+        
+        // gpsRange設定値(m)をkm換算して使用（設定未設定時は500m=0.5km）
         const radiusKm = getGpsRadiusKm();
         const limit = 40;
         const requestUrl = `${proxyUrl}?action=stores&lat=${curPos.lat}&lng=${curPos.lng}&radius_km=${radiusKm}&limit=${limit}`;
 
-        const json = await _fetchStores(requestUrl, 'gps');
+        // v23.9.101: 取得URL
+        spDbg('[GPS_STORE_FETCH_URL]', { url: requestUrl, radiusKm, limit });
+        spDbg('[GPS] stores loaded', { mode: 'gps', lat: curPos.lat, lng: curPos.lng, radiusKm, url: requestUrl });
+        if (isDebug()) console.log('[FetchStores] GPS mode:', requestUrl);
+
+        const res = await fetchWithTimeout(requestUrl, { cache: 'no-store' }, 15000);
+        
+        // v23.9.101: HTTPステータス
+        spDbg('[GPS_STORE_FETCH_STATUS]', { status: res.status, ok: res.ok, statusText: res.statusText });
+        
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const rawText = await res.text();
+        
+        // v23.9.101: レスポンス本文（文字数制限付き）
+        spDbg('[GPS_STORE_FETCH_RESPONSE]', { 
+          rawTextLength: rawText.length, 
+          rawTextPreview: rawText.substring(0, 500) 
+        });
+        
+        const json = JSON.parse(rawText);
+        
+        // v23.9.101: 取得件数
+        const rawCount = (json && json.stores && Array.isArray(json.stores)) ? json.stores.length : 0;
+        spDbg('[GPS_STORE_FETCH_COUNT]', { 
+          responseOk: !!(json && json.ok), 
+          rawCount,
+          hasStoresArray: !!(json && json.stores && Array.isArray(json.stores))
+        });
+        
+        spDbg('[GPS] distance calc', { responseOk: !!(json && json.ok), rawCount });
 
         if (json && json.ok && Array.isArray(json.stores)) {
           if (isDebug()) console.log('[FetchStores] GPS result:', json.stores.length, 'stores');
           const rawCandidates = json.stores;
+          
+          // v23.9.101: 距離フィルタ前件数
+          spDbg('[GPS_STORE_FILTER_DISTANCE]', { beforeFilter: rawCandidates.length });
+          
           const labels = rawCandidates.map(s => {
             spDbg('[GPS_STORE_RAW]', s);
             const label = buildNearbyStoreLabel(s);
             spDbg('[GPS_STORE_LABEL]', { raw: s, label });
-            if (!label) { spDbg('[GPS_STORE_LABEL_EMPTY]', { storeObj: s }); return null; }
+            if (!label) {
+              spDbg('[GPS_STORE_LABEL_EMPTY]', { storeObj: s });
+              return null;
+            }
             return label;
           }).filter(v => typeof v === 'string' && v.trim());
 
-          spDbg('[GPS_STORE_FILTER_DISTANCE]', { beforeFilter: labels.length });
           spDbg('[GPS] filtered stores', { beforeFilter: labels.length });
           const filtered = labels.filter(isShoppingStore);
-          spDbg('[GPS_STORE_FILTER_RESULT]', {
+          
+          // v23.9.101: 距離フィルタ後件数
+          spDbg('[GPS_STORE_FILTER_RESULT]', { 
             beforeLabelFilter: rawCandidates.length,
             afterLabelFilter: labels.length,
             afterShoppingFilter: filtered.length,
-            afterFilter: filtered.length,
-            stores: filtered
+            finalStores: filtered
           });
+          
           spDbg('[GPS] final stores', filtered);
           return filtered;
         }
-        spDbg('[GPS_STORE_FILTER_RESULT]', { afterFilter: 0, reason: 'json.ok=false or stores not array' });
         spDbg('[GPS] final stores', []);
         return [];
       }
@@ -5953,12 +6005,18 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       // 優先順位2: 生活圏（area）
       const area = (db && db.config && db.config.homeCity) ? String(db.config.homeCity).trim() : '';
       if (area) {
-        const radiusKm = 15;
+        const radiusKm = 15; // area時は15km固定
         const limit = 40;
         const requestUrl = `${proxyUrl}?action=stores&area=${encodeURIComponent(area)}&radius_km=${radiusKm}&limit=${limit}`;
 
+        spDbg('[GPS] stores loaded', { mode: 'area', area, radiusKm, url: requestUrl });
         if (isDebug()) console.log('[FetchStores] Area mode:', area, requestUrl);
-        const json = await _fetchStores(requestUrl, 'area');
+
+        const res = await fetchWithTimeout(requestUrl, { cache: 'no-store' }, 15000);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const json = await res.json();
+        spDbg('[GPS] distance calc', { responseOk: !!(json && json.ok), rawCount: json && json.stores ? json.stores.length : 0 });
 
         if (json && json.ok && Array.isArray(json.stores)) {
           if (isDebug()) console.log('[FetchStores] Area result:', json.stores.length, 'stores');
@@ -5966,24 +6024,18 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
             spDbg('[GPS_STORE_RAW]', s);
             const label = buildNearbyStoreLabel(s);
             spDbg('[GPS_STORE_LABEL]', { raw: s, label });
-            if (!label) { spDbg('[GPS_STORE_LABEL_EMPTY]', { storeObj: s }); return null; }
+            if (!label) {
+              spDbg('[GPS_STORE_LABEL_EMPTY]', { storeObj: s });
+              return null;
+            }
             return label;
           }).filter(v => typeof v === 'string' && v.trim());
 
-          spDbg('[GPS_STORE_FILTER_DISTANCE]', { beforeFilter: labels.length });
           spDbg('[GPS] filtered stores', { beforeFilter: labels.length });
           const filtered = labels.filter(isShoppingStore);
-          spDbg('[GPS_STORE_FILTER_RESULT]', {
-            beforeLabelFilter: json.stores.length,
-            afterLabelFilter: labels.length,
-            afterShoppingFilter: filtered.length,
-            afterFilter: filtered.length,
-            stores: filtered
-          });
           spDbg('[GPS] final stores', filtered);
           return filtered;
         } else if (json && !json.ok) {
-          spDbg('[GPS_STORE_FILTER_RESULT]', { afterFilter: 0, reason: json.error || 'json.ok=false' });
           spDbg('[GPS] final stores', { error: json.error || 'unknown' });
           if (isDebug()) {
             console.log('[FetchStores] Area failed:', json.error || 'unknown');
@@ -5991,21 +6043,20 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
           }
           return [];
         }
-        spDbg('[GPS_STORE_FILTER_RESULT]', { afterFilter: 0, reason: 'unexpected json structure' });
         spDbg('[GPS] final stores', []);
         return [];
       }
 
       // GPS/areaどちらもない場合
-      spDbg('[GPS_STORE_FETCH_START]', { mode: 'no_gps_no_area' });
       spDbg('[GPS] stores loaded', { result: 'no_gps_no_area', count: 0 });
       if (isDebug()) console.log('[FetchStores] No GPS or area configured');
       return [];
 
     } catch(e) {
-      spDbg('[GPS_STORE_FILTER_RESULT]', { afterFilter: 0, error: String(e) });
       spDbg('[GPS] final stores', { error: String(e) });
-      if (isDebug()) console.error('[FetchStores] Error:', e);
+      if (isDebug()) {
+        console.error('[FetchStores] Error:', e);
+      }
       return [];
     }
   }
@@ -6998,14 +7049,11 @@ function spVisibleTrace(tag, payload, cls) {
     const img = document.getElementById('previewImg');
     if (!img) return;
     img.src = url || '';
-    // [fix3points] 修正②: 画像URLがhttpならdblclickでJAN名ダウンロード
+    // v23.9.102: ondblclickを無効化（Androidダウンロードを完全排除）
+    img.ondblclick = null;
+    img.title = '';
     if (url && url.startsWith('http')) {
-      img.title = 'ダブルタップで保存（JAN名）';
-      img.ondblclick = () => { downloadImageWithJan(url, curBarcode || ''); };
       img.dataset.imageUrl = url;
-    } else {
-      img.ondblclick = null;
-      img.title = '';
     }
     spDbg('[IMAGE_APPLY]', {
       applied: !!url,
@@ -7292,6 +7340,9 @@ function spVisibleTrace(tag, payload, cls) {
   async function processBarcodeData(code) {
     // ✅ P0: JAN正規化（数字のみに統一・空白・ハイフン除去）
     let jan = normalizeJan(code);
+    
+    // v23.9.102: JAN正規化ログ（指示書対応）
+    spDbg('[JAN_NORMALIZE]', { input: code, normalized: jan });
 
     // [scan-ux-improve] STEP1: UIを先に動かす（非同期処理より前）
     showScanAnimation();
@@ -7395,6 +7446,9 @@ function spVisibleTrace(tag, payload, cls) {
         let finalInfo = { name: '', maker: '', imageUrl: '', imageRefType: '', areaId: '' };
         let sourceUsed = 'none'; // デバッグ用：どのソースを採用したか
 
+        // v23.9.102: 商品検索開始ログ（指示書対応）
+        spDbg('[PRODUCT_LOOKUP_START]', { jan });
+        
         if (isDebug()) {
           console.log('[BARCODE] start', { jan, code, curBarcode, nameAtStart, makerAtStart });
           spVisibleTrace('[BARCODE] start', { jan, code, curBarcode }, 'w');
@@ -7409,6 +7463,8 @@ function spVisibleTrace(tag, payload, cls) {
           : (cachedData && cachedData.name && String(cachedData.name).trim().length > 3 ? cachedData.name : null);
 
         if (localConfirmedName) {
+          // v23.9.102: ローカル検索結果ログ（指示書対応）
+          spDbg('[PRODUCT_LOOKUP_LOCAL]', { hit: true, name: localConfirmedName, maker: (p && p.maker) || (cachedData && cachedData.maker) || '' });
           spDbg('[LOOKUP_LOCAL_HIT]', { jan, name: localConfirmedName });
           console.log('[LOOKUP_LOCAL_HIT]', jan, localConfirmedName);
           // ローカルから復元
@@ -7441,13 +7497,20 @@ function spVisibleTrace(tag, payload, cls) {
           db.products[jan] = p;
           saveLocalOnly();
           processBarcodeInFlight.delete(jan);
+          // v23.9.102: 最終結果ログ（指示書対応）
+          spDbg('[PRODUCT_LOOKUP_FINAL]', { name: finalInfo.name, maker: finalInfo.maker, source: sourceUsed });
           return; // ✅ ローカルHIT → AI・外部API呼ばない
         }
+        
+        // v23.9.102: ローカルミスログ（指示書対応）
+        spDbg('[PRODUCT_LOOKUP_LOCAL]', { hit: false });
 
         // ========= [lookup-aiflow] STEP 2: サーバー確定データ（Firebase RTDB） =========
         spDbg('[LOOKUP_EXTERNAL_START]', { jan, reason: 'local miss' });
         const serverConfirmed = await lookupServerConfirmedProduct(jan);
         if (serverConfirmed && serverConfirmed.confirmedName) {
+          // v23.9.102: Firebase検索結果ログ（指示書対応）
+          spDbg('[PRODUCT_LOOKUP_FIREBASE]', { hit: true, confirmedName: serverConfirmed.confirmedName, confirmedMaker: serverConfirmed.confirmedMaker || '' });
           spDbg('[LOOKUP_SERVER_HIT]', { jan, confirmedName: serverConfirmed.confirmedName });
           console.log('[LOOKUP_SERVER_HIT]', jan, serverConfirmed);
           spDbg('[AI_NORMALIZE_SKIP_SERVER]', { jan });
@@ -7485,8 +7548,13 @@ function spVisibleTrace(tag, payload, cls) {
           }
           applyPreviewImage(finalInfo.imageUrl || '');
           processBarcodeInFlight.delete(jan);
+          // v23.9.102: 最終結果ログ（指示書対応）
+          spDbg('[PRODUCT_LOOKUP_FINAL]', { name: finalInfo.name, maker: finalInfo.maker, source: sourceUsed });
           return; // ✅ サーバーHIT → AI・外部API呼ばない
         }
+        
+        // v23.9.102: Firebaseミスログ（指示書対応）
+        spDbg('[PRODUCT_LOOKUP_FIREBASE]', { hit: false });
 
         // ========= [lookup-aiflow] STEP 3以降: 外部候補取得（既存ロジックに続く） =========
         spDbg('[LOOKUP_EXTERNAL_START]', { jan, reason: 'server miss' });
@@ -7552,6 +7620,11 @@ function spVisibleTrace(tag, payload, cls) {
 
         // ✅ 優先順位1: Yahoo最優先
         yahooInfo = await lookupYahooByJan(jan);
+        
+        // v23.9.102: Yahoo検索結果ログ（指示書対応）
+        const yahooHit = !!(yahooInfo && yahooInfo.name);
+        spDbg('[PRODUCT_LOOKUP_YAHOO]', { hit: yahooHit, count: yahooHit ? 1 : 0, name: yahooInfo?.name || '', maker: yahooInfo?.maker || '' });
+        
         if (isDebug()) {
           console.log('[BARCODE] yahoo result', yahooInfo);
           spVisibleTrace('[BARCODE] yahoo', { name: yahooInfo?.name || '', maker: yahooInfo?.maker || '', hasImage: !!yahooInfo?.imageUrl }, 'w');
@@ -7636,6 +7709,11 @@ function spVisibleTrace(tag, payload, cls) {
           const yahooWeak = !candidateName || !candidateMaker || !candidateImageUrl || yahooTrustScore < 70;
           if (yahooWeak) {
             rakutenInfo = await lookupRakutenByJan(jan);
+            
+            // v23.9.102: Rakuten検索結果ログ（指示書対応）
+            const rakutenHit = !!(rakutenInfo && rakutenInfo.name);
+            spDbg('[PRODUCT_LOOKUP_RAKUTEN]', { hit: rakutenHit, count: rakutenHit ? 1 : 0, name: rakutenInfo?.name || '', maker: rakutenInfo?.maker || '' });
+            
             if (isDebug()) {
               console.log('[BARCODE] rakuten result', rakutenInfo);
               spVisibleTrace('[BARCODE] rakuten', { name: rakutenInfo?.name || '', maker: rakutenInfo?.maker || '', hasImage: !!rakutenInfo?.imageUrl }, 'w');
@@ -7664,6 +7742,11 @@ function spVisibleTrace(tag, payload, cls) {
         } else {
           // ✅ Yahoo未取得 → 楽天
           rakutenInfo = await lookupRakutenByJan(jan);
+          
+          // v23.9.102: Rakuten検索結果ログ（指示書対応）
+          const rakutenHit = !!(rakutenInfo && rakutenInfo.name);
+          spDbg('[PRODUCT_LOOKUP_RAKUTEN]', { hit: rakutenHit, count: rakutenHit ? 1 : 0, name: rakutenInfo?.name || '', maker: rakutenInfo?.maker || '' });
+          
           if (rakutenInfo) {
             candidateName = cleanProductName(rakutenInfo.name || '');
             candidateMaker = validateMakerName(rakutenInfo.maker || '');
@@ -7720,6 +7803,13 @@ function spVisibleTrace(tag, payload, cls) {
         finalInfo.maker = candidateMaker || '';
         finalInfo.imageUrl = candidateImageUrl || '';
         sourceUsed = candidateSource || 'none';
+        
+        // v23.9.102: AI検索ログ（指示書対応）
+        // 現在のコードではAI整形は使用されていない（Yahoo/Rakutenの結果をそのまま使用）
+        spDbg('[PRODUCT_LOOKUP_AI]', { called: false, result: null });
+        
+        // v23.9.102: 最終結果ログ（指示書対応）
+        spDbg('[PRODUCT_LOOKUP_FINAL]', { name: finalInfo.name, maker: finalInfo.maker, source: sourceUsed });
 
         // [name-stabilize / maker-image-fix] 名前・メーカー・画像の最終整形
         // 1. まず shortenName で beforeStrip を保持（削りすぎ救済用）
@@ -8109,7 +8199,8 @@ function spVisibleTrace(tag, payload, cls) {
       if (p) p.classList.add('visible');
     } catch(e) {}
   }
-
+  
+  // v23.9.101: 診断パネルを非表示にする
   function imgDiagHide() {
     try {
       const p = document.getElementById('img-diag-panel');
@@ -8245,17 +8336,21 @@ function spVisibleTrace(tag, payload, cls) {
     }
   }
 
-  // 画像の工程別保存診断（v23.9.100: ログ強化）
+  // 画像の工程別保存診断（v23.9.101: ログ強化）
   async function diagnoseAndSaveImage(url, jan, diagCandidate) {
     const p = db && db.products && db.products[jan];
     const productName = p ? (p.name || '') : '';
 
-    // Step1: プレビューテスト
-    diagCandidate.preview = 'run';
-    imgDiagUpdate(window._imgDiagData);
-    spDbg('[IMAGE_SAVE_STEP]', { step: 'preview', result: 'run', jan, url });
-    
-    const prevResult = await testImagePreview(url);
+    // v23.9.101: 画像取得開始ログ
+    spDbg('[IMAGE_PICK_START]', { jan, url, productName });
+
+    try {
+      // Step1: プレビューテスト
+      diagCandidate.preview = 'run';
+      imgDiagUpdate(window._imgDiagData);
+      spDbg('[IMAGE_SAVE_STEP]', { step: 'preview', result: 'run', jan, url });
+      
+      const prevResult = await testImagePreview(url);
     spDbg('[IMG_DIAG_PREVIEW_' + (prevResult.ok ? 'OK' : 'NG') + ']', { jan, url, reason: prevResult.reason });
     diagCandidate.preview = prevResult.ok ? 'ok' : 'ng';
     if (!prevResult.ok) diagCandidate.reason = (diagCandidate.reason ? diagCandidate.reason + ' / ' : '') + 'preview: ' + prevResult.reason;
@@ -8263,18 +8358,26 @@ function spVisibleTrace(tag, payload, cls) {
     imgDiagUpdate(window._imgDiagData);
 
     // Step2: fetch テスト
-    spDbg('[IMAGE_FETCH_START]', { jan, url }); // v23.9.101
     diagCandidate.fetch = 'run';
     imgDiagUpdate(window._imgDiagData);
     spDbg('[IMAGE_SAVE_STEP]', { step: 'fetch', result: 'run', jan, url });
+    
+    // v23.9.101: fetch開始ログ
+    spDbg('[IMAGE_FETCH_START]', { jan, url });
     
     const fetchResult = await testImageFetch(url);
     spDbg('[IMG_DIAG_FETCH_' + (fetchResult.ok ? 'OK' : 'NG') + ']', { jan, url, reason: fetchResult.reason, status: fetchResult.status, contentType: fetchResult.contentType, size: fetchResult.size });
     diagCandidate.fetch = fetchResult.ok ? 'ok' : 'ng';
     spDbg('[IMAGE_SAVE_STEP]', { step: 'fetch', result: diagCandidate.fetch });
-    if (fetchResult.ok) spDbg('[IMAGE_FETCH_SUCCESS]', { jan, url, status: fetchResult.status, size: fetchResult.size }); // v23.9.101
+    
+    // v23.9.101: fetch成功ログ
+    if (fetchResult.ok) {
+      spDbg('[IMAGE_FETCH_SUCCESS]', { jan, url, status: fetchResult.status, contentType: fetchResult.contentType, size: fetchResult.size });
+    }
     
     if (!fetchResult.ok) {
+      // v23.9.101: エラーログ
+      spDbg('[IMAGE_SAVE_ERROR]', { reason: 'fetch failed', detail: fetchResult.reason, jan, url });
       diagCandidate.reason = (diagCandidate.reason ? diagCandidate.reason + ' / ' : '') + 'fetch: ' + fetchResult.reason;
       diagCandidate.blob = 'skip';
       diagCandidate.indexedDb = 'skip';
@@ -8287,7 +8390,6 @@ function spVisibleTrace(tag, payload, cls) {
       imgDiagUpdate(window._imgDiagData);
 
       // ユーザー向け段階別エラーメッセージ
-      spDbg('[IMAGE_SAVE_ERROR]', { reason: 'fetch failed', detail: fetchResult.reason, jan, url }); // v23.9.101
       const userMsg = prevResult.ok
         ? '画像は表示できましたが、保存用取得に失敗しました'
         : '画像の取得に失敗しました。別の画像を選んでください';
@@ -8308,13 +8410,16 @@ function spVisibleTrace(tag, payload, cls) {
       diagCandidate.firebase = 'skip';
       diagCandidate.apply = 'skip';
       spDbg('[IMAGE_SAVE_STEP]', { step: 'blob', result: 'ng' });
+      // v23.9.101: エラーログ
+      spDbg('[IMAGE_SAVE_ERROR]', { reason: 'blob null', jan, url });
       imgDiagUpdate(window._imgDiagData);
       return { ok: false, reason: 'blob null', userMsg: '画像取得はできましたが、端末保存に失敗しました' };
     }
     spDbg('[IMG_DIAG_BLOB_OK]', { jan, url, type: blob.type, size: blob.size });
-    spDbg('[IMAGE_BLOB_CREATED]', { jan, type: blob.type, size: blob.size }); // v23.9.101
     diagCandidate.blob = 'ok';
     spDbg('[IMAGE_SAVE_STEP]', { step: 'blob', result: 'ok' });
+    // v23.9.101: blob作成成功ログ
+    spDbg('[IMAGE_BLOB_CREATED]', { jan, url, type: blob.type, size: blob.size });
     imgDiagUpdate(window._imgDiagData);
 
     // Step4: IndexedDB保存
@@ -8323,19 +8428,27 @@ function spVisibleTrace(tag, payload, cls) {
     spDbg('[IMAGE_SAVE_STEP]', { step: 'indexedDb', result: 'run', jan });
     
     const imageKey = `img_${jan}_${Date.now()}`;
-    spDbg('[IMAGE_DB_SAVE_START]', { jan, imageKey, blobSize: blob.size }); // v23.9.101
+    // v23.9.101: DB保存開始ログ
+    spDbg('[IMAGE_DB_SAVE_START]', { jan, imageKey, blobSize: blob.size });
+    
     let idbOk = false;
     try {
       idbOk = await idbPut(imageKey, blob);
     } catch(e) {
       idbOk = false;
       spDbg('[IMG_DIAG_IDB_NG]', { jan, reason: String(e) });
-      spDbg('[IMAGE_SAVE_ERROR]', { reason: 'indexedDb save failed', detail: String(e), jan, imageKey }); // v23.9.101
+      // v23.9.101: エラーログ
+      spDbg('[IMAGE_SAVE_ERROR]', { reason: 'indexedDb save failed', detail: String(e), jan, imageKey });
     }
     spDbg('[IMG_DIAG_IDB_' + (idbOk ? 'OK' : 'NG') + ']', { jan, imageKey });
     diagCandidate.indexedDb = idbOk ? 'ok' : 'ng';
-    if (idbOk) spDbg('[IMAGE_DB_SAVE_SUCCESS]', { jan, imageKey, blobSize: blob.size }); // v23.9.101
     spDbg('[IMAGE_SAVE_STEP]', { step: 'indexedDb', result: diagCandidate.indexedDb });
+    
+    // v23.9.101: DB保存成功ログ
+    if (idbOk) {
+      spDbg('[IMAGE_DB_SAVE_SUCCESS]', { jan, imageKey, blobSize: blob.size });
+    }
+    
     if (!idbOk) {
       diagCandidate.reason = (diagCandidate.reason ? diagCandidate.reason + ' / ' : '') + 'IDB: 保存失敗';
     }
@@ -8398,18 +8511,23 @@ function spVisibleTrace(tag, payload, cls) {
         saveLocalOnly();
         spDbg('[IMG_DIAG_APPLY_OK]', { jan, imageRef });
         spDbg('[IMAGE_SAVE_STEP]', { step: 'apply', result: 'ok' });
-        spDbg('[IMAGE_APPLY_SUCCESS]', { jan, imageRef, idbOk, firebaseOk }); // v23.9.101
+        // v23.9.101: 適用成功ログ
+        spDbg('[IMAGE_APPLY_SUCCESS]', { jan, imageRef, idbOk, firebaseOk });
         diagCandidate.apply = 'ok';
         applyOk = true;
       } else {
         spDbg('[IMG_DIAG_APPLY_NG]', { jan, reason: 'no imageRef (IDB and Firebase both failed)' });
         spDbg('[IMAGE_SAVE_STEP]', { step: 'apply', result: 'ng' });
+        // v23.9.101: エラーログ
+        spDbg('[IMAGE_SAVE_ERROR]', { reason: 'apply failed - no imageRef', jan });
         diagCandidate.apply = 'ng';
         diagCandidate.reason = (diagCandidate.reason ? diagCandidate.reason + ' / ' : '') + 'apply: IDB+Firebase両方失敗';
       }
     } catch(e) {
       spDbg('[IMG_DIAG_APPLY_NG]', { jan, reason: String(e) });
       spDbg('[IMAGE_SAVE_STEP]', { step: 'apply', result: 'ng' });
+      // v23.9.101: エラーログ
+      spDbg('[IMAGE_SAVE_ERROR]', { reason: 'apply exception', detail: String(e), jan });
       diagCandidate.apply = 'ng';
       diagCandidate.reason = (diagCandidate.reason ? diagCandidate.reason + ' / ' : '') + 'apply: ' + String(e).slice(0, 80);
     }
@@ -8422,6 +8540,12 @@ function spVisibleTrace(tag, payload, cls) {
         : '画像取得はできましたが、端末保存に失敗しました';
 
     return { ok: applyOk || idbOk, imageKey: idbOk ? imageKey : null, imageId: firebaseOk ? imageId : null, reason: diagCandidate.reason, userMsg };
+    
+    } catch(globalErr) {
+      // v23.9.101: 全体のエラーキャッチ
+      spDbg('[IMAGE_SAVE_ERROR]', { reason: 'global exception', detail: String(globalErr), jan, url });
+      return { ok: false, reason: String(globalErr), userMsg: '画像保存処理で予期しないエラーが発生しました' };
+    }
   }
 
   // ===== [IMG_DIAG] ここまで =====
@@ -8561,94 +8685,137 @@ function spVisibleTrace(tag, payload, cls) {
     return unique;
   }
 
-  // 候補画像をタップしたときの処理（v23.9.100統合版: Cursor+Claude）
+  // 候補画像をタップしたときの処理（v23.9.100: 保存成功後にのみ反映）
   async function selectImageCandidate(url) {
     if (!curBarcode) {
       showToast('バーコードがありません', 4000);
       return;
     }
+    
+    // v23.9.100: タップ直後のログ（修正指示1）
+    spDbg('[IMAGE_PICKER_TAP]', { jan: curBarcode, url });
+    spDbg('[IMG_DIAG_START]', { jan: curBarcode });
+
     const jan = curBarcode;
-
-    // タップ直後のログ（分岐前・確実に出す）
-    spDbg('[IMAGE_PICK_START]', { jan, url });      // v23.9.101
-    spDbg('[IMAGE_PICKER_TAP]', { jan, url });
-    spDbg('[IMG_DIAG_START]', { jan });
-    spDbg('[IMAGE_SAVE_START]', { jan, url });
-
     const p = db && db.products && db.products[jan];
     const productName = p ? (p.name || '') : '';
-
-    // 元の画像を保持（失敗時の復元用）
+    
+    // v23.9.100: 現在の画像を保持（失敗時の復元用）
     const prevImg = document.getElementById('previewImg');
     const previousSrc = prevImg ? prevImg.src : '';
 
-    // diagData確保（debug/通常版共通）
-    if (!window._imgDiagData) {
-      window._imgDiagData = {
-        appVersion: window.APP_VERSION || '',
-        buildId: window.BUILD_ID || '',
-        jan,
-        productName,
-        candidateCount: 1,
-        candidates: []
-      };
-    }
-    let diagCandidate = window._imgDiagData.candidates.find(c => c.url === url);
-    if (!diagCandidate) {
-      diagCandidate = { url, source: 'unknown', preview: '-', fetch: '-', blob: '-', indexedDb: '-', firebase: '-', apply: '-', reason: null };
-      window._imgDiagData.candidates.push(diagCandidate);
-    }
+    // debug=1の場合は診断モードで保存
+    if (isDebug()) {
+      // 既存diagDataに候補を追加（searchImageWebで作成済みの場合は再利用）
+      if (!window._imgDiagData) {
+        window._imgDiagData = {
+          appVersion: window.APP_VERSION || '',
+          buildId: window.BUILD_ID || '',
+          jan,
+          productName,
+          candidateCount: 1,
+          candidates: []
+        };
+      }
+      // 選択された候補のエントリを検索 or 新規作成
+      let diagCandidate = window._imgDiagData.candidates.find(c => c.url === url);
+      if (!diagCandidate) {
+        diagCandidate = { url, source: 'unknown', preview: '-', fetch: '-', blob: '-', indexedDb: '-', firebase: '-', apply: '-', reason: null };
+        window._imgDiagData.candidates.push(diagCandidate);
+      }
+      imgDiagShow();
 
-    if (isDebug()) imgDiagShow();
-
-    // 一時プレビュー（半透明・保存中であることを示す）
-    if (prevImg) {
-      prevImg.src = url;
-      prevImg.style.opacity = '0.5';
-      prevImg.style.filter = 'grayscale(0.5)';
-    }
-
-    try {
-      const result = await diagnoseAndSaveImage(url, jan, diagCandidate);
-
-      // 診断結果を必ず再描画・再保存（debug/通常版共通）
-      if (isDebug()) {
+      try {
+        // v23.9.100: 一時プレビュー表示（候補確認用・淡く表示）
+        if (prevImg) {
+          prevImg.src = url;
+          prevImg.style.opacity = '0.5';
+          prevImg.style.filter = 'grayscale(0.5)';
+        }
+        
+        spDbg('[IMAGE_SAVE_START]', { jan, url });
+        const result = await diagnoseAndSaveImage(url, jan, diagCandidate);
+        
+        // v23.9.100: 診断結果を再レンダリング・再保存
         imgDiagUpdate(window._imgDiagData);
         imgDiagSaveLog(window._imgDiagData);
-      }
 
-      if (result.ok) {
-        // 保存成功時のみ正式反映
-        if (prevImg) {
-          prevImg.style.opacity = '1';
-          prevImg.style.filter = 'none';
+        if (result.ok) {
+          // v23.9.100: 保存成功時のみ正式反映
+          if (prevImg) {
+            prevImg.style.opacity = '1';
+            prevImg.style.filter = 'none';
+          }
+          applyPreviewImage(url);
+          closeImagePickerModal();
+          showToast('📷 画像を保存しました', 2000);
+        } else {
+          // v23.9.100: 保存失敗時は元に戻す
+          if (prevImg) {
+            prevImg.src = previousSrc || placeholderImg();
+            prevImg.style.opacity = '1';
+            prevImg.style.filter = 'none';
+          }
+          const userMsg = result.userMsg || 'この画像は保存できませんでした。別の画像を選んでください';
+          showToast(userMsg, 5000);
+          // モーダルは開いたまま（別画像を選べるよう）
         }
-        applyPreviewImage(url);
-        closeImagePickerModal();
-        showToast('📷 画像を保存しました', 2000);
-      } else {
-        // 保存失敗時は元の画像またはNo Imageに戻す
+      } catch(e) {
+        spDbg('[IMG_DIAG_APPLY_NG]', { jan, reason: String(e) });
+        // v23.9.100: エラー時も元に戻す
         if (prevImg) {
           prevImg.src = previousSrc || placeholderImg();
           prevImg.style.opacity = '1';
           prevImg.style.filter = 'none';
         }
-        spDbg('[IMAGE_PICKER_DOWNLOAD_FAIL]', { jan, url, reason: result.reason });
-        const userMsg = result.userMsg || 'この画像は保存できませんでした。別の画像を選んでください';
-        showToast(userMsg, 5000);
-        // モーダルは開いたまま（別画像を選べるよう）
+        showToast('画像処理でエラーが発生しました', 4000);
+        imgDiagSaveLog(window._imgDiagData);
       }
-    } catch(e) {
-      // 例外時も元に戻す
+    } else {
+      // 通常版: diagnoseAndSaveImage を通して保存（v23.9.100: 保存成功後にのみ反映）
+      const diagCandidate = { url, source: 'unknown', preview: '-', fetch: '-', blob: '-', indexedDb: '-', firebase: '-', apply: '-', reason: null };
+      
+      // v23.9.100: 一時プレビュー表示
       if (prevImg) {
-        prevImg.src = previousSrc || placeholderImg();
-        prevImg.style.opacity = '1';
-        prevImg.style.filter = 'none';
+        prevImg.src = url;
+        prevImg.style.opacity = '0.5';
+        prevImg.style.filter = 'grayscale(0.5)';
       }
-      spDbg('[IMG_DIAG_APPLY_NG]', { jan, reason: String(e) });
-      spDbg('[IMAGE_PICKER_DOWNLOAD_FAIL]', { jan, url, message: e && e.message ? e.message : String(e) });
-      showToast('画像保存に失敗しました。別の画像を選んでください', 4000);
-      if (isDebug()) imgDiagSaveLog(window._imgDiagData);
+      
+      try {
+        spDbg('[IMAGE_SAVE_START]', { jan, url });
+        const result = await diagnoseAndSaveImage(url, jan, diagCandidate);
+        
+        if (result.ok) {
+          // v23.9.100: 保存成功時のみ正式反映
+          if (prevImg) {
+            prevImg.style.opacity = '1';
+            prevImg.style.filter = 'none';
+          }
+          applyPreviewImage(url);
+          closeImagePickerModal();
+          showToast('📷 画像を保存しました', 2000);
+        } else {
+          // v23.9.100: 保存失敗時は元に戻す
+          if (prevImg) {
+            prevImg.src = previousSrc || placeholderImg();
+            prevImg.style.opacity = '1';
+            prevImg.style.filter = 'none';
+          }
+          spDbg('[IMAGE_PICKER_DOWNLOAD_FAIL]', { jan, url, reason: result.reason });
+          const userMsg = result.userMsg || 'この画像は保存できませんでした。別の画像を選んでください';
+          showToast(userMsg, 5000);
+        }
+      } catch(e) {
+        // v23.9.100: エラー時も元に戻す
+        if (prevImg) {
+          prevImg.src = previousSrc || placeholderImg();
+          prevImg.style.opacity = '1';
+          prevImg.style.filter = 'none';
+        }
+        spDbg('[IMAGE_PICKER_DOWNLOAD_FAIL]', { jan, url, message: e && e.message ? e.message : String(e) });
+        showToast('画像保存に失敗しました。別の画像を選んでください', 4000);
+      }
     }
   }
   window.selectImageCandidate = selectImageCandidate;
@@ -8722,24 +8889,23 @@ function spVisibleTrace(tag, payload, cls) {
     // 候補を最大6件に絞る
     const displayCandidates = candidates.slice(0, 6);
 
-    // 候補1件 → 自動反映してモーダルを開かない
+    // v23.9.102: 候補1件 → 内部保存ルートを通す（Androidダウンロード排除）
     if (displayCandidates.length === 1) {
-      closeImagePickerModal();
       const autoUrl = displayCandidates[0];
       spDbg('[IMAGE_PICKER_AUTO_APPLY]', { jan: curBarcode, url: autoUrl });
-      applyPreviewImage(autoUrl);
-      showToast('画像を自動反映しました', 2000);
-      downloadImageWithJan(autoUrl, curBarcode).catch(() => {});
+      // v23.9.102: downloadImageWithJan() を削除し、selectImageCandidate() を呼ぶ
+      selectImageCandidate(autoUrl);
       return;
     }
 
     grid.innerHTML = displayCandidates.map(url => `
-      <div onclick="selectImageCandidate('${url.replace(/'/g, "&#39;")}')"
-           style="cursor:pointer; border-radius:8px; overflow:hidden; background:#333; aspect-ratio:1; display:flex; align-items:center; justify-content:center;">
-        <img src="${url}" loading="lazy" referrerpolicy="no-referrer"
-             style="width:100%; height:100%; object-fit:contain;"
+      <button type="button"
+           onclick="event.preventDefault();event.stopPropagation();selectImageCandidate('${url.replace(/'/g, "&#39;")}')"
+           style="cursor:pointer; border-radius:8px; overflow:hidden; background:#333; aspect-ratio:1; display:flex; align-items:center; justify-content:center; border:none; padding:0; width:100%;">
+        <img src="${url}" loading="lazy" referrerpolicy="no-referrer" draggable="false"
+             style="width:100%; height:100%; object-fit:contain; pointer-events:none;"
              onerror="this.parentElement.style.display='none'; if(typeof imgDiagMarkPreviewNg==='function') imgDiagMarkPreviewNg('${url.replace(/'/g, "&#39;")}')">
-      </div>
+      </button>
     `).join('');
 
     // debug=1時: 全候補のpreviewテストをバックグラウンドで実行
@@ -10112,8 +10278,10 @@ function openWebModal() {
     const base = location.href.split('?')[0];
     const normalEl = document.getElementById('webUrlNormal');
     const debugEl  = document.getElementById('webUrlDebug');
-    if (normalEl) normalEl.value = base;
-    if (debugEl)  debugEl.value  = base + '?debug=1';
+    // v23.9.102: 必ずwindow.BUILD_IDを使う（Androidダウンロード防止）
+    const b = window.BUILD_ID || '';
+    if (debugEl) debugEl.value = base + '?b=' + b + '&debug=1';
+    if (normalEl) normalEl.value = base + (b ? '?b=' + b : '');
     m.style.display = 'flex';
   } catch(e) {}
 }
