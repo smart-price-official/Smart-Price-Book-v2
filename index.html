@@ -18,8 +18,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.97";
-  const BUILD_ID    = "2026-04-30_localconfirmed-gpsdebug-r1";
+  const APP_VERSION = "v23.9.98";
+  const BUILD_ID    = "2026-04-30_image-diagnostics-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -864,6 +864,64 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   width: 100%;
 }
 #gps-debug-copy-btn:active { background: #2a5a2a; }
+
+/* === 画像診断パネル (debug=1のみ表示) === */
+#img-diag-panel {
+  display: none;
+  background: #0a0a1a;
+  border: 1px solid #2a2a4a;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 10px 0 0 0;
+  font-size: 11px;
+  font-family: monospace;
+  color: #aaf;
+  max-height: 320px;
+  overflow-y: auto;
+}
+#img-diag-panel.visible { display: block; }
+#img-diag-title {
+  color: #88f; font-weight: bold; font-size: 12px;
+  margin-bottom: 6px; border-bottom: 1px solid #2a2a4a; padding-bottom: 4px;
+}
+.img-diag-row { margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid #1a1a2a; }
+.img-diag-url { color: #88f; word-break: break-all; font-size: 10px; margin-bottom: 2px; }
+.img-diag-step { display: inline-block; padding: 1px 5px; border-radius: 3px; margin: 1px 2px; font-size: 10px; }
+.img-diag-ok   { background: #1a3a1a; color: #4f4; }
+.img-diag-ng   { background: #3a1a1a; color: #f55; }
+.img-diag-skip { background: #2a2a2a; color: #888; }
+.img-diag-run  { background: #1a2a3a; color: #8af; }
+.img-diag-reason { color: #f88; font-size: 10px; margin-top: 2px; }
+#img-diag-textarea {
+  display: none;
+  width: 100%;
+  min-height: 100px;
+  max-height: 180px;
+  background: #0d0d0d;
+  color: #aaf;
+  border: 1px solid #2a2a4a;
+  border-radius: 6px;
+  font-size: 10px;
+  font-family: monospace;
+  padding: 6px 8px;
+  margin-top: 8px;
+  box-sizing: border-box;
+  resize: vertical;
+}
+#img-diag-copy-btn {
+  display: none;
+  margin-top: 6px;
+  padding: 8px 14px;
+  background: #1a1a3a;
+  color: #88f;
+  border: 1px solid #2a2a4a;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: bold;
+  cursor: pointer;
+  width: 100%;
+}
+#img-diag-copy-btn:active { background: #2a2a5a; }
 </style>
 
 <script>
@@ -918,7 +976,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
       <div id="formMainUI">
         <div class="d-flex mb-3">
           <div style="position:relative; width:90px; height:90px; margin-right:12px;">
-            <img id="previewImg" style="width:100%; height:100%; object-fit:contain; background:white; border-radius:10px;">
+            <img id="previewImg" style="width:100%; height:100%; object-fit:contain; background:white; border-radius:10px;" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'100\' height=\'100\'%3E%3Crect width=\'100\' height=\'100\' fill=\'%23333\'/%3E%3Ctext x=\'50\' y=\'52\' text-anchor=\'middle\' fill=\'%23888\' font-size=\'11\' font-family=\'sans-serif\'%3ENo Image%3C/text%3E%3C/svg%3E';this.onerror=null;">
             <div class="position-absolute bottom-0 start-0 w-100 d-flex justify-content-between px-1 pb-1">
               <button class="btn btn-dark btn-sm p-1 opacity-75" onclick="document.getElementById('imgInput').click()"><i class="bi bi-folder2-open"></i></button>
               <button class="btn btn-dark btn-sm p-1 opacity-75" onclick="searchImageWeb()"><i class="bi bi-search"></i></button>
@@ -1240,6 +1298,13 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
     <h5 class="text-white mb-3 text-center" style="font-size:1rem;">📷 画像を選ぶ</h5>
     <div id="imagePickerGrid" style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px; min-height:80px;">
       <div class="text-secondary text-center py-4" style="grid-column:1/-1;">読み込み中…</div>
+    </div>
+    <!-- 画像診断パネル (debug=1のみ表示) -->
+    <div id="img-diag-panel">
+      <div id="img-diag-title">🔬 画像診断</div>
+      <div id="img-diag-content"><span style="color:#888;">診断待機中…</span></div>
+      <textarea id="img-diag-textarea" readonly></textarea>
+      <button id="img-diag-copy-btn" onclick="spImgDiagCopy()">📋 画像診断をコピー</button>
     </div>
     <div class="mt-3 d-flex gap-2">
       <button class="btn btn-outline-secondary flex-grow-1" onclick="closeImagePickerModal()">閉じる</button>
@@ -7936,6 +8001,291 @@ function spVisibleTrace(tag, payload, cls) {
   }
   window.downloadImageWithJan = downloadImageWithJan;
 
+  // ===== [IMG_DIAG] 画像診断システム (v23.9.98 image-diagnostics-r1) =====
+
+  // 画像診断データ保持
+  window._imgDiagData = null;
+
+  // debug=1時のみ診断パネルを表示する
+  function imgDiagShow() {
+    if (!isDebug()) return;
+    try {
+      const p = document.getElementById('img-diag-panel');
+      if (p) p.classList.add('visible');
+    } catch(e) {}
+  }
+
+  // 診断パネルの内容を更新
+  function imgDiagUpdate(diagData) {
+    if (!isDebug()) return;
+    try {
+      imgDiagShow();
+      window._imgDiagData = diagData;
+      const content = document.getElementById('img-diag-content');
+      const textarea = document.getElementById('img-diag-textarea');
+      const copyBtn = document.getElementById('img-diag-copy-btn');
+      if (!content) return;
+
+      const count = diagData.candidates ? diagData.candidates.length : 0;
+      let html = `<div style="color:#88f;margin-bottom:6px;">候補数: <b>${count}</b></div>`;
+
+      (diagData.candidates || []).forEach((c, i) => {
+        const shortUrl = c.url.length > 50 ? c.url.slice(0, 47) + '…' : c.url;
+        const src = c.source ? `[${c.source}]` : '';
+        html += `<div class="img-diag-row">`;
+        html += `<div class="img-diag-url">${i+1}) ${src} ${shortUrl}</div>`;
+
+        const steps = ['preview','fetch','blob','indexedDb','firebase','apply'];
+        const labels = ['preview','fetch','blob','IDB','Firebase','apply'];
+        steps.forEach((s, si) => {
+          const v = c[s];
+          const cls = v === 'ok' ? 'img-diag-ok' : v === 'ng' ? 'img-diag-ng' : v === 'skip' ? 'img-diag-skip' : v === 'run' ? 'img-diag-run' : 'img-diag-skip';
+          html += `<span class="img-diag-step ${cls}">${labels[si]}: ${v || '-'}</span>`;
+        });
+        if (c.reason) html += `<div class="img-diag-reason">⚠️ ${c.reason}</div>`;
+        html += `</div>`;
+      });
+
+      content.innerHTML = html;
+
+      if (textarea && copyBtn) {
+        textarea.value = JSON.stringify(diagData, null, 2);
+        textarea.style.display = 'block';
+        copyBtn.style.display = 'block';
+      }
+    } catch(e) {
+      console.warn('[IMG_DIAG] update error:', e);
+    }
+  }
+
+  // 診断データをlocalStorageに保存（最新10件）
+  function imgDiagSaveLog(diagData) {
+    try {
+      const key = 'smartPrice_imageDebugLogs';
+      let logs = [];
+      try {
+        const s = localStorage.getItem(key);
+        if (s) logs = JSON.parse(s);
+        if (!Array.isArray(logs)) logs = [];
+      } catch(e) { logs = []; }
+      logs.unshift({ ...diagData, savedAt: new Date().toISOString() });
+      if (logs.length > 10) logs = logs.slice(0, 10);
+      localStorage.setItem(key, JSON.stringify(logs));
+    } catch(e) {}
+  }
+
+  // コピーボタン
+  window.spImgDiagCopy = function() {
+    try {
+      const textarea = document.getElementById('img-diag-textarea');
+      if (!textarea) return;
+      const text = textarea.value;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text)
+          .then(() => { try { showToast('📋 画像診断をコピーしました', 2000); } catch(e){} })
+          .catch(() => { textarea.select(); document.execCommand('copy'); try { showToast('📋 コピーしました', 2000); } catch(e){} });
+      } else {
+        textarea.select(); document.execCommand('copy');
+        try { showToast('📋 コピーしました', 2000); } catch(e) {}
+      }
+    } catch(e) {}
+  };
+
+  // 画像URLのプレビュー可否テスト（img要素でロード試行）
+  function testImagePreview(url) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.referrerPolicy = 'no-referrer';
+      const timer = setTimeout(() => { resolve({ ok: false, reason: 'timeout' }); }, 8000);
+      img.onload = () => { clearTimeout(timer); resolve({ ok: true }); };
+      img.onerror = () => { clearTimeout(timer); resolve({ ok: false, reason: 'load error' }); };
+      img.src = url;
+    });
+  }
+
+  // 画像URLのfetch可否テスト（cors → no-cors順）
+  async function testImageFetch(url) {
+    // cors試行
+    try {
+      const res = await Promise.race([
+        fetch(url, { mode: 'cors' }),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 10000))
+      ]);
+      const ct = res.headers.get('content-type') || '';
+      const isImage = ct.startsWith('image/');
+      // opaque responseは type===opaque
+      if (res.type === 'opaque') {
+        return { ok: false, mode: 'no-cors', reason: 'opaque response (CORS制限)', status: 0, contentType: '', size: 0 };
+      }
+      if (!res.ok) {
+        return { ok: false, mode: 'cors', reason: `HTTP ${res.status}`, status: res.status, contentType: ct, size: 0 };
+      }
+      if (!isImage) {
+        return { ok: false, mode: 'cors', reason: `content-type not image: ${ct}`, status: res.status, contentType: ct, size: 0 };
+      }
+      const blob = await res.blob();
+      if (!blob || blob.size === 0) {
+        return { ok: false, mode: 'cors', reason: 'blob size 0', status: res.status, contentType: ct, size: 0 };
+      }
+      return { ok: true, mode: 'cors', status: res.status, contentType: ct, size: blob.size, blob };
+    } catch(corsErr) {
+      // no-cors試行（opaqueのため保存不可）
+      try {
+        const res2 = await Promise.race([
+          fetch(url, { mode: 'no-cors' }),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 10000))
+        ]);
+        return { ok: false, mode: 'no-cors', reason: 'CORS blocked (opaque response) - 保存不可', status: 0, contentType: '', size: 0 };
+      } catch(e2) {
+        return { ok: false, mode: 'no-cors', reason: `fetch失敗: ${corsErr.message}`, status: 0, contentType: '', size: 0 };
+      }
+    }
+  }
+
+  // 画像の工程別保存診断（診断モード用）
+  async function diagnoseAndSaveImage(url, jan, diagCandidate) {
+    const p = db && db.products && db.products[jan];
+    const productName = p ? (p.name || '') : '';
+
+    // Step1: プレビューテスト
+    diagCandidate.preview = 'run';
+    imgDiagUpdate(window._imgDiagData);
+    const prevResult = await testImagePreview(url);
+    spDbg('[IMG_DIAG_PREVIEW_' + (prevResult.ok ? 'OK' : 'NG') + ']', { jan, url, reason: prevResult.reason });
+    diagCandidate.preview = prevResult.ok ? 'ok' : 'ng';
+    if (!prevResult.ok) diagCandidate.reason = (diagCandidate.reason ? diagCandidate.reason + ' / ' : '') + 'preview: ' + prevResult.reason;
+    imgDiagUpdate(window._imgDiagData);
+
+    // Step2: fetch テスト
+    diagCandidate.fetch = 'run';
+    imgDiagUpdate(window._imgDiagData);
+    const fetchResult = await testImageFetch(url);
+    spDbg('[IMG_DIAG_FETCH_' + (fetchResult.ok ? 'OK' : 'NG') + ']', { jan, url, reason: fetchResult.reason, status: fetchResult.status, contentType: fetchResult.contentType, size: fetchResult.size });
+    diagCandidate.fetch = fetchResult.ok ? 'ok' : 'ng';
+    if (!fetchResult.ok) {
+      diagCandidate.reason = (diagCandidate.reason ? diagCandidate.reason + ' / ' : '') + 'fetch: ' + fetchResult.reason;
+      diagCandidate.blob = 'skip';
+      diagCandidate.indexedDb = 'skip';
+      diagCandidate.firebase = 'skip';
+      diagCandidate.apply = 'skip';
+      imgDiagUpdate(window._imgDiagData);
+
+      // ユーザー向け段階別エラーメッセージ
+      const userMsg = prevResult.ok
+        ? '画像は表示できましたが、保存用取得に失敗しました'
+        : '画像の取得に失敗しました。別の画像を選んでください';
+      return { ok: false, reason: fetchResult.reason, userMsg };
+    }
+
+    // Step3: blob化
+    diagCandidate.blob = 'run';
+    imgDiagUpdate(window._imgDiagData);
+    const blob = fetchResult.blob;
+    if (!blob) {
+      spDbg('[IMG_DIAG_BLOB_NG]', { jan, url, reason: 'blob null' });
+      diagCandidate.blob = 'ng';
+      diagCandidate.reason = (diagCandidate.reason ? diagCandidate.reason + ' / ' : '') + 'blob: null';
+      diagCandidate.indexedDb = 'skip';
+      diagCandidate.firebase = 'skip';
+      diagCandidate.apply = 'skip';
+      imgDiagUpdate(window._imgDiagData);
+      return { ok: false, reason: 'blob null', userMsg: '画像取得はできましたが、端末保存に失敗しました' };
+    }
+    spDbg('[IMG_DIAG_BLOB_OK]', { jan, url, type: blob.type, size: blob.size });
+    diagCandidate.blob = 'ok';
+    imgDiagUpdate(window._imgDiagData);
+
+    // Step4: IndexedDB保存
+    diagCandidate.indexedDb = 'run';
+    imgDiagUpdate(window._imgDiagData);
+    const imageKey = `img_${jan}_${Date.now()}`;
+    let idbOk = false;
+    try {
+      idbOk = await idbPut(imageKey, blob);
+    } catch(e) {
+      idbOk = false;
+      spDbg('[IMG_DIAG_IDB_NG]', { jan, reason: String(e) });
+    }
+    spDbg('[IMG_DIAG_IDB_' + (idbOk ? 'OK' : 'NG') + ']', { jan, imageKey });
+    diagCandidate.indexedDb = idbOk ? 'ok' : 'ng';
+    if (!idbOk) {
+      diagCandidate.reason = (diagCandidate.reason ? diagCandidate.reason + ' / ' : '') + 'IDB: 保存失敗';
+    }
+    imgDiagUpdate(window._imgDiagData);
+
+    // Step5: Firebase保存（設定済みかつ可能な場合のみ）
+    let firebaseOk = false;
+    let imageId = null;
+    diagCandidate.firebase = 'skip';
+    if (fbUrl && jan) {
+      diagCandidate.firebase = 'run';
+      imgDiagUpdate(window._imgDiagData);
+      try {
+        const fbResult = await uploadImageToFirebase(jan, blob);
+        imageId = fbResult.imageId;
+        firebaseOk = !!imageId;
+        spDbg('[IMG_DIAG_FIREBASE_' + (firebaseOk ? 'OK' : 'NG') + ']', { jan, imageId });
+        diagCandidate.firebase = firebaseOk ? 'ok' : 'ng';
+      } catch(e) {
+        spDbg('[IMG_DIAG_FIREBASE_NG]', { jan, reason: String(e) });
+        diagCandidate.firebase = 'ng';
+        diagCandidate.reason = (diagCandidate.reason ? diagCandidate.reason + ' / ' : '') + 'Firebase: ' + String(e).slice(0, 80);
+      }
+      imgDiagUpdate(window._imgDiagData);
+    }
+
+    // Step6: 商品マスタ＋最新履歴へ反映（修正⑥）
+    diagCandidate.apply = 'run';
+    imgDiagUpdate(window._imgDiagData);
+    let applyOk = false;
+    let imageRef = null;
+    try {
+      if (!db.products) db.products = {};
+      if (!db.products[jan]) db.products[jan] = { history: [] };
+      const prod = db.products[jan];
+
+      if (firebaseOk && imageId) {
+        // Firebase共有画像
+        imageRef = 'shared:' + imageId;
+        prod.imageUrl = imageRef;
+        const latestHist = Array.isArray(prod.history) && prod.history.length > 0 ? prod.history[0] : null;
+        if (latestHist) latestHist.imageUrl = imageRef;
+      } else if (idbOk) {
+        // IndexedDB端末内画像
+        imageRef = imageKey;
+        prod.imageKey = imageKey;
+        const latestHist = Array.isArray(prod.history) && prod.history.length > 0 ? prod.history[0] : null;
+        if (latestHist) latestHist.imageKey = imageKey;
+      }
+
+      if (imageRef) {
+        saveLocalOnly();
+        spDbg('[IMG_DIAG_APPLY_OK]', { jan, imageRef });
+        diagCandidate.apply = 'ok';
+        applyOk = true;
+      } else {
+        spDbg('[IMG_DIAG_APPLY_NG]', { jan, reason: 'no imageRef (IDB and Firebase both failed)' });
+        diagCandidate.apply = 'ng';
+        diagCandidate.reason = (diagCandidate.reason ? diagCandidate.reason + ' / ' : '') + 'apply: IDB+Firebase両方失敗';
+      }
+    } catch(e) {
+      spDbg('[IMG_DIAG_APPLY_NG]', { jan, reason: String(e) });
+      diagCandidate.apply = 'ng';
+      diagCandidate.reason = (diagCandidate.reason ? diagCandidate.reason + ' / ' : '') + 'apply: ' + String(e).slice(0, 80);
+    }
+    imgDiagUpdate(window._imgDiagData);
+
+    const userMsg = applyOk
+      ? null
+      : (idbOk || firebaseOk)
+        ? '端末保存はできましたが、履歴への反映に失敗しました'
+        : '画像取得はできましたが、端末保存に失敗しました';
+
+    return { ok: applyOk || idbOk, imageKey: idbOk ? imageKey : null, imageId: firebaseOk ? imageId : null, reason: diagCandidate.reason, userMsg };
+  }
+
+  // ===== [IMG_DIAG] ここまで =====
+
   // ===== [image-picker] 画像候補ピッカー =====
 
   function openImagePickerModal() {
@@ -8071,33 +8421,80 @@ function spVisibleTrace(tag, payload, cls) {
     return unique;
   }
 
-  // 候補画像をタップしたときの処理
+  // 候補画像をタップしたときの処理（v23.9.98: 工程別診断対応）
   async function selectImageCandidate(url) {
     if (!curBarcode) {
       showToast('バーコードがありません', 4000);
       return;
     }
     spDbg('[IMAGE_PICKER_SELECTED]', { jan: curBarcode, url });
-    // [imagePicker-fix] モーダルを先に閉じずに試みる（失敗時は選び直せるよう）
-    try {
-      const ok = await downloadImageWithJan(url, curBarcode);
-      if (ok) {
-        // 成功時のみモーダルを閉じる
-        closeImagePickerModal();
-        applyPreviewImage(url);
-      } else {
-        // 失敗時はモーダルを開いたまま → 別画像を選べる
-        spDbg('[IMAGE_PICKER_DOWNLOAD_FAIL]', { jan: curBarcode, url });
-        showToast('この画像は保存できませんでした。別の画像を選んでください', 4000);
+    spDbg('[IMG_DIAG_START]', { jan: curBarcode });
+
+    const jan = curBarcode;
+    const p = db && db.products && db.products[jan];
+    const productName = p ? (p.name || '') : '';
+
+    // debug=1の場合は診断モードで保存
+    if (isDebug()) {
+      // 既存diagDataに候補を追加（searchImageWebで作成済みの場合は再利用）
+      if (!window._imgDiagData) {
+        window._imgDiagData = {
+          appVersion: window.APP_VERSION || '',
+          buildId: window.BUILD_ID || '',
+          jan,
+          productName,
+          candidateCount: 1,
+          candidates: []
+        };
       }
-    } catch(e) {
-      spDbg('[IMAGE_PICKER_DOWNLOAD_FAIL]', { jan: curBarcode, url, message: e && e.message ? e.message : String(e) });
-      showToast('画像保存に失敗しました。別の画像を選んでください', 4000);
+      // 選択された候補のエントリを検索 or 新規作成
+      let diagCandidate = window._imgDiagData.candidates.find(c => c.url === url);
+      if (!diagCandidate) {
+        diagCandidate = { url, source: 'unknown', preview: '-', fetch: '-', blob: '-', indexedDb: '-', firebase: '-', apply: '-', reason: null };
+        window._imgDiagData.candidates.push(diagCandidate);
+      }
+      imgDiagShow();
+
+      try {
+        // プレビュー先行表示（UX維持）
+        applyPreviewImage(url);
+
+        const result = await diagnoseAndSaveImage(url, jan, diagCandidate);
+        imgDiagSaveLog(window._imgDiagData);
+
+        if (result.ok) {
+          closeImagePickerModal();
+          showToast('📷 画像を保存しました', 2000);
+        } else {
+          const userMsg = result.userMsg || 'この画像は保存できませんでした。別の画像を選んでください';
+          showToast(userMsg, 5000);
+          // モーダルは開いたまま（別画像を選べるよう）
+        }
+      } catch(e) {
+        spDbg('[IMG_DIAG_APPLY_NG]', { jan, reason: String(e) });
+        showToast('画像処理でエラーが発生しました', 4000);
+        imgDiagSaveLog(window._imgDiagData);
+      }
+    } else {
+      // 通常版: 既存フロー（変更なし）
+      try {
+        const ok = await downloadImageWithJan(url, curBarcode);
+        if (ok) {
+          closeImagePickerModal();
+          applyPreviewImage(url);
+        } else {
+          spDbg('[IMAGE_PICKER_DOWNLOAD_FAIL]', { jan: curBarcode, url });
+          showToast('この画像は保存できませんでした。別の画像を選んでください', 4000);
+        }
+      } catch(e) {
+        spDbg('[IMAGE_PICKER_DOWNLOAD_FAIL]', { jan: curBarcode, url, message: e && e.message ? e.message : String(e) });
+        showToast('画像保存に失敗しました。別の画像を選んでください', 4000);
+      }
     }
   }
   window.selectImageCandidate = selectImageCandidate;
 
-  // 虫メガネ → 画像ピッカーモーダルを開く
+  // 虫メガネ → 画像ピッカーモーダルを開く（v23.9.98: 診断初期化対応）
   async function searchImageWeb() {
     spDbg('[IMAGE_PICKER_OPEN]', { jan: curBarcode });
     if (!curBarcode) {
@@ -8109,6 +8506,26 @@ function spVisibleTrace(tag, payload, cls) {
     const grid = document.getElementById('imagePickerGrid');
     if (grid) grid.innerHTML = '<div class="text-secondary text-center py-4" style="grid-column:1/-1;">読み込み中…</div>';
 
+    // debug=1時: 診断データ初期化
+    const jan = curBarcode;
+    const p = db && db.products && db.products[jan];
+    const productName = p ? (p.name || '') : '';
+    if (isDebug()) {
+      window._imgDiagData = {
+        appVersion: window.APP_VERSION || '',
+        buildId: window.BUILD_ID || '',
+        jan,
+        productName,
+        candidateCount: 0,
+        candidates: []
+      };
+      imgDiagShow();
+      const diagContent = document.getElementById('img-diag-content');
+      if (diagContent) diagContent.innerHTML = '<span style="color:#8af;">候補を取得中…</span>';
+    }
+
+    spDbg('[IMG_DIAG_START]', { jan });
+
     let candidates = [];
     try {
       candidates = await getImageCandidates(curBarcode);
@@ -8116,26 +8533,43 @@ function spVisibleTrace(tag, payload, cls) {
       spDbg('[IMAGE_PICKER_RETURN]', { reason: 'exception', jan: curBarcode, error: String(err) });
     }
 
+    spDbg('[IMG_DIAG_CANDIDATES]', { jan, count: candidates.length, urls: candidates });
+
+    // debug=1時: 候補リストをdiagDataに登録（preview/fetch等は選択時に実行）
+    if (isDebug() && window._imgDiagData) {
+      window._imgDiagData.candidateCount = candidates.length;
+      // ソース判定（URLドメインから推測）
+      window._imgDiagData.candidates = candidates.map(url => {
+        let source = 'unknown';
+        try {
+          const host = new URL(url).hostname;
+          if (host.includes('yahoo') || host.includes('yimg')) source = 'yahoo';
+          else if (host.includes('rakuten')) source = 'rakuten';
+          else if (host.includes('openfoodfacts')) source = 'openfoodfacts';
+          else if (host.includes('google')) source = 'google';
+        } catch(e) {}
+        return { url, source, preview: '-', fetch: '-', blob: '-', indexedDb: '-', firebase: '-', apply: '-', reason: null };
+      });
+      imgDiagUpdate(window._imgDiagData);
+    }
+
     if (!grid) return;
-    // [imagePicker-fallback] 修正⑤: no_candidates で return しない（fallbackが保証されているため）
     if (!candidates.length) {
-      // ここには来ないはずだが念のため
       spDbg('[IMAGE_PICKER_RETURN]', { reason: 'no_candidates_unexpected', jan: curBarcode });
       grid.innerHTML = '<div class="text-secondary text-center py-4" style="grid-column:1/-1;">画像候補が見つかりませんでした</div>';
       return;
     }
 
-    // [multifix] ①⑦: 候補を最大6件に絞る
+    // 候補を最大6件に絞る
     const displayCandidates = candidates.slice(0, 6);
 
-    // [multifix] ⑦: 候補1件 → 自動反映してモーダルを開かない
+    // 候補1件 → 自動反映してモーダルを開かない
     if (displayCandidates.length === 1) {
       closeImagePickerModal();
       const autoUrl = displayCandidates[0];
       spDbg('[IMAGE_PICKER_AUTO_APPLY]', { jan: curBarcode, url: autoUrl });
       applyPreviewImage(autoUrl);
       showToast('画像を自動反映しました', 2000);
-      // バックグラウンドでダウンロード保存も試みる
       downloadImageWithJan(autoUrl, curBarcode).catch(() => {});
       return;
     }
@@ -8145,9 +8579,24 @@ function spVisibleTrace(tag, payload, cls) {
            style="cursor:pointer; border-radius:8px; overflow:hidden; background:#333; aspect-ratio:1; display:flex; align-items:center; justify-content:center;">
         <img src="${url}" loading="lazy" referrerpolicy="no-referrer"
              style="width:100%; height:100%; object-fit:contain;"
-             onerror="this.parentElement.style.display='none'">
+             onerror="this.parentElement.style.display='none'; if(typeof imgDiagMarkPreviewNg==='function') imgDiagMarkPreviewNg('${url.replace(/'/g, "&#39;")}')">
       </div>
     `).join('');
+
+    // debug=1時: 全候補のpreviewテストをバックグラウンドで実行
+    if (isDebug()) {
+      displayCandidates.forEach(async (url) => {
+        const diagC = window._imgDiagData && window._imgDiagData.candidates.find(c => c.url === url);
+        if (!diagC) return;
+        diagC.preview = 'run';
+        imgDiagUpdate(window._imgDiagData);
+        const pr = await testImagePreview(url);
+        spDbg('[IMG_DIAG_PREVIEW_' + (pr.ok ? 'OK' : 'NG') + ']', { jan, url, reason: pr.reason });
+        diagC.preview = pr.ok ? 'ok' : 'ng';
+        if (!pr.ok) diagC.reason = (diagC.reason ? diagC.reason + ' / ' : '') + 'preview: ' + pr.reason;
+        imgDiagUpdate(window._imgDiagData);
+      });
+    }
   }
 
   // ===== [image-picker] ここまで =====
