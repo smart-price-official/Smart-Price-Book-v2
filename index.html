@@ -18,8 +18,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.103";
-  const BUILD_ID    = "2026-05-01_gas-stores-image-proxy-r2";
+  const APP_VERSION = "v23.9.107";
+  const BUILD_ID    = "2026-05-01_google-cse-ai-fix-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -4949,13 +4949,14 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
           // rawStoresはfetchNearbyStores前に直接取得
           const proxyUrl = (window.SP_CONFIG && window.SP_CONFIG.yahooProxyExecUrl) ? window.SP_CONFIG.yahooProxyExecUrl.trim() : '';
           if (proxyUrl) {
-            // v23.9.103: 半径拡張診断（debug=1時のみ、0件の場合に順次試行）
-            const radiusOptions = isDebug() ? [0.5, 1, 3, 5] : [getGpsRadiusKm()];
+            // v23.9.104: 半径拡張診断（Claude版の改善: 設定値のみ通常候補、拡張はexpanded_debug）
+            const baseRadiusKm = getGpsRadiusKm();
+            const radiusOptions = isDebug() ? [baseRadiusKm, 1, 3, 5] : [baseRadiusKm];
             const limit = 40;
             
-            let foundStores = false;
+            let foundStoresAtBaseRadius = false;
             for (let radiusKm of radiusOptions) {
-              spDbg('[GPS_RADIUS_TRY]', { radiusKm, lat, lng });
+              spDbg('[GPS_RADIUS_TRY]', { radiusKm, lat, lng, isBaseRadius: radiusKm === baseRadiusKm });
               
               const reqUrl = `${proxyUrl}?action=stores&lat=${lat}&lng=${lng}&radius_km=${radiusKm}&limit=${limit}`;
               gpsRequestUrl = reqUrl; // v23.9.102: リクエストURLを記録
@@ -4999,39 +5000,61 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
                     gpsHasStoresArray = true; // v23.9.102: stores配列の存在を記録
                     spDbg('[GPS_DEBUG_STORE_ARRAY_EXISTS]', true);
                     spDbg('[GPS_DEBUG_STORE_ARRAY_LENGTH]', json.stores.length);
-                    spDbg('[GPS_RADIUS_RESULT]', { radiusKm, count: json.stores.length });
+                    spDbg('[GPS_RADIUS_RESULT]', { radiusKm, count: json.stores.length, isBaseRadius: radiusKm === baseRadiusKm });
                     
-                    rawStores = json.stores.map(s => {
-                      if (typeof s === 'string') return s;
-                      return s.displayName || s.name || s.storeName || s.shopName || s.title || JSON.stringify(s);
-                    });
-                    spDbg('[GPS_DEBUG_STORE_RAW]', rawStores);
+                    // v23.9.104: 基準半径の場合のみ通常候補として使用（Claude版の改善）
+                    if (radiusKm === baseRadiusKm) {
+                      rawStores = json.stores.map(s => {
+                        if (typeof s === 'string') return s;
+                        return s.displayName || s.name || s.storeName || s.shopName || s.title || JSON.stringify(s);
+                      });
+                      spDbg('[GPS_DEBUG_STORE_RAW]', rawStores);
 
-                    normalizedStores = json.stores.map(s => buildNearbyStoreLabel(s)).filter(v => typeof v === 'string' && v.trim());
-                    spDbg('[GPS_DEBUG_STORE_NORMALIZED]', normalizedStores);
+                      normalizedStores = json.stores.map(s => buildNearbyStoreLabel(s)).filter(v => typeof v === 'string' && v.trim());
+                      spDbg('[GPS_DEBUG_STORE_NORMALIZED]', normalizedStores);
 
-                    finalStores = normalizedStores.filter(isShoppingStore);
-                    spDbg('[GPS_DEBUG_STORE_FINAL]', finalStores);
+                      finalStores = normalizedStores.filter(isShoppingStore);
+                      spDbg('[GPS_DEBUG_STORE_FINAL]', finalStores);
+                      
+                      if (json.stores.length > 0) {
+                        foundStoresAtBaseRadius = true;
+                      }
+                    } else {
+                      // v23.9.104: 拡張半径結果はexpanded_debugとしてログのみ（Claude版の改善）
+                      const expandedRaw = json.stores.map(s => {
+                        if (typeof s === 'string') return s;
+                        return s.displayName || s.name || s.storeName || s.shopName || s.title || JSON.stringify(s);
+                      });
+                      const expandedNormalized = json.stores.map(s => buildNearbyStoreLabel(s)).filter(v => typeof v === 'string' && v.trim());
+                      const expandedFinal = expandedNormalized.filter(isShoppingStore);
+                      
+                      spDbg('[GPS_RADIUS_EXPANDED_DEBUG]', {
+                        radiusKm,
+                        count: json.stores.length,
+                        raw: expandedRaw,
+                        normalized: expandedNormalized,
+                        final: expandedFinal
+                      });
+                    }
                     
-                    // v23.9.103: 店舗が見つかった場合は半径拡張を終了
-                    if (json.stores.length > 0) {
-                      foundStores = true;
+                    // v23.9.104: 基準半径で店舗が見つかった場合は終了
+                    if (foundStoresAtBaseRadius) {
                       break;
                     }
                   } else {
                     spDbg('[GPS_DEBUG_STORE_ARRAY_EXISTS]', false);
                     spDbg('[GPS_DEBUG_UNEXPECTED_RESPONSE]', json);
-                    spDbg('[GPS_RADIUS_RESULT]', { radiusKm, count: 0 });
+                    spDbg('[GPS_RADIUS_RESULT]', { radiusKm, count: 0, isBaseRadius: radiusKm === baseRadiusKm });
                   }
                 }
               } catch(fe) {
                 storeError = { message: fe.message, code: -2 };
                 spDbg('[GPS_DEBUG_ERROR]', storeError);
-                spDbg('[GPS_RADIUS_RESULT]', { radiusKm, count: 0, error: fe.message });
+                spDbg('[GPS_RADIUS_RESULT]', { radiusKm, count: 0, error: fe.message, isBaseRadius: radiusKm === baseRadiusKm });
               }
               
-              // v23.9.103: 0件の場合のみ次の半径へ（debug=1時のみ）
-              if (!foundStores && isDebug() && radiusKm < radiusOptions[radiusOptions.length - 1]) {
+              // v23.9.104: 基準半径で0件の場合のみ次の半径へ（debug=1時のみ）
+              if (!foundStoresAtBaseRadius && isDebug() && radiusKm < radiusOptions[radiusOptions.length - 1]) {
                 spDbg('[GPS_RADIUS_EXPAND]', { from: radiusKm, to: radiusOptions[radiusOptions.indexOf(radiusKm) + 1] });
               } else {
                 break;
@@ -5780,10 +5803,109 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
 
   // ========= 近隣店舗取得（YahooProxy経由でOSM検索） =========
   // ✅ 買い物関係の店舗かどうか判定（病院・クリニック・銀行等を除外）
-  function isShoppingStore(name) {
+  // v23.9.104: 除外カテゴリと許可店名を強化
+  function isShoppingStore(nameOrObj) {
+    if (!nameOrObj) return false;
+    
+    // オブジェクトの場合はnameとcategoryを取得
+    let name = '';
+    let category = '';
+    if (typeof nameOrObj === 'string') {
+      name = nameOrObj;
+    } else {
+      name = nameOrObj.name || nameOrObj.storeName || nameOrObj.label || '';
+      category = nameOrObj.category || '';
+    }
+    
     if (!name || name.length === 0) return false;
-    const NG = ['クリニック','病院','医院','歯科','眼科','耳鼻','皮膚科','整形','内科','外科','小児科','産婦','精神','調剤','薬局','銀行','信用金庫','証券','保険','不動産','美容室','美容院','ヘアサロン','理容','床屋','学校','幼稚園','保育園','塾','教室','寺','神社','教会','ガソリン','駐車場','修理','整備','ホテル','旅館','宿','図書館','役所','市役所','区役所','町役場','郵便局','警察','消防','介護','デイサービス','福祉','ハローワーク','公民館','体育館','診療'];
-    return !NG.some(ng => name.includes(ng));
+    
+    // v23.9.104: 除外カテゴリ（法人サービス等）
+    const CATEGORY_DENY = [
+      '法人サービス', '専門職', '不動産', '銀行', '金融', '病院', '医療',
+      '学校', '教育', '寺', '神社', '美容', '理容', '士業', '行政', '公共',
+      '建設', '修理', '保険', '自動車', 'カー', '整備', 'レンタル'
+    ];
+    
+    for (let i = 0; i < CATEGORY_DENY.length; i++) {
+      if (category.includes(CATEGORY_DENY[i])) {
+        spDbg('[GPS_STORE_FILTER_DENY]', { name, category, reason: CATEGORY_DENY[i] });
+        return false;
+      }
+    }
+    
+    // v23.9.104: 許可店名（明示的に許可された店名は優先）
+    const NAME_ALLOW = [
+      'イオン', 'カスミ', 'ヨークベニマル', 'ベイシア', '西友', 'イトーヨーカドー',
+      'マツモトキヨシ', 'ウエルシア', 'ツルハ', 'サンドラッグ', 'クスリのアオキ',
+      'ドン・キホーテ', 'ドンキ', '業務スーパー', 'コストコ', 'オーケー',
+      'セブン', 'ローソン', 'ファミリーマート', 'ファミマ', 'ミニストップ',
+      'カワチ', 'ジョイフル本田', 'コメリ', 'ケーズデンキ', 'ヤマダ', 'ビックカメラ',
+      'ライフ', 'マルエツ', 'サミット', '成城石井', 'まいばすけっと'
+    ];
+    
+    for (let i = 0; i < NAME_ALLOW.length; i++) {
+      if (name.includes(NAME_ALLOW[i])) {
+        spDbg('[GPS_STORE_FILTER_ALLOW]', { name, category, reason: NAME_ALLOW[i] });
+        return true;
+      }
+    }
+    
+    // v23.9.105: 法人系の強制除外（最優先）
+    const CORPORATE_DENY = ['株式会社', '有限会社', '合同会社', '(株)', '(有)', '法人', '総研', '研究所', 'コンサル', 'コンサルティング', '事務所', '商事', '産業'];
+    for (let i = 0; i < CORPORATE_DENY.length; i++) {
+      if (name.includes(CORPORATE_DENY[i])) {
+        spDbg('[GPS_STORE_FILTER_DENY]', { name, category, reason: 'corporate:' + CORPORATE_DENY[i] });
+        return false;
+      }
+    }
+    
+    // 除外ワード（既存の病院・銀行等）
+    const NG = [
+      'クリニック','病院','医院','歯科','眼科','耳鼻','皮膚科','整形','内科','外科',
+      '小児科','産婦','精神','調剤','薬局','銀行','信用金庫','証券','保険','不動産',
+      '美容室','美容院','ヘアサロン','理容','床屋','学校','幼稚園','保育園','塾','教室',
+      '寺','神社','教会','ガソリン','駐車場','修理','整備','ホテル','旅館','宿','図書館',
+      '役所','市役所','区役所','町役場','郵便局','警察','消防','介護','デイサービス','福祉',
+      'ハローワーク','公民館','体育館','診療'
+    ];
+    
+    for (let i = 0; i < NG.length; i++) {
+      if (name.includes(NG[i])) {
+        spDbg('[GPS_STORE_FILTER_DENY]', { name, category, reason: NG[i] });
+        return false;
+      }
+    }
+    
+    // 許可カテゴリ
+    const CATEGORY_ALLOW = [
+      'スーパー', 'スーパーマーケット', 'ディスカウント', 'ドラッグストア',
+      'ホームセンター', 'コンビニ', '食料品', '食品', '酒', '量販店',
+      '家電量販店', 'ショッピング', '百貨店', 'デパート', '市場'
+    ];
+    
+    if (category) {
+      for (let i = 0; i < CATEGORY_ALLOW.length; i++) {
+        if (category.includes(CATEGORY_ALLOW[i])) {
+          spDbg('[GPS_STORE_FILTER_CATEGORY]', { name, category, reason: CATEGORY_ALLOW[i] });
+          return true;
+        }
+      }
+    }
+    
+    // v23.9.104: 緩和ルール - 「店」「ストア」「マート」含む → OK（Claude版の改善）
+    if (/店|ストア|マート|モール|センター/.test(name)) {
+      spDbg('[GPS_STORE_FILTER_ALLOW]', { name, category, reason: 'name_pattern' });
+      return true;
+    }
+    
+    // カテゴリ不明、かつ除外にも許可にも該当しない → 除外
+    if (category) {
+      spDbg('[GPS_STORE_FILTER_DENY]', { name, category, reason: 'unknown_category' });
+      return false;
+    }
+    
+    // カテゴリなしで名前のみの場合は通過
+    return true;
   }
 
   // ===== [gps-store-label-generic] 汎用GPS店名ラベル生成アルゴリズム =====
@@ -7501,8 +7623,15 @@ function spVisibleTrace(tag, payload, cls) {
           : (cachedData && cachedData.name && String(cachedData.name).trim().length > 3 ? cachedData.name : null);
 
         if (localConfirmedName) {
-          // v23.9.102: ローカル検索結果ログ（指示書対応）
-          spDbg('[PRODUCT_LOOKUP_LOCAL]', { hit: true, name: localConfirmedName, maker: (p && p.maker) || (cachedData && cachedData.maker) || '' });
+          // v23.9.104: ローカル検索結果ログ（Claude版の改善: 詳細化）
+          spDbg('[PRODUCT_LOOKUP_LOCAL]', {
+            jan,
+            called: true,
+            hit: true,
+            firstTitle: localConfirmedName,
+            maker: (p && p.maker) || (cachedData && cachedData.maker) || '',
+            reason: 'db.products or cache'
+          });
           spDbg('[LOOKUP_LOCAL_HIT]', { jan, name: localConfirmedName });
           console.log('[LOOKUP_LOCAL_HIT]', jan, localConfirmedName);
           // ローカルから復元
@@ -7540,15 +7669,22 @@ function spVisibleTrace(tag, payload, cls) {
           return; // ✅ ローカルHIT → AI・外部API呼ばない
         }
         
-        // v23.9.102: ローカルミスログ（指示書対応）
-        spDbg('[PRODUCT_LOOKUP_LOCAL]', { hit: false });
+        // v23.9.104: ローカルミスログ（Claude版の改善: 詳細化）
+        spDbg('[PRODUCT_LOOKUP_LOCAL]', { jan, called: true, hit: false, reason: 'no local data' });
 
         // ========= [lookup-aiflow] STEP 2: サーバー確定データ（Firebase RTDB） =========
         spDbg('[LOOKUP_EXTERNAL_START]', { jan, reason: 'local miss' });
         const serverConfirmed = await lookupServerConfirmedProduct(jan);
         if (serverConfirmed && serverConfirmed.confirmedName) {
-          // v23.9.102: Firebase検索結果ログ（指示書対応）
-          spDbg('[PRODUCT_LOOKUP_FIREBASE]', { hit: true, confirmedName: serverConfirmed.confirmedName, confirmedMaker: serverConfirmed.confirmedMaker || '' });
+          // v23.9.104: Firebase検索結果ログ（Claude版の改善: 詳細化）
+          spDbg('[PRODUCT_LOOKUP_FIREBASE]', {
+            jan,
+            called: true,
+            hit: true,
+            firstTitle: serverConfirmed.confirmedName,
+            maker: serverConfirmed.confirmedMaker || '',
+            reason: 'firebase rtdb confirmed'
+          });
           spDbg('[LOOKUP_SERVER_HIT]', { jan, confirmedName: serverConfirmed.confirmedName });
           console.log('[LOOKUP_SERVER_HIT]', jan, serverConfirmed);
           spDbg('[AI_NORMALIZE_SKIP_SERVER]', { jan });
@@ -7591,8 +7727,8 @@ function spVisibleTrace(tag, payload, cls) {
           return; // ✅ サーバーHIT → AI・外部API呼ばない
         }
         
-        // v23.9.102: Firebaseミスログ（指示書対応）
-        spDbg('[PRODUCT_LOOKUP_FIREBASE]', { hit: false });
+        // v23.9.104: Firebaseミスログ（Claude版の改善: 詳細化）
+        spDbg('[PRODUCT_LOOKUP_FIREBASE]', { jan, called: true, hit: false, reason: 'no firebase data' });
 
         // ========= [lookup-aiflow] STEP 3以降: 外部候補取得（既存ロジックに続く） =========
         spDbg('[LOOKUP_EXTERNAL_START]', { jan, reason: 'server miss' });
@@ -7659,9 +7795,18 @@ function spVisibleTrace(tag, payload, cls) {
         // ✅ 優先順位1: Yahoo最優先
         yahooInfo = await lookupYahooByJan(jan);
         
-        // v23.9.102: Yahoo検索結果ログ（指示書対応）
+        // v23.9.104: Yahoo検索結果ログ（詳細化）
         const yahooHit = !!(yahooInfo && yahooInfo.name);
-        spDbg('[PRODUCT_LOOKUP_YAHOO]', { hit: yahooHit, count: yahooHit ? 1 : 0, name: yahooInfo?.name || '', maker: yahooInfo?.maker || '' });
+        spDbg('[PRODUCT_LOOKUP_YAHOO]', { 
+          jan, 
+          called: true, 
+          hit: yahooHit, 
+          count: yahooHit ? 1 : 0, 
+          firstTitle: yahooInfo?.name || '', 
+          maker: yahooInfo?.maker || '',
+          firstUrl: yahooInfo?.imageUrl || '',
+          reason: yahooHit ? 'found' : 'not_found'
+        });
         
         if (isDebug()) {
           console.log('[BARCODE] yahoo result', yahooInfo);
@@ -7748,9 +7893,18 @@ function spVisibleTrace(tag, payload, cls) {
           if (yahooWeak) {
             rakutenInfo = await lookupRakutenByJan(jan);
             
-            // v23.9.102: Rakuten検索結果ログ（指示書対応）
+            // v23.9.104: Rakuten検索結果ログ（詳細化）
             const rakutenHit = !!(rakutenInfo && rakutenInfo.name);
-            spDbg('[PRODUCT_LOOKUP_RAKUTEN]', { hit: rakutenHit, count: rakutenHit ? 1 : 0, name: rakutenInfo?.name || '', maker: rakutenInfo?.maker || '' });
+            spDbg('[PRODUCT_LOOKUP_RAKUTEN]', { 
+              jan, 
+              called: true, 
+              hit: rakutenHit, 
+              count: rakutenHit ? 1 : 0, 
+              firstTitle: rakutenInfo?.name || '', 
+              maker: rakutenInfo?.maker || '',
+              firstUrl: rakutenInfo?.imageUrl || '',
+              reason: rakutenHit ? 'found' : 'not_found'
+            });
             
             if (isDebug()) {
               console.log('[BARCODE] rakuten result', rakutenInfo);
@@ -7784,9 +7938,18 @@ function spVisibleTrace(tag, payload, cls) {
           // ✅ Yahoo未取得 → 楽天
           rakutenInfo = await lookupRakutenByJan(jan);
           
-          // v23.9.102: Rakuten検索結果ログ（指示書対応）
+          // v23.9.104: Rakuten検索結果ログ（詳細化）
           const rakutenHit = !!(rakutenInfo && rakutenInfo.name);
-          spDbg('[PRODUCT_LOOKUP_RAKUTEN]', { hit: rakutenHit, count: rakutenHit ? 1 : 0, name: rakutenInfo?.name || '', maker: rakutenInfo?.maker || '' });
+          spDbg('[PRODUCT_LOOKUP_RAKUTEN]', { 
+            jan, 
+            called: true, 
+            hit: rakutenHit, 
+            count: rakutenHit ? 1 : 0, 
+            firstTitle: rakutenInfo?.name || '', 
+            maker: rakutenInfo?.maker || '',
+            firstUrl: rakutenInfo?.imageUrl || '',
+            reason: rakutenHit ? 'found' : 'not_found'
+          });
           
           if (rakutenInfo) {
             // v23.9.103: 商品名候補ログ（RAW→CLEANED）
@@ -7799,6 +7962,18 @@ function spVisibleTrace(tag, payload, cls) {
           } else {
             // ✅ 楽天も未取得 → OFF（最終補助）
             offInfo = await lookupOffByJan(jan);
+            
+            // v23.9.106: OFF検索結果ログ
+            const offHit = offInfo && offInfo.name ? true : false;
+            spDbg('[PRODUCT_LOOKUP_OFF]', {
+              jan,
+              called: true,
+              hit: offHit,
+              firstTitle: offHit ? offInfo.name : '',
+              maker: offHit ? offInfo.maker || '' : '',
+              reason: offHit ? 'found' : 'not_found'
+            });
+            
             if (isDebug()) {
               console.log('[BARCODE] off result', offInfo);
               spVisibleTrace('[BARCODE] off', { name: offInfo?.name || '', maker: offInfo?.maker || '', hasImage: !!offInfo?.imageUrl }, 'w');
@@ -7837,6 +8012,165 @@ function spVisibleTrace(tag, payload, cls) {
           });
         }
 
+        // v23.9.106: Google Custom Search API（Yahoo/Rakuten/OFFすべてミスの場合）
+        if (!candidateName || candidateName.trim().length < 3) {
+          try {
+            const proxyUrl = (window.SP_CONFIG && window.SP_CONFIG.yahooProxyExecUrl) ? window.SP_CONFIG.yahooProxyExecUrl.trim() : '';
+            if (proxyUrl) {
+              const googleCseUrl = `${proxyUrl}?action=google_cse_product&jan=${encodeURIComponent(jan)}`;
+              const cseRes = await fetchWithTimeout(googleCseUrl, { cache: 'no-store' }, 15000);
+              
+              if (cseRes.ok) {
+                const cseJson = await cseRes.json();
+                
+                const cseHit = cseJson.ok && cseJson.count > 0;
+                const firstTitle = cseHit && cseJson.candidates[0] ? cseJson.candidates[0].title : '';
+                const firstUrl = cseHit && cseJson.candidates[0] ? cseJson.candidates[0].link : '';
+                
+                spDbg('[PRODUCT_LOOKUP_GOOGLE_CSE]', { 
+                  jan, 
+                  called: true, 
+                  hit: cseHit,
+                  count: cseJson.count || 0,
+                  firstTitle: firstTitle,
+                  firstUrl: firstUrl,
+                  reason: cseJson.ok ? 'success' : cseJson.reason || 'not_found'
+                });
+                
+                // v23.9.107: Google CSE結果を候補として蓄積（AI整形へ渡す準備）
+                if (cseHit && cseJson.candidates.length > 0) {
+                  // titleとsnippetから商品名候補を抽出
+                  // v23.9.107: 候補変数の初期化（既存のcandidateNameがない場合のみ）
+                  if (!window._productNameCandidates) {
+                    window._productNameCandidates = [];
+                  }
+                  if (!window._productCandidateSources) {
+                    window._productCandidateSources = [];
+                  }
+                  
+                  for (let i = 0; i < Math.min(cseJson.candidates.length, 5); i++) {
+                    const item = cseJson.candidates[i];
+                    if (item.title && item.title.trim()) {
+                      spDbg('[NAME_CANDIDATE_RAW]', { source: 'google_cse', index: i, name: item.title });
+                      window._productNameCandidates.push(item.title);
+                      window._productCandidateSources.push('google_cse');
+                    }
+                    if (item.snippet && item.snippet.trim()) {
+                      spDbg('[NAME_CANDIDATE_RAW]', { source: 'google_cse', index: i, snippet: item.snippet });
+                      window._productNameCandidates.push(item.snippet);
+                      window._productCandidateSources.push('google_cse');
+                    }
+                  }
+                  
+                  // v23.9.107: 候補ログ
+                  spDbg('[PRODUCT_LOOKUP_CANDIDATES]', {
+                    jan,
+                    count: window._productNameCandidates.length,
+                    candidates: window._productNameCandidates,
+                    sources: window._productCandidateSources
+                  });
+                  
+                  // v23.9.107: 候補が蓄積されたことを示すフラグ
+                  candidateSource = 'google_cse_pending_ai';
+                  
+                  if (isDebug()) showToast(`[Google CSE] ${window._productNameCandidates.length}件の候補を取得`, 3000);
+                }
+              } else {
+                spDbg('[PRODUCT_LOOKUP_GOOGLE_CSE]', { jan, called: true, hit: false, reason: 'http_error', status: cseRes.status });
+              }
+            } else {
+              spDbg('[PRODUCT_LOOKUP_GOOGLE_CSE]', { jan, called: false, hit: false, reason: 'no_proxy_url' });
+            }
+          } catch (cseErr) {
+            spDbg('[PRODUCT_LOOKUP_GOOGLE_CSE]', { jan, called: true, hit: false, reason: 'exception', error: cseErr.message });
+          }
+        } else {
+          // 既に商品名が見つかっているのでGoogle CSEはスキップ
+          spDbg('[PRODUCT_LOOKUP_GOOGLE_CSE]', { jan, called: false, hit: false, reason: 'already_found_by_api' });
+        }
+
+        // v23.9.107: 候補が蓄積されている場合、AI整形で商品名を決定
+        if (window._productNameCandidates && window._productNameCandidates.length > 0 && (!candidateName || candidateSource === 'google_cse_pending_ai')) {
+          try {
+            spDbg('[PRODUCT_LOOKUP_AI]', { called: true, candidateCount: window._productNameCandidates.length, candidates: window._productNameCandidates });
+            
+            // GAS経由でAI整形を呼び出し
+            const proxyUrl = (window.SP_CONFIG && window.SP_CONFIG.yahooProxyExecUrl) ? window.SP_CONFIG.yahooProxyExecUrl.trim() : '';
+            if (proxyUrl) {
+              const aiPayload = {
+                jan: jan,
+                stores: window._productNameCandidates.map((name, idx) => ({
+                  name: name,
+                  source: window._productCandidateSources[idx] || 'unknown'
+                })),
+                fallback: window._productNameCandidates[0] || ''
+              };
+              
+              const aiUrl = `${proxyUrl}?action=ai_filter&jan=${encodeURIComponent(jan)}`;
+              const aiRes = await fetchWithTimeout(aiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(aiPayload),
+                cache: 'no-store'
+              }, 20000);
+              
+              if (aiRes.ok) {
+                const aiJson = await aiRes.json();
+                if (aiJson.ok && aiJson.name) {
+                  candidateName = aiJson.name;
+                  candidateMaker = aiJson.maker || extractMakerFromName(aiJson.name);
+                  candidateSource = 'google_cse_ai';
+                  
+                  spDbg('[PRODUCT_LOOKUP_AI]', { 
+                    called: true, 
+                    hit: true,
+                    aiName: aiJson.name, 
+                    aiMaker: aiJson.maker,
+                    source: 'ai_filter_success'
+                  });
+                  
+                  if (isDebug()) showToast(`[AI整形] ${candidateName}`, 3000);
+                } else {
+                  // AI整形失敗時はfallback
+                  candidateName = cleanProductName(window._productNameCandidates[0]);
+                  candidateSource = 'google_cse_fallback';
+                  spDbg('[PRODUCT_LOOKUP_AI]', { called: true, hit: false, reason: 'ai_failed_using_fallback', fallbackName: candidateName });
+                }
+              } else {
+                // HTTP エラー時もfallback
+                candidateName = cleanProductName(window._productNameCandidates[0]);
+                candidateSource = 'google_cse_fallback';
+                spDbg('[PRODUCT_LOOKUP_AI]', { called: true, hit: false, reason: 'http_error', status: aiRes.status });
+              }
+            } else {
+              // proxyUrlがない場合もfallback
+              candidateName = cleanProductName(window._productNameCandidates[0]);
+              candidateSource = 'google_cse_fallback';
+              spDbg('[PRODUCT_LOOKUP_AI]', { called: false, hit: false, reason: 'no_proxy_url' });
+            }
+            
+            // 候補変数をクリア
+            window._productNameCandidates = [];
+            window._productCandidateSources = [];
+            
+          } catch (aiErr) {
+            // AI整形エラー時もfallback
+            candidateName = cleanProductName(window._productNameCandidates[0] || '');
+            candidateSource = 'google_cse_fallback';
+            spDbg('[PRODUCT_LOOKUP_AI]', { called: true, hit: false, reason: 'exception', error: aiErr.message });
+            
+            // 候補変数をクリア
+            window._productNameCandidates = [];
+            window._productCandidateSources = [];
+          }
+        } else if (!candidateName) {
+          // 候補がない場合
+          spDbg('[PRODUCT_LOOKUP_AI]', { called: false, result: null, reason: 'no_candidates' });
+        } else {
+          // 既に商品名が決まっている場合
+          spDbg('[PRODUCT_LOOKUP_AI]', { called: false, result: null, reason: 'name_already_found' });
+        }
+        
         // [final-route-fix] sourceがyahooのときmakerが別経路に流れないよう最終同期
         if (candidateSource === 'yahoo' && candidateName) {
           const syncedMaker = extractMakerFromName(candidateName);
@@ -7850,10 +8184,6 @@ function spVisibleTrace(tag, payload, cls) {
         finalInfo.maker = candidateMaker || '';
         finalInfo.imageUrl = candidateImageUrl || '';
         sourceUsed = candidateSource || 'none';
-        
-        // v23.9.102: AI検索ログ（指示書対応）
-        // 現在のコードではAI整形は使用されていない（Yahoo/Rakutenの結果をそのまま使用）
-        spDbg('[PRODUCT_LOOKUP_AI]', { called: false, result: null });
         
         // v23.9.102: 最終結果ログ（指示書対応）
         spDbg('[PRODUCT_LOOKUP_FINAL]', { name: finalInfo.name, maker: finalInfo.maker, source: sourceUsed });
