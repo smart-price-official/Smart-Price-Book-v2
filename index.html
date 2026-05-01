@@ -18,8 +18,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.102";
-  const BUILD_ID    = "2026-04-30_image-internal-ai-gps-fix-r2";
+  const APP_VERSION = "v23.9.103";
+  const BUILD_ID    = "2026-05-01_gas-stores-image-proxy-r2";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -4949,66 +4949,93 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
           // rawStoresはfetchNearbyStores前に直接取得
           const proxyUrl = (window.SP_CONFIG && window.SP_CONFIG.yahooProxyExecUrl) ? window.SP_CONFIG.yahooProxyExecUrl.trim() : '';
           if (proxyUrl) {
-            // v23.9.100: ヘルパー関数を使用して設定値を反映
-            const radiusKm = getGpsRadiusKm();
+            // v23.9.103: 半径拡張診断（debug=1時のみ、0件の場合に順次試行）
+            const radiusOptions = isDebug() ? [0.5, 1, 3, 5] : [getGpsRadiusKm()];
             const limit = 40;
-            const reqUrl = `${proxyUrl}?action=stores&lat=${lat}&lng=${lng}&radius_km=${radiusKm}&limit=${limit}`;
-            gpsRequestUrl = reqUrl; // v23.9.102: リクエストURLを記録
             
-            // v23.9.100: 詳細診断ログを追加
-            spDbg('[GPS_DEBUG_REQUEST]', { requestUrl: reqUrl, radiusKm, lat, lng });
-            
-            try {
-              const res = await fetchWithTimeout(reqUrl, { cache: 'no-store' }, 15000);
+            let foundStores = false;
+            for (let radiusKm of radiusOptions) {
+              spDbg('[GPS_RADIUS_TRY]', { radiusKm, lat, lng });
               
-              // v23.9.102: HTTPステータスを記録
-              gpsHttpStatus = res.status;
-              gpsStatusText = res.statusText || '';
-              gpsResponseOk = res.ok;
+              const reqUrl = `${proxyUrl}?action=stores&lat=${lat}&lng=${lng}&radius_km=${radiusKm}&limit=${limit}`;
+              gpsRequestUrl = reqUrl; // v23.9.102: リクエストURLを記録
               
-              // v23.9.100: HTTPステータスをログ
-              spDbg('[GPS_DEBUG_HTTP_STATUS]', { status: res.status, ok: res.ok });
+              // v23.9.100: 詳細診断ログを追加
+              spDbg('[GPS_DEBUG_REQUEST]', { requestUrl: reqUrl, radiusKm, lat, lng });
               
-              if (res.ok) {
-                const rawText = await res.text();
-                gpsRawTextPreview = rawText.substring(0, 500); // v23.9.102: レスポンスプレビューを記録
-                spDbg('[GPS_DEBUG_RAW_TEXT_LENGTH]', rawText.length);
+              try {
+                const res = await fetchWithTimeout(reqUrl, { cache: 'no-store' }, 15000);
                 
-                let json;
-                try {
-                  json = JSON.parse(rawText);
-                  gpsResponseKeys = Object.keys(json || []); // v23.9.102: レスポンスキーを記録
-                  spDbg('[GPS_DEBUG_JSON_OK]', true);
-                  spDbg('[GPS_DEBUG_RESPONSE_KEYS]', gpsResponseKeys);
-                } catch(parseErr) {
-                  spDbg('[GPS_DEBUG_JSON_PARSE_ERROR]', { message: parseErr.message });
-                  throw parseErr;
-                }
+                // v23.9.102: HTTPステータスを記録
+                gpsHttpStatus = res.status;
+                gpsStatusText = res.statusText || '';
+                gpsResponseOk = res.ok;
                 
-                if (json && json.ok && Array.isArray(json.stores)) {
-                  gpsHasStoresArray = true; // v23.9.102: stores配列の存在を記録
-                  spDbg('[GPS_DEBUG_STORE_ARRAY_EXISTS]', true);
-                  spDbg('[GPS_DEBUG_STORE_ARRAY_LENGTH]', json.stores.length);
+                // v23.9.100: HTTPステータスをログ
+                spDbg('[GPS_DEBUG_HTTP_STATUS]', { status: res.status, ok: res.ok });
+                
+                if (res.ok) {
+                  const rawText = await res.text();
+                  gpsRawTextPreview = rawText.substring(0, 500); // v23.9.102: レスポンスプレビューを記録
+                  spDbg('[GPS_DEBUG_RAW_TEXT_LENGTH]', rawText.length);
                   
-                  rawStores = json.stores.map(s => {
-                    if (typeof s === 'string') return s;
-                    return s.displayName || s.name || s.storeName || s.shopName || s.title || JSON.stringify(s);
-                  });
-                  spDbg('[GPS_DEBUG_STORE_RAW]', rawStores);
+                  let json;
+                  try {
+                    json = JSON.parse(rawText);
+                    gpsResponseKeys = Object.keys(json || []); // v23.9.102: レスポンスキーを記録
+                    spDbg('[GPS_DEBUG_JSON_OK]', true);
+                    spDbg('[GPS_DEBUG_RESPONSE_KEYS]', gpsResponseKeys);
+                  } catch(parseErr) {
+                    spDbg('[GPS_DEBUG_JSON_PARSE_ERROR]', { message: parseErr.message });
+                    throw parseErr;
+                  }
+                  
+                  // v23.9.103: GASが救急版ノートを返した場合は即座にログ（Claude版の改善）
+                  if (json && json._note) {
+                    spDbg('[GPS_GAS_NOTE]', { note: json._note, radiusKm });
+                  }
+                  
+                  if (json && json.ok && Array.isArray(json.stores)) {
+                    gpsHasStoresArray = true; // v23.9.102: stores配列の存在を記録
+                    spDbg('[GPS_DEBUG_STORE_ARRAY_EXISTS]', true);
+                    spDbg('[GPS_DEBUG_STORE_ARRAY_LENGTH]', json.stores.length);
+                    spDbg('[GPS_RADIUS_RESULT]', { radiusKm, count: json.stores.length });
+                    
+                    rawStores = json.stores.map(s => {
+                      if (typeof s === 'string') return s;
+                      return s.displayName || s.name || s.storeName || s.shopName || s.title || JSON.stringify(s);
+                    });
+                    spDbg('[GPS_DEBUG_STORE_RAW]', rawStores);
 
-                  normalizedStores = json.stores.map(s => buildNearbyStoreLabel(s)).filter(v => typeof v === 'string' && v.trim());
-                  spDbg('[GPS_DEBUG_STORE_NORMALIZED]', normalizedStores);
+                    normalizedStores = json.stores.map(s => buildNearbyStoreLabel(s)).filter(v => typeof v === 'string' && v.trim());
+                    spDbg('[GPS_DEBUG_STORE_NORMALIZED]', normalizedStores);
 
-                  finalStores = normalizedStores.filter(isShoppingStore);
-                  spDbg('[GPS_DEBUG_STORE_FINAL]', finalStores);
-                } else {
-                  spDbg('[GPS_DEBUG_STORE_ARRAY_EXISTS]', false);
-                  spDbg('[GPS_DEBUG_UNEXPECTED_RESPONSE]', json);
+                    finalStores = normalizedStores.filter(isShoppingStore);
+                    spDbg('[GPS_DEBUG_STORE_FINAL]', finalStores);
+                    
+                    // v23.9.103: 店舗が見つかった場合は半径拡張を終了
+                    if (json.stores.length > 0) {
+                      foundStores = true;
+                      break;
+                    }
+                  } else {
+                    spDbg('[GPS_DEBUG_STORE_ARRAY_EXISTS]', false);
+                    spDbg('[GPS_DEBUG_UNEXPECTED_RESPONSE]', json);
+                    spDbg('[GPS_RADIUS_RESULT]', { radiusKm, count: 0 });
+                  }
                 }
+              } catch(fe) {
+                storeError = { message: fe.message, code: -2 };
+                spDbg('[GPS_DEBUG_ERROR]', storeError);
+                spDbg('[GPS_RADIUS_RESULT]', { radiusKm, count: 0, error: fe.message });
               }
-            } catch(fe) {
-              storeError = { message: fe.message, code: -2 };
-              spDbg('[GPS_DEBUG_ERROR]', storeError);
+              
+              // v23.9.103: 0件の場合のみ次の半径へ（debug=1時のみ）
+              if (!foundStores && isDebug() && radiusKm < radiusOptions[radiusOptions.length - 1]) {
+                spDbg('[GPS_RADIUS_EXPAND]', { from: radiusKm, to: radiusOptions[radiusOptions.indexOf(radiusKm) + 1] });
+              } else {
+                break;
+              }
             }
           }
 
@@ -5956,6 +5983,11 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         
         const json = JSON.parse(rawText);
         
+        // v23.9.103: GASが救急版ノートを返した場合は即座にログ（Claude版の改善）
+        if (json && json._note) {
+          spDbg('[GPS_GAS_NOTE]', { note: json._note, mode: 'gps' });
+        }
+        
         // v23.9.101: 取得件数
         const rawCount = (json && json.stores && Array.isArray(json.stores)) ? json.stores.length : 0;
         spDbg('[GPS_STORE_FETCH_COUNT]', { 
@@ -6016,6 +6048,12 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
         const json = await res.json();
+        
+        // v23.9.103: GASが救急版ノートを返した場合は即座にログ（Claude版の改善）
+        if (json && json._note) {
+          spDbg('[GPS_GAS_NOTE]', { note: json._note, mode: 'area', area });
+        }
+        
         spDbg('[GPS] distance calc', { responseOk: !!(json && json.ok), rawCount: json && json.stores ? json.stores.length : 0 });
 
         if (json && json.ok && Array.isArray(json.stores)) {
@@ -7721,7 +7759,10 @@ function spVisibleTrace(tag, payload, cls) {
             }
             if (rakutenInfo) {
               if (!candidateName && rakutenInfo.name) {
+                // v23.9.103: 商品名候補ログ（RAW→CLEANED）
+                spDbg('[NAME_CANDIDATE_RAW]', { source: 'rakuten', name: rakutenInfo.name });
                 candidateName = cleanProductName(rakutenInfo.name);
+                spDbg('[NAME_CANDIDATE_CLEANED]', { source: 'rakuten', name: candidateName });
                 candidateSource = 'yahoo+rakuten';
               }
               if (!candidateMaker && rakutenInfo.maker) {
@@ -7748,7 +7789,10 @@ function spVisibleTrace(tag, payload, cls) {
           spDbg('[PRODUCT_LOOKUP_RAKUTEN]', { hit: rakutenHit, count: rakutenHit ? 1 : 0, name: rakutenInfo?.name || '', maker: rakutenInfo?.maker || '' });
           
           if (rakutenInfo) {
+            // v23.9.103: 商品名候補ログ（RAW→CLEANED）
+            spDbg('[NAME_CANDIDATE_RAW]', { source: 'rakuten', name: rakutenInfo.name || '' });
             candidateName = cleanProductName(rakutenInfo.name || '');
+            spDbg('[NAME_CANDIDATE_CLEANED]', { source: 'rakuten', name: candidateName });
             candidateMaker = validateMakerName(rakutenInfo.maker || '');
             candidateImageUrl = rakutenInfo.imageUrl || '';
             candidateSource = 'rakuten';
@@ -7762,7 +7806,10 @@ function spVisibleTrace(tag, payload, cls) {
             }
             if (offInfo) {
               if (offInfo.name && offInfo.name.trim() && (!candidateName || candidateName.trim().length < 3)) {
+                // v23.9.103: 商品名候補ログ（RAW→CLEANED）
+                spDbg('[NAME_CANDIDATE_RAW]', { source: 'off', name: offInfo.name });
                 candidateName = cleanProductName(offInfo.name);
+                spDbg('[NAME_CANDIDATE_CLEANED]', { source: 'off', name: candidateName });
                 candidateSource = 'off';
               }
               if (offInfo.maker && offInfo.maker.trim() && !candidateMaker) {
@@ -7810,6 +7857,9 @@ function spVisibleTrace(tag, payload, cls) {
         
         // v23.9.102: 最終結果ログ（指示書対応）
         spDbg('[PRODUCT_LOOKUP_FINAL]', { name: finalInfo.name, maker: finalInfo.maker, source: sourceUsed });
+        
+        // v23.9.103: 商品名最終ソースログ
+        spDbg('[NAME_FINAL_SOURCE]', { source: sourceUsed, name: finalInfo.name, maker: finalInfo.maker });
 
         // [name-stabilize / maker-image-fix] 名前・メーカー・画像の最終整形
         // 1. まず shortenName で beforeStrip を保持（削りすぎ救済用）
@@ -8186,6 +8236,45 @@ function spVisibleTrace(tag, payload, cls) {
   }
   window.downloadImageWithJan = downloadImageWithJan;
 
+  // ===== fetchImageViaGasProxy: GASプロキシ経由で画像を取得（CORS回避） =====
+  // v23.9.103: 独立関数化（Claude版の改善）
+  async function fetchImageViaGasProxy(url, jan) {
+    const proxyUrl = (window.SP_CONFIG && window.SP_CONFIG.yahooProxyExecUrl)
+      ? window.SP_CONFIG.yahooProxyExecUrl.trim() : '';
+    
+    if (!proxyUrl) {
+      spDbg('[IMAGE_PROXY_ERROR]', { jan, url, reason: 'no_proxy_url' });
+      return { ok: false, reason: 'no_proxy' };
+    }
+
+    spDbg('[IMAGE_PROXY_START]', { jan, url });
+
+    try {
+      const reqUrl = `${proxyUrl}?action=image_proxy&url=${encodeURIComponent(url)}&jan=${encodeURIComponent(jan || '')}`;
+      const res = await fetchWithTimeout(reqUrl, { cache: 'no-store' }, 20000);
+      
+      if (!res.ok) {
+        spDbg('[IMAGE_PROXY_ERROR]', { jan, url, status: res.status });
+        return { ok: false, reason: 'proxy_http_error', detail: 'HTTP ' + res.status };
+      }
+      
+      const json = await res.json();
+      
+      if (!json.ok) {
+        spDbg('[IMAGE_PROXY_ERROR]', { jan, url, reason: json.reason, detail: json.detail });
+        return { ok: false, reason: json.reason || 'proxy_ng', detail: json.detail || '' };
+      }
+      
+      spDbg('[IMAGE_PROXY_SUCCESS]', { jan, url, size: json.size, contentType: json.contentType });
+      return { ok: true, dataUrl: json.dataUrl, contentType: json.contentType, size: json.size };
+      
+    } catch(e) {
+      spDbg('[IMAGE_PROXY_ERROR]', { jan, url, reason: 'exception', detail: String(e) });
+      return { ok: false, reason: 'exception', detail: String(e) };
+    }
+  }
+  window.fetchImageViaGasProxy = fetchImageViaGasProxy;
+
   // ===== [IMG_DIAG] 画像診断システム (v23.9.98 image-diagnostics-r1) =====
 
   // 画像診断データ保持
@@ -8376,24 +8465,79 @@ function spVisibleTrace(tag, payload, cls) {
     }
     
     if (!fetchResult.ok) {
-      // v23.9.101: エラーログ
-      spDbg('[IMAGE_SAVE_ERROR]', { reason: 'fetch failed', detail: fetchResult.reason, jan, url });
+      // v23.9.103: CORS失敗時はGASプロキシへフォールバック
+      spDbg('[IMAGE_FETCH_ERROR]', { reason: 'direct fetch failed', detail: fetchResult.reason, jan, url });
       diagCandidate.reason = (diagCandidate.reason ? diagCandidate.reason + ' / ' : '') + 'fetch: ' + fetchResult.reason;
-      diagCandidate.blob = 'skip';
-      diagCandidate.indexedDb = 'skip';
-      diagCandidate.firebase = 'skip';
-      diagCandidate.apply = 'skip';
-      spDbg('[IMAGE_SAVE_STEP]', { step: 'blob', result: 'skip' });
-      spDbg('[IMAGE_SAVE_STEP]', { step: 'indexedDb', result: 'skip' });
-      spDbg('[IMAGE_SAVE_STEP]', { step: 'firebase', result: 'skip' });
-      spDbg('[IMAGE_SAVE_STEP]', { step: 'apply', result: 'skip' });
+      
+      // プロキシ経由で再試行（v23.9.103: 独立関数化）
+      diagCandidate.proxy = 'start';
       imgDiagUpdate(window._imgDiagData);
-
-      // ユーザー向け段階別エラーメッセージ
-      const userMsg = prevResult.ok
-        ? '画像は表示できましたが、保存用取得に失敗しました'
-        : '画像の取得に失敗しました。別の画像を選んでください';
-      return { ok: false, reason: fetchResult.reason, userMsg };
+      
+      const proxyResult = await fetchImageViaGasProxy(url, jan);
+      
+      if (proxyResult.ok && proxyResult.dataUrl) {
+        // DataURLからBlobに変換
+        try {
+          const [header, base64] = proxyResult.dataUrl.split(',');
+          const contentType = header.match(/data:([^;]+)/)?.[1] || 'image/jpeg';
+          const binaryString = atob(base64);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          const proxyBlob = new Blob([bytes], { type: contentType });
+          
+          diagCandidate.proxy = 'ok';
+          diagCandidate.fetch = 'ok(proxy)';
+          imgDiagUpdate(window._imgDiagData);
+          
+          // プロキシ経由で取得成功 → blob処理へ続ける
+          fetchResult.ok = true;
+          fetchResult.blob = proxyBlob;
+          
+        } catch(convertErr) {
+          spDbg('[IMAGE_PROXY_ERROR]', { reason: 'dataUrl convert failed', detail: convertErr.message, jan, url });
+          diagCandidate.proxy = 'ng';
+          diagCandidate.reason = (diagCandidate.reason ? diagCandidate.reason + ' / ' : '') + 'proxy: dataUrl convert failed';
+          diagCandidate.blob = 'skip';
+          diagCandidate.indexedDb = 'skip';
+          diagCandidate.firebase = 'skip';
+          diagCandidate.apply = 'skip';
+          spDbg('[IMAGE_SAVE_STEP]', { step: 'blob', result: 'skip' });
+          spDbg('[IMAGE_SAVE_STEP]', { step: 'indexedDb', result: 'skip' });
+          spDbg('[IMAGE_SAVE_STEP]', { step: 'firebase', result: 'skip' });
+          spDbg('[IMAGE_SAVE_STEP]', { step: 'apply', result: 'skip' });
+          imgDiagUpdate(window._imgDiagData);
+          
+          const userMsg = prevResult.ok
+            ? '画像は表示できましたが、保存用取得に失敗しました'
+            : '画像の取得に失敗しました。別の画像を選んでください';
+          return { ok: false, reason: fetchResult.reason + ' / proxy: dataUrl convert failed', userMsg };
+        }
+      } else {
+        // プロキシも失敗
+        diagCandidate.proxy = 'ng';
+        diagCandidate.reason = (diagCandidate.reason ? diagCandidate.reason + ' / ' : '') + 'proxy: ' + (proxyResult.reason || 'unknown');
+        diagCandidate.blob = 'skip';
+        diagCandidate.indexedDb = 'skip';
+        diagCandidate.firebase = 'skip';
+        diagCandidate.apply = 'skip';
+        spDbg('[IMAGE_SAVE_STEP]', { step: 'blob', result: 'skip' });
+        spDbg('[IMAGE_SAVE_STEP]', { step: 'indexedDb', result: 'skip' });
+        spDbg('[IMAGE_SAVE_STEP]', { step: 'firebase', result: 'skip' });
+        spDbg('[IMAGE_SAVE_STEP]', { step: 'apply', result: 'skip' });
+        imgDiagUpdate(window._imgDiagData);
+        
+        const userMsg = prevResult.ok
+          ? '画像は表示できましたが、保存用取得に失敗しました'
+          : '画像の取得に失敗しました。別の画像を選んでください';
+        return { ok: false, reason: fetchResult.reason + ' / proxy: ' + (proxyResult.reason || 'unknown'), userMsg };
+      }
+      
+      // プロキシ失敗時はここで終了（上のifで処理済み）
+      if (!fetchResult.ok) {
+        return { ok: false, reason: fetchResult.reason, userMsg: '画像の取得に失敗しました' };
+      }
     }
 
     // Step3: blob化
@@ -8860,6 +9004,27 @@ function spVisibleTrace(tag, payload, cls) {
     }
 
     spDbg('[IMG_DIAG_CANDIDATES]', { jan, count: candidates.length, urls: candidates });
+
+    // v23.9.103: Google検索ページURLを除外（画像ではないため）
+    const isDirectImageCandidate = (url) => {
+      if (!url) return false;
+      if (url.includes('google.com/search')) return false;
+      if (url.includes('bing.com/images/search')) return false;
+      return /^https?:\/\//.test(url);
+    };
+
+    const beforeFilterCount = candidates.length;
+    candidates = candidates.filter(url => {
+      const isDirect = isDirectImageCandidate(url);
+      if (!isDirect) {
+        spDbg('[IMAGE_FILTER_SKIP]', { reason: 'search_page_not_image', url });
+      }
+      return isDirect;
+    });
+    
+    if (beforeFilterCount !== candidates.length) {
+      spDbg('[IMG_DIAG_CANDIDATES_FILTERED]', { jan, beforeCount: beforeFilterCount, afterCount: candidates.length, removed: beforeFilterCount - candidates.length });
+    }
 
     // debug=1時: 候補リストをdiagDataに登録（preview/fetch等は選択時に実行）
     if (isDebug() && window._imgDiagData) {
