@@ -18,8 +18,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.110";
-  const BUILD_ID    = "2026-05-03_clipboard-fallback-r1";
+  const APP_VERSION = "v23.9.111";
+  const BUILD_ID    = "2026-05-04_copy-result-visible-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -11047,6 +11047,231 @@ function buildProductDebugSnapshot(jan) {
   return snapshot;
 }
 
+/** v23.9.111: コピー結果ログ用の共通フィールド */
+function copyResultLogBase(overrides) {
+  const o = overrides || {};
+  const tl = typeof o.textLength === 'number' ? o.textLength : (o.textLength != null ? Number(o.textLength) : 0);
+  return {
+    textLength: isNaN(tl) ? 0 : tl,
+    jan: o.jan != null ? String(o.jan) : '',
+    appVersion: (typeof window !== 'undefined' && window.APP_VERSION) ? String(window.APP_VERSION) : '',
+    buildId: (typeof window !== 'undefined' && window.BUILD_ID) ? String(window.BUILD_ID) : '',
+    error: o.error != null ? String(o.error) : '',
+    clipboardAvailable: !!(typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function'),
+    shareAvailable: typeof navigator !== 'undefined' && typeof navigator.share === 'function'
+  };
+}
+
+/** v23.9.111: コピー結果モーダル上部のメタ情報テキスト */
+function buildCopyResultSummary(obj) {
+  const status = obj.statusLabel || '';
+  const raw = String(obj.preview || '');
+  const oneLine = raw.replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim();
+  const pv = oneLine.length > 120 ? oneLine.slice(0, 120) + '…' : oneLine;
+  const janDisp = obj.jan !== undefined && obj.jan !== null && obj.jan !== '' ? String(obj.jan) : '(なし)';
+  return '状態：' + status + '\n文字数：' + obj.charLen + '文字\nJAN：' + janDisp + '\nAPP_VERSION：' + (obj.appVersion || '') + '\nBUILD_ID：' + (obj.buildId || '') + '\n先頭プレビュー：' + pv;
+}
+
+function spRefreshCopyResultSummaryDOM(statusKey, fullText, jan) {
+  const av = (typeof window !== 'undefined' && window.APP_VERSION) ? String(window.APP_VERSION) : '';
+  const bid = (typeof window !== 'undefined' && window.BUILD_ID) ? String(window.BUILD_ID) : '';
+  const ft = String(fullText || '');
+  const j = jan != null ? String(jan) : '';
+  let statusLabel = 'コピー失敗';
+  let msg = '自動コピーに失敗しました。下の全文を選択してコピーしてください。';
+  if (statusKey === 'success') {
+    statusLabel = 'コピー成功';
+    msg = 'コピー成功：ChatGPTへ貼り付けできます';
+  } else if (statusKey === 'empty') {
+    statusLabel = 'データ空';
+    msg = 'コピー対象データが空です。商品をスキャンしてから再実行してください。';
+  }
+  const el = document.getElementById('sp-copy-result-summary-pre');
+  const msgEl = document.getElementById('sp-copy-result-msg');
+  if (el) {
+    el.textContent = buildCopyResultSummary({
+      statusLabel: statusLabel,
+      charLen: ft.length,
+      jan: j,
+      preview: ft.slice(0, 400),
+      appVersion: av,
+      buildId: bid
+    });
+  }
+  if (msgEl) msgEl.textContent = msg;
+}
+
+/**
+ * v23.9.111: 検証データコピー結果モーダル（動的DOMのみ・既存レイアウト非変更）
+ * p.clipboardStatus: 'success' | 'fail' | 'empty'
+ */
+function showCopyResultModal(p) {
+  try {
+    const prev = document.getElementById('sp-copy-fallback-modal');
+    if (prev) prev.remove();
+  } catch (e0) {}
+  const old = document.getElementById('sp-copy-result-modal');
+  if (old) old.remove();
+
+  const av = (typeof window !== 'undefined' && window.APP_VERSION) ? String(window.APP_VERSION) : '';
+  const bid = (typeof window !== 'undefined' && window.BUILD_ID) ? String(window.BUILD_ID) : '';
+  const jan = p.jan != null ? String(p.jan) : '';
+  const fullText = p.fullText != null ? String(p.fullText) : '';
+  const clipStat = p.clipboardStatus || 'fail';
+  let statusLabel = 'コピー失敗';
+  let msg = '自動コピーに失敗しました。下の全文を選択してコピーしてください。';
+  if (clipStat === 'success') {
+    statusLabel = 'コピー成功';
+    msg = 'コピー成功：ChatGPTへ貼り付けできます';
+  } else if (clipStat === 'empty') {
+    statusLabel = 'データ空';
+    msg = 'コピー対象データが空です。商品をスキャンしてから再実行してください。';
+  }
+
+  window._spCopyResultLast = { jan: jan, isMainEntry: !!p.isMainEntry };
+
+  const overlay = document.createElement('div');
+  overlay.id = 'sp-copy-result-modal';
+  overlay.setAttribute('style', 'position:fixed;inset:0;z-index:999999;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box;');
+
+  const box = document.createElement('div');
+  box.setAttribute('style', 'background:#f8f8ff;color:#111;max-width:100%;width:min(560px,100%);max-height:92vh;display:flex;flex-direction:column;border-radius:10px;overflow:hidden;box-sizing:border-box;border:1px solid #889;');
+
+  const title = document.createElement('div');
+  title.textContent = '🔬 検証データコピー結果';
+  title.setAttribute('style', 'font-weight:bold;font-size:16px;padding:10px 12px;background:#224;color:#fff;');
+
+  const summaryPre = document.createElement('pre');
+  summaryPre.id = 'sp-copy-result-summary-pre';
+  summaryPre.setAttribute('style', 'margin:0;padding:10px 12px;font-size:12px;white-space:pre-wrap;background:#eef;border-bottom:1px solid #ccd;font-family:system-ui,sans-serif;');
+  summaryPre.textContent = buildCopyResultSummary({
+    statusLabel: statusLabel,
+    charLen: fullText.length,
+    jan: jan,
+    preview: fullText.slice(0, 400),
+    appVersion: av,
+    buildId: bid
+  });
+
+  const msgEl = document.createElement('div');
+  msgEl.id = 'sp-copy-result-msg';
+  msgEl.setAttribute('style', 'padding:8px 12px;font-size:13px;background:#fff8e1;border-bottom:1px solid #edc;');
+  msgEl.textContent = msg;
+
+  const ta = document.createElement('textarea');
+  ta.dataset.spCopyBody = '1';
+  ta.readOnly = true;
+  ta.value = fullText;
+  ta.setAttribute('style', 'flex:1;min-height:220px;width:100%;box-sizing:border-box;font-size:12px;padding:10px;border:none;resize:vertical;font-family:monospace;');
+
+  const row = document.createElement('div');
+  row.setAttribute('style', 'display:flex;gap:8px;padding:10px;flex-wrap:wrap;justify-content:flex-end;background:#dde;border-top:1px solid #ccd;');
+
+  const btnSel = document.createElement('button');
+  btnSel.type = 'button';
+  btnSel.textContent = '全文を選択';
+  btnSel.setAttribute('style', 'padding:8px 12px;font-size:14px;cursor:pointer;');
+  btnSel.onclick = function () { selectCopyResultText(); };
+
+  const btnRetry = document.createElement('button');
+  btnRetry.type = 'button';
+  btnRetry.textContent = 'もう一度コピー';
+  btnRetry.setAttribute('style', 'padding:8px 12px;font-size:14px;cursor:pointer;');
+  btnRetry.onclick = function () { retryCopyResultClipboard(); };
+
+  const btnShare = document.createElement('button');
+  btnShare.type = 'button';
+  btnShare.textContent = '共有する';
+  btnShare.setAttribute('style', 'padding:8px 12px;font-size:14px;cursor:pointer;');
+  btnShare.onclick = function () { shareCopyResultText(); };
+
+  const btnClose = document.createElement('button');
+  btnClose.type = 'button';
+  btnClose.textContent = '閉じる';
+  btnClose.setAttribute('style', 'padding:8px 12px;font-size:14px;cursor:pointer;');
+  btnClose.onclick = function () {
+    const el = document.getElementById('sp-copy-result-modal');
+    if (el) el.remove();
+  };
+
+  overlay.onclick = function (ev) { if (ev.target === overlay) btnClose.onclick(); };
+
+  row.appendChild(btnSel);
+  row.appendChild(btnRetry);
+  row.appendChild(btnShare);
+  row.appendChild(btnClose);
+  box.appendChild(title);
+  box.appendChild(summaryPre);
+  box.appendChild(msgEl);
+  box.appendChild(ta);
+  box.appendChild(row);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+
+  try {
+    spDbg('[COPY_RESULT_MODAL_OPEN]', copyResultLogBase({
+      jan: jan,
+      textLength: fullText.length,
+      error: clipStat + (p.clipboardMessage ? ':' + p.clipboardMessage : '')
+    }));
+  } catch (e1) {}
+}
+
+function selectCopyResultText() {
+  const ta = document.querySelector('#sp-copy-result-modal textarea[data-sp-copy-body="1"]');
+  const jan = (window._spCopyResultLast && window._spCopyResultLast.jan) ? String(window._spCopyResultLast.jan) : '';
+  if (!ta) return;
+  try {
+    ta.focus();
+    ta.select();
+    spDbg('[COPY_RESULT_SELECT_ALL]', copyResultLogBase({ jan: jan, textLength: (ta.value || '').length, error: '' }));
+  } catch (e) {
+    try { spDbg('[ERROR]', copyResultLogBase({ jan: jan, error: e.message || String(e) })); } catch (e2) {}
+  }
+}
+
+function shareCopyResultText() {
+  const ta = document.querySelector('#sp-copy-result-modal textarea[data-sp-copy-body="1"]');
+  const text = ta ? String(ta.value || '') : '';
+  const jan = (window._spCopyResultLast && window._spCopyResultLast.jan) ? String(window._spCopyResultLast.jan) : '';
+  try {
+    spDbg('[COPY_RESULT_SHARE]', copyResultLogBase({ jan: jan, textLength: text.length, error: '' }));
+  } catch (e0) {}
+  if (typeof navigator.share !== 'function') {
+    try { showToast('この端末では共有できません', 2500); } catch (e1) {}
+    return;
+  }
+  navigator.share({ title: 'Smart Price 検証データ (JAN: ' + jan + ')', text: text }).catch(function (err) {
+    if (!err || err.name !== 'AbortError') {
+      try { spDbg('[ERROR]', copyResultLogBase({ jan: jan, error: err && err.message })); } catch (e2) {}
+    }
+  });
+}
+
+function retryCopyResultClipboard() {
+  const ta = document.querySelector('#sp-copy-result-modal textarea[data-sp-copy-body="1"]');
+  if (!ta) return;
+  const text = String(ta.value || '');
+  const jan = (window._spCopyResultLast && window._spCopyResultLast.jan) ? String(window._spCopyResultLast.jan) : '';
+  try {
+    spDbg('[COPY_RESULT_RETRY_COPY]', copyResultLogBase({ jan: jan, textLength: text.length, error: '' }));
+  } catch (e0) {}
+  const hasCB = typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function';
+  if (!hasCB) {
+    try { spDbg('[COPY_RESULT_CLIPBOARD_FAIL]', copyResultLogBase({ jan: jan, textLength: text.length, error: 'no_clipboard_api' })); } catch (e1) {}
+    return;
+  }
+  navigator.clipboard.writeText(text).then(function () {
+    try { spDbg('[COPY_RESULT_CLIPBOARD_SUCCESS]', copyResultLogBase({ jan: jan, textLength: text.length, error: '' })); } catch (e2) {}
+    try { showToast('✅ コピーしました', 2000); } catch (e3) {}
+    spRefreshCopyResultSummaryDOM('success', text, jan);
+  }).catch(function (err) {
+    const em = err && err.message ? err.message : String(err);
+    try { spDbg('[COPY_RESULT_CLIPBOARD_FAIL]', copyResultLogBase({ jan: jan, textLength: text.length, error: em })); } catch (e4) {}
+    spRefreshCopyResultSummaryDOM('fail', text, jan);
+  });
+}
+
 /**
  * 商品情報をMarkdown形式で生成
  * @param {Object} snapshot
@@ -11055,6 +11280,7 @@ function buildProductDebugSnapshot(jan) {
 function buildProductDebugMarkdown(snapshot) {
   if (!snapshot) {
     try { spDbg('[ERROR]', { at: 'buildProductDebugMarkdown', reason: 'no_snapshot' }); } catch (e0) {}
+    try { spDbg('[COPY_RESULT_TEXT_EMPTY]', copyResultLogBase({ textLength: 0, jan: '', error: 'no_snapshot' })); } catch (e1) {}
     return '# エラー\n\nスナップショットが存在しません。';
   }
   
@@ -11127,159 +11353,101 @@ function buildProductDebugMarkdown(snapshot) {
   md += `Generated by Smart Price ${snapshot.appVersion} (${snapshot.buildId})\n`;
   
   try { spDbg('[TEXT_READY]', { length: md.length, jan: snapshot.jan }); } catch (e0) {}
+  try { spDbg('[COPY_RESULT_TEXT_BUILT]', copyResultLogBase({ textLength: md.length, jan: snapshot.jan, error: '' })); } catch (e1) {}
   return md;
 }
 
 /**
- * 商品情報をクリップボードにコピー
+ * 商品情報をクリップボードにコピー（v23.9.111: 結果モーダル必須表示）
  */
 function copyProductDebugForYui(isMainEntry) {
-  function removeFallbackModal() {
-    const el = document.getElementById('sp-copy-fallback-modal');
-    if (el) el.remove();
-  }
-  function openSpClipboardFallbackModal(md, jan) {
-    spDbg('[FALLBACK_OPEN]', { jan, length: (md && md.length) ? md.length : 0 });
-    removeFallbackModal();
-    const overlay = document.createElement('div');
-    overlay.id = 'sp-copy-fallback-modal';
-    overlay.setAttribute('style', 'position:fixed;inset:0;z-index:999999;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box;');
-    const box = document.createElement('div');
-    box.setAttribute('style', 'background:#fff;color:#111;max-width:100%;width:min(520px,100%);max-height:90vh;display:flex;flex-direction:column;border-radius:8px;overflow:hidden;box-sizing:border-box;');
-    const ta = document.createElement('textarea');
-    ta.value = md || '';
-    ta.readOnly = true;
-    ta.setAttribute('style', 'flex:1;min-height:200px;width:100%;box-sizing:border-box;font-size:12px;padding:8px;border:1px solid #ccc;resize:vertical;font-family:monospace;');
-    const row = document.createElement('div');
-    row.setAttribute('style', 'display:flex;gap:8px;padding:8px;flex-wrap:wrap;justify-content:flex-end;border-top:1px solid #ddd;background:#f8f8f8;');
-    const btnSel = document.createElement('button');
-    btnSel.type = 'button';
-    btnSel.textContent = '全文選択';
-    btnSel.setAttribute('style', 'padding:8px 12px;font-size:14px;cursor:pointer;');
-    btnSel.onclick = function () {
-      try {
-        ta.focus();
-        ta.select();
-        spDbg('[TEXT_READY]', { action: 'select_all', length: (md && md.length) ? md.length : 0 });
-      } catch (e2) {
-        spDbg('[ERROR]', { action: 'select_all', message: e2.message || String(e2) });
-      }
-    };
-    const btnShare = document.createElement('button');
-    btnShare.type = 'button';
-    btnShare.textContent = '共有';
-    btnShare.setAttribute('style', 'padding:8px 12px;font-size:14px;cursor:pointer;');
-    btnShare.onclick = function () {
-      if (typeof navigator.share !== 'function') {
-        spDbg('[COPY_FAIL]', { phase: 'share_unavailable_in_modal', jan });
-        showToast('この端末では共有できません', 2500);
-        return;
-      }
-      spDbg('[SHARE_START]', { jan, from: 'fallback_modal' });
-      navigator.share({ title: `Smart Price 検証データ (JAN: ${jan})`, text: md || '' }).then(function () {
-        spDbg('[SHARE_SUCCESS]', { jan, from: 'fallback_modal' });
-        showToast('✅ 共有しました', 2000);
-      }).catch(function (err) {
-        spDbg('[ERROR]', { phase: 'modal_share', message: err && err.message });
-        spDbg('[COPY_FAIL]', { phase: 'modal_share', jan });
-        if (!err || err.name !== 'AbortError') {
-          showToast('共有に失敗しました', 2500);
-        }
-      });
-    };
-    const btnClose = document.createElement('button');
-    btnClose.type = 'button';
-    btnClose.textContent = '閉じる';
-    btnClose.setAttribute('style', 'padding:8px 12px;font-size:14px;cursor:pointer;');
-    btnClose.onclick = function () { removeFallbackModal(); };
-    overlay.onclick = function (ev) { if (ev.target === overlay) removeFallbackModal(); };
-    row.appendChild(btnSel);
-    row.appendChild(btnShare);
-    row.appendChild(btnClose);
-    box.appendChild(ta);
-    box.appendChild(row);
-    overlay.appendChild(box);
-    document.body.appendChild(overlay);
-    try { ta.focus(); ta.select(); } catch (e3) {}
-  }
-
-  const useMainToast = !!isMainEntry;
-  spDbg('[COPY_START]', { main: useMainToast });
-  spDbg('[DEBUG_HUB_OPEN]', { action: 'copy_product_debug' });
+  const useMainEntry = !!isMainEntry;
+  try { spDbg('[DEBUG_HUB_OPEN]', { action: 'copy_product_debug' }); } catch (e0) {}
 
   try {
+    try { spDbg('[COPY_RESULT_START]', copyResultLogBase({ jan: '', textLength: 0, error: '' })); } catch (e1) {}
+
     const janEl = document.getElementById('codeInput');
     const jan = janEl ? janEl.value.trim() : '';
 
     if (!jan) {
-      spDbg('[ERROR]', { reason: 'no_jan' });
-      showToast('❌ JAN codeが入力されていません', 3000);
+      try { spDbg('[COPY_RESULT_TEXT_EMPTY]', copyResultLogBase({ jan: '', textLength: 0, error: 'no_jan' })); } catch (e2) {}
+      showCopyResultModal({
+        clipboardStatus: 'empty',
+        fullText: '',
+        jan: '',
+        clipboardMessage: '',
+        clipboardAttempted: false,
+        isMainEntry: useMainEntry
+      });
+      try { showToast('❌ JAN codeが入力されていません', 3000); } catch (e3) {}
       return;
     }
 
     const snapshot = buildProductDebugSnapshot(jan);
     const md = buildProductDebugMarkdown(snapshot);
-    if (!md || !String(md).trim()) {
-      spDbg('[ERROR]', { reason: 'empty_markdown', jan });
-      openSpClipboardFallbackModal(md || '', jan);
-      return;
-    }
+    const trimmed = String(md || '').trim();
+    const len = trimmed.length;
 
-    function onCopySuccess() {
-      spDbg('[COPY_SUCCESS]', { jan, length: md.length });
-      spDbg('[PRODUCT_DEBUG_COPY_SUCCESS]', { jan, length: md.length });
-      if (useMainToast) {
-        spDbg('[DEBUG_EXPORT_MAIN_COPY_SUCCESS]', { jan, length: md.length });
-        showToast('✅ コピー成功！\nChatGPTへ貼り付けてください', 3000);
-      } else {
-        showToast('✅ 商品情報をコピーしました', 2000);
-      }
-    }
-
-    function tryShareAfterClipFail(err) {
-      const em = err && err.message ? err.message : String(err);
-      spDbg('[COPY_FAIL]', { jan, phase: 'clipboard', error: em });
-      spDbg('[PRODUCT_DEBUG_ERROR]', { action: 'copy', error: em });
-      if (typeof navigator.share !== 'function') {
-        spDbg('[COPY_FAIL]', { phase: 'no_share_api_after_clipboard', jan });
-        openSpClipboardFallbackModal(md, jan);
-        return;
-      }
-      spDbg('[SHARE_START]', { jan });
-      navigator.share({
-        title: `Smart Price 検証データ (JAN: ${jan})`,
-        text: md
-      }).then(function () {
-        spDbg('[SHARE_SUCCESS]', { jan });
-        showToast('✅ 共有しました', 2000);
-      }).catch(function (shareErr) {
-        const sm = shareErr && shareErr.message ? shareErr.message : String(shareErr);
-        if (shareErr && shareErr.name === 'AbortError') {
-          spDbg('[COPY_FAIL]', { phase: 'share_abort', jan });
-        } else {
-          spDbg('[ERROR]', { phase: 'share_after_clip_fail', message: sm });
-          spDbg('[COPY_FAIL]', { phase: 'share_error', jan, error: sm });
-        }
-        openSpClipboardFallbackModal(md, jan);
+    if (len < 20) {
+      try { spDbg('[COPY_RESULT_TEXT_EMPTY]', copyResultLogBase({ jan: jan, textLength: len, error: 'text_too_short' })); } catch (e4) {}
+      showCopyResultModal({
+        clipboardStatus: 'empty',
+        fullText: md || '',
+        jan: jan,
+        clipboardMessage: '',
+        clipboardAttempted: false,
+        isMainEntry: useMainEntry
       });
+      return;
     }
 
     const hasCB = typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function';
     if (!hasCB) {
-      spDbg('[COPY_FAIL]', { reason: 'no_clipboard_api', jan });
-      tryShareAfterClipFail(new Error('no_clipboard_api'));
+      try { spDbg('[COPY_RESULT_CLIPBOARD_FAIL]', copyResultLogBase({ jan: jan, textLength: len, error: 'no_clipboard_api' })); } catch (e5) {}
+      showCopyResultModal({
+        clipboardStatus: 'fail',
+        fullText: md,
+        jan: jan,
+        clipboardMessage: 'no_clipboard_api',
+        clipboardAttempted: true,
+        isMainEntry: useMainEntry
+      });
       return;
     }
 
     navigator.clipboard.writeText(md).then(function () {
-      onCopySuccess();
+      try { spDbg('[COPY_RESULT_CLIPBOARD_SUCCESS]', copyResultLogBase({ jan: jan, textLength: len, error: '' })); } catch (e6) {}
+      showCopyResultModal({
+        clipboardStatus: 'success',
+        fullText: md,
+        jan: jan,
+        clipboardMessage: '',
+        clipboardAttempted: true,
+        isMainEntry: useMainEntry
+      });
+      try { showToast('✅ コピーしました', 2000); } catch (e7) {}
+      if (useMainEntry) {
+        try { spDbg('[DEBUG_EXPORT_MAIN_COPY_SUCCESS]', { jan: jan, length: len }); } catch (e8) {}
+      }
+      try { spDbg('[PRODUCT_DEBUG_COPY_SUCCESS]', { jan: jan, length: len }); } catch (e9) {}
     }).catch(function (err) {
-      tryShareAfterClipFail(err);
+      const em = err && err.message ? err.message : String(err);
+      try { spDbg('[COPY_RESULT_CLIPBOARD_FAIL]', copyResultLogBase({ jan: jan, textLength: len, error: em })); } catch (e10) {}
+      try { spDbg('[PRODUCT_DEBUG_ERROR]', { action: 'copy', error: em }); } catch (e11) {}
+      showCopyResultModal({
+        clipboardStatus: 'fail',
+        fullText: md,
+        jan: jan,
+        clipboardMessage: em,
+        clipboardAttempted: true,
+        isMainEntry: useMainEntry
+      });
     });
   } catch (e) {
-    spDbg('[ERROR]', { action: 'copy_product_debug', message: e.message });
-    spDbg('[PRODUCT_DEBUG_ERROR]', { action: 'copy_product_debug', error: e.message });
-    showToast('❌ エラー: ' + e.message, 3000);
+    try { spDbg('[ERROR]', copyResultLogBase({ jan: '', error: e.message || String(e) })); } catch (e12) {}
+    try { spDbg('[PRODUCT_DEBUG_ERROR]', { action: 'copy_product_debug', error: e.message }); } catch (e13) {}
+    try { showToast('❌ エラー: ' + e.message, 3000); } catch (e14) {}
   }
 }
 
@@ -11499,6 +11667,7 @@ function closeDebugHub() {
 /**
  * v23.9.109: メイン導線 - Yuiへ検証データをコピー
  * v23.9.110: clipboard→share→モーダルは copyProductDebugForYui に集約
+ * v23.9.111: コピー結果は常に結果モーダルで可視化（本関数は委譲のみ）
  */
 function copyProductDebugForYuiMain() {
   spDbg('[DEBUG_EXPORT_MAIN_COPY_START]', {});
@@ -11553,30 +11722,47 @@ function shareProductDebugForYui() {
 
 /**
  * v23.9.109: 検証データを画面に表示
+ * v23.9.111: 短文時はコピー結果モーダルで可視化
  */
 function showProductDebugPreview() {
   spDbg('[DEBUG_EXPORT_PREVIEW_OPEN]', {});
-  
+
   try {
+    try { spDbg('[COPY_RESULT_START]', copyResultLogBase({ jan: '', textLength: 0, error: 'preview_open' })); } catch (e0) {}
+
     const janEl = document.getElementById('codeInput');
     const jan = janEl ? janEl.value.trim() : '';
-    
+
     if (!jan) {
       showToast('❌ JAN codeが入力されていません', 3000);
       return;
     }
-    
+
     const snapshot = buildProductDebugSnapshot(jan);
     const md = buildProductDebugMarkdown(snapshot);
-    
-    // プレビューモーダルに表示
+    const trimmed = String(md || '').trim();
+    const tlen = trimmed.length;
+
+    if (tlen < 20) {
+      try { spDbg('[COPY_RESULT_TEXT_EMPTY]', copyResultLogBase({ jan: jan, textLength: tlen, error: 'preview_too_short' })); } catch (e1) {}
+      showCopyResultModal({
+        clipboardStatus: 'empty',
+        fullText: md || '',
+        jan: jan,
+        clipboardMessage: '',
+        clipboardAttempted: false,
+        isMainEntry: false
+      });
+      return;
+    }
+
     const textarea = document.getElementById('debugPreviewTextarea');
     const modal = document.getElementById('debugPreviewModal');
-    
+
     if (textarea) textarea.value = md;
     if (modal) modal.style.display = 'flex';
-    
   } catch (e) {
+    try { spDbg('[ERROR]', copyResultLogBase({ error: e.message || String(e) })); } catch (e2) {}
     spDbg('[PRODUCT_DEBUG_ERROR]', { action: 'show_preview', error: e.message });
     showToast('❌ エラー: ' + e.message, 3000);
   }
@@ -11584,22 +11770,85 @@ function showProductDebugPreview() {
 
 /**
  * v23.9.109: プレビューからコピー
+ * v23.9.111: コピー結果モーダルで成否・全文を可視化
  */
 function copyDebugPreviewText() {
   try {
+    const janEl = document.getElementById('codeInput');
+    const jan = janEl ? janEl.value.trim() : '';
+    try { spDbg('[COPY_RESULT_START]', copyResultLogBase({ jan: jan, textLength: 0, error: 'preview_copy' })); } catch (e0) {}
+
     const textarea = document.getElementById('debugPreviewTextarea');
     if (!textarea || !textarea.value) {
+      try { spDbg('[COPY_RESULT_TEXT_EMPTY]', copyResultLogBase({ jan: jan, textLength: 0, error: 'no_preview_body' })); } catch (e1) {}
+      showCopyResultModal({
+        clipboardStatus: 'empty',
+        fullText: '',
+        jan: jan,
+        clipboardMessage: '',
+        clipboardAttempted: false,
+        isMainEntry: false
+      });
       showToast('❌ 表示データがありません', 3000);
       return;
     }
-    
-    navigator.clipboard.writeText(textarea.value).then(() => {
-      showToast('✅ コピーしました', 2000);
-    }).catch(err => {
-      showToast('❌ コピー失敗: ' + err.message, 3000);
+
+    const text = textarea.value;
+    const tlen = String(text).trim().length;
+    if (tlen < 20) {
+      try { spDbg('[COPY_RESULT_TEXT_EMPTY]', copyResultLogBase({ jan: jan, textLength: tlen, error: 'preview_copy_short' })); } catch (e2) {}
+      showCopyResultModal({
+        clipboardStatus: 'empty',
+        fullText: text,
+        jan: jan,
+        clipboardMessage: '',
+        clipboardAttempted: false,
+        isMainEntry: false
+      });
+      return;
+    }
+
+    try { spDbg('[COPY_RESULT_TEXT_BUILT]', copyResultLogBase({ jan: jan, textLength: tlen, error: 'preview_copy' })); } catch (e3) {}
+
+    const hasCB = typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function';
+    if (!hasCB) {
+      try { spDbg('[COPY_RESULT_CLIPBOARD_FAIL]', copyResultLogBase({ jan: jan, textLength: tlen, error: 'no_clipboard_api' })); } catch (e4) {}
+      showCopyResultModal({
+        clipboardStatus: 'fail',
+        fullText: text,
+        jan: jan,
+        clipboardMessage: 'no_clipboard_api',
+        clipboardAttempted: true,
+        isMainEntry: false
+      });
+      return;
+    }
+
+    navigator.clipboard.writeText(text).then(function () {
+      try { spDbg('[COPY_RESULT_CLIPBOARD_SUCCESS]', copyResultLogBase({ jan: jan, textLength: tlen, error: '' })); } catch (e5) {}
+      showCopyResultModal({
+        clipboardStatus: 'success',
+        fullText: text,
+        jan: jan,
+        clipboardMessage: '',
+        clipboardAttempted: true,
+        isMainEntry: false
+      });
+      try { showToast('✅ コピーしました', 2000); } catch (e6) {}
+    }).catch(function (err) {
+      const em = err && err.message ? err.message : String(err);
+      try { spDbg('[COPY_RESULT_CLIPBOARD_FAIL]', copyResultLogBase({ jan: jan, textLength: tlen, error: em })); } catch (e7) {}
+      showCopyResultModal({
+        clipboardStatus: 'fail',
+        fullText: text,
+        jan: jan,
+        clipboardMessage: em,
+        clipboardAttempted: true,
+        isMainEntry: false
+      });
     });
-    
   } catch (e) {
+    try { spDbg('[ERROR]', copyResultLogBase({ error: e.message || String(e) })); } catch (e8) {}
     showToast('❌ エラー: ' + e.message, 3000);
   }
 }
@@ -11674,6 +11923,11 @@ function copyProductDebugMarkdown() {
 window.buildProductDebugSnapshot = buildProductDebugSnapshot;
 window.copyProductDebugForYui = copyProductDebugForYui;
 window.copyProductDebugForYuiMain = copyProductDebugForYuiMain;
+window.showCopyResultModal = showCopyResultModal;
+window.buildCopyResultSummary = buildCopyResultSummary;
+window.selectCopyResultText = selectCopyResultText;
+window.shareCopyResultText = shareCopyResultText;
+window.retryCopyResultClipboard = retryCopyResultClipboard;
 window.shareProductDebugForYui = shareProductDebugForYui;
 window.showProductDebugPreview = showProductDebugPreview;
 window.copyDebugPreviewText = copyDebugPreviewText;
