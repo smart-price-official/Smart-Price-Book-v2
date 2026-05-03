@@ -18,8 +18,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.108";
-  const BUILD_ID    = "2026-05-03_debug-hub-product-export-r1";
+  const APP_VERSION = "v23.9.109";
+  const BUILD_ID    = "2026-05-03_mobile-debug-export-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -1246,6 +1246,19 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
         </div>
         <div id="operatorPassMsg" class="small text-secondary mb-2"></div>
         <div id="operatorPanelBody" style="display:none;">
+          <!-- v23.9.109: Yuiへ検証データ送信（主導線） -->
+          <div class="mb-3" style="border:2px solid #4a4aff; border-radius:8px; padding:12px; background:rgba(74,74,255,0.1);">
+            <button class="btn btn-primary w-100 py-3 fw-bold mb-2" style="font-size:1.1rem;" onclick="copyProductDebugForYuiMain()">
+              🔬 Yuiへ検証データをコピー
+            </button>
+            <button class="btn btn-info w-100 py-2" onclick="shareProductDebugForYui()">
+              📤 検証データを共有
+            </button>
+            <div class="small text-secondary mt-2 text-center" style="opacity:.8;">
+              商品をスキャン後、このボタンでデータをコピーしてYuiへ送信
+            </div>
+          </div>
+
           <!-- Firebase URL -->
           <div class="mb-3">
             <div class="small text-secondary mb-1">Firebase接続状態</div>
@@ -1274,16 +1287,23 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
             <button class="btn btn-info w-100 py-2 fw-bold mt-2" onclick="loadStats()">統計を計算</button>
           </details>
           
-          <!-- v23.9.108: 検証データ取得 -->
+          <!-- v23.9.109: 検証データ取得（詳細メニュー） -->
           <details class="mb-2">
-            <summary class="small text-secondary" style="cursor:pointer;">🔬 検証データ取得</summary>
+            <summary class="small text-secondary" style="cursor:pointer;">🔬 検証データ取得（詳細）</summary>
             <div class="mt-2">
-              <button class="btn btn-success w-100 mb-2" onclick="copyProductDebugForYui()">📋 商品情報をコピー</button>
-              <button class="btn btn-primary w-100 mb-2" onclick="exportProductDebugJson()">💾 商品情報をJSON保存</button>
-              <button class="btn btn-info w-100 mb-2" onclick="exportProductDebugMd()">📝 商品情報をMD保存</button>
-              <button class="btn btn-secondary w-100 mb-2" onclick="copyGpsDebugForYui()">📍 GPSログをコピー</button>
-              <button class="btn btn-secondary w-100 mb-2" onclick="copyImageDebugForYui()">🖼️ 画像診断をコピー</button>
-              <button class="btn btn-warning w-100 mb-2" onclick="copyAllDebugForYui()">🎯 全ログをコピー</button>
+              <div class="small text-secondary mb-2">コピー系</div>
+              <button class="btn btn-outline-light w-100 mb-2" style="font-size:0.9rem;" onclick="copyProductDebugJson()">📋 JSONコピー</button>
+              <button class="btn btn-outline-light w-100 mb-2" style="font-size:0.9rem;" onclick="copyProductDebugMarkdown()">📋 Markdownコピー</button>
+              <button class="btn btn-outline-light w-100 mb-2" style="font-size:0.9rem;" onclick="copyGpsDebugForYui()">📍 GPSのみコピー</button>
+              <button class="btn btn-outline-light w-100 mb-2" style="font-size:0.9rem;" onclick="copyImageDebugForYui()">🖼️ 画像診断のみコピー</button>
+              <button class="btn btn-outline-light w-100 mb-2" style="font-size:0.9rem;" onclick="copyAllDebugForYui()">🎯 全ログコピー</button>
+              
+              <div class="small text-secondary mb-2 mt-3">保存系</div>
+              <button class="btn btn-outline-secondary w-100 mb-2" style="font-size:0.9rem;" onclick="exportProductDebugJson()">💾 JSON保存</button>
+              <button class="btn btn-outline-secondary w-100 mb-2" style="font-size:0.9rem;" onclick="exportProductDebugMd()">📝 MD保存</button>
+              
+              <div class="small text-secondary mb-2 mt-3">画面表示（コピー失敗時の保険）</div>
+              <button class="btn btn-outline-info w-100 mb-2" style="font-size:0.9rem;" onclick="showProductDebugPreview()">👁️ 検証データを画面に表示</button>
             </div>
           </details>
           
@@ -1335,22 +1355,34 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   <button id="img-diag-copy-btn" onclick="spImgDiagCopy()">📋 画像診断をコピー</button>
 </div>
 
-<!-- v23.9.108: 検証ハブモーダル（debug=1専用） -->
+<!-- v23.9.109: 検証ハブモーダル（debug=1専用） -->
 <div id="debugHubModal" class="modal" style="z-index:99600; display:none;">
   <div class="modal-content" style="max-width:400px; width:95%; max-height:90vh; overflow-y:auto; background:#0a0a1a; border:2px solid #4a4aff; border-radius:16px; padding:20px;">
     <h5 class="text-white mb-3 text-center" style="font-size:1.1rem; font-weight:bold; color:#aaf;">🔬 検証ハブ</h5>
     <div class="small text-secondary mb-3 text-center" style="opacity:.8;">Yui検証用データ取得</div>
     
     <div id="debugHubContent">
-      <button class="btn btn-success w-100 mb-2" onclick="copyProductDebugForYui()">📋 商品情報をコピー</button>
-      <button class="btn btn-primary w-100 mb-2" onclick="exportProductDebugJson()">💾 商品情報をJSON保存</button>
-      <button class="btn btn-info w-100 mb-2" onclick="exportProductDebugMd()">📝 商品情報をMD保存</button>
-      <button class="btn btn-secondary w-100 mb-2" onclick="copyGpsDebugForYui()">📍 GPSログをコピー</button>
-      <button class="btn btn-secondary w-100 mb-2" onclick="copyImageDebugForYui()">🖼️ 画像診断をコピー</button>
-      <button class="btn btn-warning w-100 mb-3" onclick="copyAllDebugForYui()">🎯 全ログをコピー</button>
+      <!-- v23.9.109: 主導線 -->
+      <button class="btn btn-primary w-100 py-3 mb-2 fw-bold" style="font-size:1.1rem;" onclick="copyProductDebugForYuiMain()">🔬 Yuiへ検証データをコピー</button>
+      <button class="btn btn-info w-100 mb-3" onclick="shareProductDebugForYui()">📤 検証データを共有</button>
+      
+      <hr style="border-color:#4a4aff; opacity:0.3;">
+      
+      <!-- 詳細メニュー -->
+      <div class="small text-secondary mb-2">コピー系</div>
+      <button class="btn btn-outline-light w-100 mb-2" style="font-size:0.9rem;" onclick="copyProductDebugJson()">📋 JSONコピー</button>
+      <button class="btn btn-outline-light w-100 mb-2" style="font-size:0.9rem;" onclick="copyProductDebugMarkdown()">📋 Markdownコピー</button>
+      <button class="btn btn-outline-light w-100 mb-2" style="font-size:0.9rem;" onclick="copyGpsDebugForYui()">📍 GPSのみ</button>
+      <button class="btn btn-outline-light w-100 mb-2" style="font-size:0.9rem;" onclick="copyImageDebugForYui()">🖼️ 画像診断のみ</button>
+      <button class="btn btn-outline-light w-100 mb-3" style="font-size:0.9rem;" onclick="copyAllDebugForYui()">🎯 全ログ</button>
+      
+      <div class="small text-secondary mb-2">保存・表示</div>
+      <button class="btn btn-outline-secondary w-100 mb-2" style="font-size:0.9rem;" onclick="exportProductDebugJson()">💾 JSON保存</button>
+      <button class="btn btn-outline-secondary w-100 mb-2" style="font-size:0.9rem;" onclick="exportProductDebugMd()">📝 MD保存</button>
+      <button class="btn btn-outline-info w-100 mb-2" style="font-size:0.9rem;" onclick="showProductDebugPreview()">👁️ 画面表示</button>
     </div>
     
-    <button class="btn btn-outline-secondary w-100" onclick="closeDebugHub()">閉じる</button>
+    <button class="btn btn-outline-secondary w-100 mt-3" onclick="closeDebugHub()">閉じる</button>
   </div>
 </div>
 
@@ -1359,6 +1391,21 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   <button class="btn btn-primary" onclick="openDebugHub()" style="border-radius:50%; width:60px; height:60px; font-size:24px; box-shadow:0 4px 12px rgba(74,74,255,0.5); border:2px solid #aaf;">
     🔬
   </button>
+</div>
+
+<!-- v23.9.109: 検証データプレビューモーダル -->
+<div id="debugPreviewModal" class="modal" style="z-index:99700; display:none;">
+  <div class="modal-content" style="max-width:500px; width:95%; max-height:90vh; overflow-y:auto; background:#0a0a1a; border:2px solid #4a4aff; border-radius:16px; padding:20px;">
+    <h5 class="text-white mb-3 text-center" style="font-size:1.1rem; font-weight:bold; color:#aaf;">👁️ 検証データ</h5>
+    <div class="small text-secondary mb-3 text-center" style="opacity:.8;">長押しで全選択してコピーできます</div>
+    
+    <textarea id="debugPreviewTextarea" readonly style="width:100%; min-height:400px; max-height:60vh; font-family:monospace; font-size:0.85rem; background:#1a1a2e; color:#e0e0e0; border:1px solid #4a4aff; border-radius:8px; padding:12px; resize:vertical;"></textarea>
+    
+    <div class="mt-3 d-flex gap-2">
+      <button class="btn btn-primary flex-grow-1" onclick="copyDebugPreviewText()">📋 コピー</button>
+      <button class="btn btn-outline-secondary" onclick="closeDebugPreview()">閉じる</button>
+    </div>
+  </div>
 </div>
 
 <div id="homeCityModal" class="modal">
@@ -11322,9 +11369,214 @@ function closeDebugHub() {
   }
 }
 
+/**
+ * v23.9.109: メイン導線 - Yuiへ検証データをコピー
+ */
+function copyProductDebugForYuiMain() {
+  spDbg('[DEBUG_EXPORT_MAIN_COPY_START]', {});
+  
+  try {
+    const janEl = document.getElementById('codeInput');
+    const jan = janEl ? janEl.value.trim() : '';
+    
+    if (!jan) {
+      showToast('❌ JAN codeが入力されていません', 3000);
+      return;
+    }
+    
+    const snapshot = buildProductDebugSnapshot(jan);
+    const md = buildProductDebugMarkdown(snapshot);
+    
+    // クリップボードにコピー
+    navigator.clipboard.writeText(md).then(() => {
+      spDbg('[DEBUG_EXPORT_MAIN_COPY_SUCCESS]', { jan, length: md.length });
+      showToast('✅ コピー成功！\nChatGPTへ貼り付けてください', 3000);
+    }).catch(err => {
+      spDbg('[DEBUG_EXPORT_MAIN_COPY_FAIL]', { error: err.message });
+      showToast('❌ コピー失敗。「画面表示」から手動コピーしてください', 4000);
+    });
+    
+  } catch (e) {
+    spDbg('[DEBUG_EXPORT_MAIN_COPY_FAIL]', { error: e.message });
+    showToast('❌ エラー: ' + e.message, 3000);
+  }
+}
+
+/**
+ * v23.9.109: 共有シート対応
+ */
+function shareProductDebugForYui() {
+  spDbg('[DEBUG_EXPORT_SHARE_START]', {});
+  
+  try {
+    const janEl = document.getElementById('codeInput');
+    const jan = janEl ? janEl.value.trim() : '';
+    
+    if (!jan) {
+      showToast('❌ JAN codeが入力されていません', 3000);
+      return;
+    }
+    
+    const snapshot = buildProductDebugSnapshot(jan);
+    const md = buildProductDebugMarkdown(snapshot);
+    
+    // Web Share API対応チェック
+    if (navigator.share) {
+      navigator.share({
+        title: `Smart Price 検証データ (JAN: ${jan})`,
+        text: md
+      }).then(() => {
+        spDbg('[DEBUG_EXPORT_SHARE_SUCCESS]', { jan });
+        showToast('✅ 共有しました', 2000);
+      }).catch(err => {
+        // ユーザーがキャンセルした場合もここに来る
+        if (err.name !== 'AbortError') {
+          spDbg('[DEBUG_EXPORT_SHARE_FALLBACK_COPY]', { error: err.message });
+          // フォールバック: コピー
+          copyProductDebugForYuiMain();
+        }
+      });
+    } else {
+      // Web Share API非対応の場合はコピーにフォールバック
+      spDbg('[DEBUG_EXPORT_SHARE_FALLBACK_COPY]', { reason: 'share_api_not_supported' });
+      copyProductDebugForYuiMain();
+    }
+    
+  } catch (e) {
+    spDbg('[DEBUG_EXPORT_SHARE_FALLBACK_COPY]', { error: e.message });
+    showToast('❌ エラー: ' + e.message, 3000);
+  }
+}
+
+/**
+ * v23.9.109: 検証データを画面に表示
+ */
+function showProductDebugPreview() {
+  spDbg('[DEBUG_EXPORT_PREVIEW_OPEN]', {});
+  
+  try {
+    const janEl = document.getElementById('codeInput');
+    const jan = janEl ? janEl.value.trim() : '';
+    
+    if (!jan) {
+      showToast('❌ JAN codeが入力されていません', 3000);
+      return;
+    }
+    
+    const snapshot = buildProductDebugSnapshot(jan);
+    const md = buildProductDebugMarkdown(snapshot);
+    
+    // プレビューモーダルに表示
+    const textarea = document.getElementById('debugPreviewTextarea');
+    const modal = document.getElementById('debugPreviewModal');
+    
+    if (textarea) textarea.value = md;
+    if (modal) modal.style.display = 'flex';
+    
+  } catch (e) {
+    spDbg('[PRODUCT_DEBUG_ERROR]', { action: 'show_preview', error: e.message });
+    showToast('❌ エラー: ' + e.message, 3000);
+  }
+}
+
+/**
+ * v23.9.109: プレビューからコピー
+ */
+function copyDebugPreviewText() {
+  try {
+    const textarea = document.getElementById('debugPreviewTextarea');
+    if (!textarea || !textarea.value) {
+      showToast('❌ 表示データがありません', 3000);
+      return;
+    }
+    
+    navigator.clipboard.writeText(textarea.value).then(() => {
+      showToast('✅ コピーしました', 2000);
+    }).catch(err => {
+      showToast('❌ コピー失敗: ' + err.message, 3000);
+    });
+    
+  } catch (e) {
+    showToast('❌ エラー: ' + e.message, 3000);
+  }
+}
+
+/**
+ * v23.9.109: プレビューモーダルを閉じる
+ */
+function closeDebugPreview() {
+  try {
+    const modal = document.getElementById('debugPreviewModal');
+    if (modal) modal.style.display = 'none';
+  } catch (e) {
+    spDbg('[PRODUCT_DEBUG_ERROR]', { action: 'close_preview', error: e.message });
+  }
+}
+
+/**
+ * v23.9.109: JSON形式でコピー
+ */
+function copyProductDebugJson() {
+  try {
+    const janEl = document.getElementById('codeInput');
+    const jan = janEl ? janEl.value.trim() : '';
+    
+    if (!jan) {
+      showToast('❌ JAN codeが入力されていません', 3000);
+      return;
+    }
+    
+    const snapshot = buildProductDebugSnapshot(jan);
+    const json = JSON.stringify(snapshot, null, 2);
+    
+    navigator.clipboard.writeText(json).then(() => {
+      showToast('✅ JSONをコピーしました', 2000);
+    }).catch(err => {
+      showToast('❌ コピー失敗: ' + err.message, 3000);
+    });
+    
+  } catch (e) {
+    showToast('❌ エラー: ' + e.message, 3000);
+  }
+}
+
+/**
+ * v23.9.109: Markdown形式でコピー
+ */
+function copyProductDebugMarkdown() {
+  try {
+    const janEl = document.getElementById('codeInput');
+    const jan = janEl ? janEl.value.trim() : '';
+    
+    if (!jan) {
+      showToast('❌ JAN codeが入力されていません', 3000);
+      return;
+    }
+    
+    const snapshot = buildProductDebugSnapshot(jan);
+    const md = buildProductDebugMarkdown(snapshot);
+    
+    navigator.clipboard.writeText(md).then(() => {
+      showToast('✅ Markdownをコピーしました', 2000);
+    }).catch(err => {
+      showToast('❌ コピー失敗: ' + err.message, 3000);
+    });
+    
+  } catch (e) {
+    showToast('❌ エラー: ' + e.message, 3000);
+  }
+}
+
 // グローバル公開
 window.buildProductDebugSnapshot = buildProductDebugSnapshot;
 window.copyProductDebugForYui = copyProductDebugForYui;
+window.copyProductDebugForYuiMain = copyProductDebugForYuiMain;
+window.shareProductDebugForYui = shareProductDebugForYui;
+window.showProductDebugPreview = showProductDebugPreview;
+window.copyDebugPreviewText = copyDebugPreviewText;
+window.closeDebugPreview = closeDebugPreview;
+window.copyProductDebugJson = copyProductDebugJson;
+window.copyProductDebugMarkdown = copyProductDebugMarkdown;
 window.exportProductDebugJson = exportProductDebugJson;
 window.exportProductDebugMd = exportProductDebugMd;
 window.copyGpsDebugForYui = copyGpsDebugForYui;
