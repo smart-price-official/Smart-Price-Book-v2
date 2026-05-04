@@ -18,8 +18,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.112";
-  const BUILD_ID    = "2026-05-04_debug-data-source-fix-r1";
+  const APP_VERSION = "v23.9.113";
+  const BUILD_ID    = "2026-05-04_full-audit-export-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -1257,6 +1257,12 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
             <div class="small text-secondary mt-2 text-center" style="opacity:.8;">
               商品をスキャン後、このボタンでデータをコピーしてYuiへ送信
             </div>
+            <div class="mt-3 pt-2" style="border-top:1px solid rgba(74,74,255,0.35);">
+              <div class="small text-secondary mb-2 text-center" style="opacity:.85;">全体検証（端末・DB横断）</div>
+              <button type="button" class="btn btn-outline-warning w-100 py-2 fw-bold mb-2" onclick="copyFullAuditForYui()">📦 全体検証データをコピー</button>
+              <button type="button" class="btn btn-outline-warning w-100 py-2 mb-2" onclick="shareFullAuditForYui()">📤 全体検証データを共有</button>
+              <button type="button" class="btn btn-outline-secondary w-100 py-2" onclick="showFullAuditPreview()">👁 全体検証データを表示</button>
+            </div>
           </div>
 
           <!-- Firebase URL -->
@@ -1365,6 +1371,12 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
       <!-- v23.9.109: 主導線 -->
       <button class="btn btn-primary w-100 py-3 mb-2 fw-bold" style="font-size:1.1rem;" onclick="copyProductDebugForYuiMain()">🔬 Yuiへ検証データをコピー</button>
       <button class="btn btn-info w-100 mb-3" onclick="shareProductDebugForYui()">📤 検証データを共有</button>
+      <div class="mb-3 pb-2" style="border-bottom:1px solid rgba(74,74,255,0.35);">
+        <div class="small text-secondary mb-2 text-center" style="opacity:.85;">全体検証（端末・DB横断）</div>
+        <button type="button" class="btn btn-outline-warning w-100 py-2 fw-bold mb-2" onclick="copyFullAuditForYui()">📦 全体検証データをコピー</button>
+        <button type="button" class="btn btn-outline-warning w-100 py-2 mb-2" onclick="shareFullAuditForYui()">📤 全体検証データを共有</button>
+        <button type="button" class="btn btn-outline-secondary w-100 py-2 mb-2" onclick="showFullAuditPreview()">👁 全体検証データを表示</button>
+      </div>
       
       <hr style="border-color:#4a4aff; opacity:0.3;">
       
@@ -1611,11 +1623,13 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   let firebaseDb = null;
   let currentAuthUid = null;
   let isFirebaseReady = false;
+  try { window._isFirebaseReady = false; } catch (_fb0) {}
 
   async function initializeFirebase() {
     try {
       if (!FIREBASE_CONFIG || !FIREBASE_CONFIG.apiKey) {
         if (isDebug()) console.warn('[Firebase] Config not set, fallback to legacy mode');
+        try { window._isFirebaseReady = false; } catch (_fb1) {}
         return false;
       }
 
@@ -1633,6 +1647,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
       }
 
       isFirebaseReady = true;
+      try { window._isFirebaseReady = true; } catch (_fb2) {}
       if (isDebug()) {
         console.log('[Firebase] Initialized successfully');
         console.log('[Firebase] Auth UID:', currentAuthUid);
@@ -1642,6 +1657,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
     } catch(e) {
       if (isDebug()) console.warn('[Firebase] Initialization failed:', e);
       isFirebaseReady = false;
+      try { window._isFirebaseReady = false; } catch (_fb3) {}
       return false;
     }
   }
@@ -1656,6 +1672,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
       } else {
         currentAuthUid = null;
         isFirebaseReady = false;
+        try { window._isFirebaseReady = false; } catch (_fb4) {}
         if (isDebug()) console.warn('[Firebase] User signed out');
       }
     });
@@ -2631,6 +2648,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
     }
     return deviceId;
   }
+  try { window.getDeviceId = getDeviceId; } catch (_gd0) {}
 
   // ✅ P0: VERSION表示を最優先で実行（loadConfigより先）
   document.addEventListener('DOMContentLoaded', () => {
@@ -12089,6 +12107,367 @@ function copyProductDebugMarkdown() {
   }
 }
 
+// === v23.9.113: 全体検証（フル監査）エクスポート ===
+function isYesterdayJst(h) {
+  const jstOffset = 9 * 60 * 60 * 1000;
+  const now = new Date();
+  const yesterdayJst = new Date(now.getTime() + jstOffset - 86400000);
+  const yesterday = yesterdayJst.toISOString().slice(0, 10);
+  if (h && h.date) return String(h.date) === yesterday;
+  if (h && h.ts != null) return new Date(Number(h.ts) + jstOffset).toISOString().slice(0, 10) === yesterday;
+  return false;
+}
+
+function classifyImageRef(obj) {
+  if (!obj || typeof obj !== 'object') return 'no_image';
+  if (obj.imageKey && typeof obj.imageKey === 'string') return 'indexeddb';
+  const u = obj.imageUrl;
+  if (u && typeof u === 'string') {
+    if (u.indexOf('http://') === 0 || u.indexOf('https://') === 0) return 'url_ref';
+    if (u.indexOf('data:') === 0) return 'base64';
+  }
+  if (obj.imageData && typeof obj.imageData === 'string') return 'base64';
+  if (obj.image && typeof obj.image === 'string' && obj.image.indexOf('data:') === 0) return 'base64';
+  return 'no_image';
+}
+
+function inspectProductImageState(jan, p) {
+  const issues = [];
+  const bodyState = classifyImageRef(p);
+  const last = Array.isArray(p && p.history) && p.history.length ? p.history[p.history.length - 1] : null;
+  const histState = last ? classifyImageRef(last) : 'no_image';
+  if (bodyState !== histState && bodyState !== 'no_image' && histState !== 'no_image') {
+    issues.push('本体と履歴末尾の画像参照種別が異なる: 本体=' + bodyState + ' / 履歴末=' + histState);
+  }
+  return { jan: String(jan), bodyState: bodyState, histState: histState, issues: issues };
+}
+
+function collectAuditLogsFromUi(maxN) {
+  const max = maxN || 50;
+  try {
+    if (window._auditLogs && window._auditLogs.length) {
+      const arr = window._auditLogs.slice(-max);
+      const lines = arr.map(function (x) {
+        return String(x.t || '') + ' ' + String(x.line != null ? x.line : (x.tag || ''));
+      });
+      return { collected: lines, count: lines.length, source: '_auditLogs', status: '収集済み ' + lines.length + ' 件（バッファ）' };
+    }
+  } catch (e0) {}
+  const panel = document.getElementById('sp-dbg-log');
+  if (!panel) return { collected: [], count: 0, source: 'dom', status: '未収集（セッション内ログなし）' };
+  const divs = panel.querySelectorAll('div');
+  const txt = [];
+  for (let i = 0; i < divs.length; i++) {
+    const t = String(divs[i].textContent || '').trim();
+    if (t) txt.push(t);
+  }
+  if (!txt.length) return { collected: [], count: 0, source: 'dom', status: '未収集（セッション内ログなし）' };
+  const tail = txt.slice(-max);
+  return { collected: tail, count: tail.length, source: 'dom', status: '収集済み ' + tail.length + ' 件（パネル）' };
+}
+
+function buildFullAuditSnapshot() {
+  const snap = {
+    generatedAt: new Date().toISOString(),
+    appVersion: window.APP_VERSION || '',
+    buildId: window.BUILD_ID || '',
+    deviceId: '',
+    firebaseReady: false,
+    curStore: '',
+    productKeys: [],
+    productCount: 0,
+    yesterdayJst: '',
+    yesterdayEntries: [],
+    yesterdayTotalPrice: 0,
+    yesterdayByStore: {},
+    imageBodyCounts: { indexeddb: 0, url_ref: 0, base64: 0, no_image: 0 },
+    imageHistMismatch: 0,
+    masterIssues: [],
+    storeHistoryCounts: {},
+    gpsNearby: [],
+    gpsDebugSummary: null,
+    gpsStoreMatchNotes: [],
+    imgDiagSummary: null,
+    lastProductDebugSummary: null,
+    internalLogs: { collected: [], count: 0, status: '', source: '' }
+  };
+  try {
+    try { spDbg('[FULL_AUDIT_START]', { t: snap.generatedAt }); } catch (e0) {}
+
+    const jstOffset = 9 * 60 * 60 * 1000;
+    const now = new Date();
+    const yesterdayJst = new Date(now.getTime() + jstOffset - 86400000);
+    snap.yesterdayJst = yesterdayJst.toISOString().slice(0, 10);
+
+    try { snap.deviceId = (typeof getDeviceId === 'function' ? getDeviceId() : ''); } catch (e1) { snap.deviceId = ''; }
+    try { snap.firebaseReady = !!window._isFirebaseReady; } catch (e2) { snap.firebaseReady = false; }
+    try { snap.curStore = (typeof curStore !== 'undefined' && curStore != null) ? String(curStore) : ''; } catch (e3) { snap.curStore = ''; }
+
+    const products = (typeof db !== 'undefined' && db && db.products) ? db.products : {};
+    const keys = Object.keys(products);
+    snap.productKeys = keys.slice(0, 2000);
+    snap.productCount = keys.length;
+    try { spDbg('[FULL_AUDIT_PRODUCTS_SCAN]', { count: snap.productCount }); } catch (e4) {}
+
+    let histScan = 0;
+    let yesterdayFound = 0;
+    keys.forEach(function (jan) {
+      const p = products[jan];
+      if (!p) return;
+      const insp = inspectProductImageState(jan, p);
+      snap.imageBodyCounts[insp.bodyState] = (snap.imageBodyCounts[insp.bodyState] || 0) + 1;
+      if (insp.bodyState !== insp.histState && insp.bodyState !== 'no_image' && insp.histState !== 'no_image') snap.imageHistMismatch++;
+
+      const name = String(p.name || '').trim();
+      const maker = String(p.maker || '').trim();
+      const cat = String(p.category || '').trim();
+      const badCat = !cat || cat === '__NONE__';
+      if (!name || !maker || badCat) {
+        if (snap.masterIssues.length < 80) snap.masterIssues.push({ jan: jan, missing: { name: !name, maker: !maker, category: badCat } });
+      }
+
+      const hist = Array.isArray(p.history) ? p.history : [];
+      histScan += hist.length;
+      hist.forEach(function (h) {
+        const st = h && h.store != null ? String(h.store) : '(無記入)';
+        snap.storeHistoryCounts[st] = (snap.storeHistoryCounts[st] || 0) + 1;
+        if (isYesterdayJst(h)) {
+          yesterdayFound++;
+          const pr = Number(h.price);
+          const pv = Number.isFinite(pr) ? pr : 0;
+          snap.yesterdayTotalPrice += pv;
+          snap.yesterdayEntries.push({ jan: jan, store: st, price: h.price, ts: h.ts, date: h.date });
+        }
+      });
+    });
+    try { spDbg('[FULL_AUDIT_HISTORY_SCAN]', { entries: histScan }); } catch (e5) {}
+    try { spDbg('[FULL_AUDIT_YESTERDAY_FOUND]', { count: yesterdayFound, totalPrice: snap.yesterdayTotalPrice }); } catch (e6) {}
+
+    snap.yesterdayEntries = snap.yesterdayEntries.slice(0, 500);
+    snap.yesterdayEntries.forEach(function (e) {
+      const st = e.store || '(無記入)';
+      snap.yesterdayByStore[st] = (snap.yesterdayByStore[st] || 0) + 1;
+    });
+
+    try { spDbg('[FULL_AUDIT_IMAGE_SCAN]', snap.imageBodyCounts); } catch (e7) {}
+
+    snap.gpsNearby = Array.isArray(window.nearbyStoreNames) ? window.nearbyStoreNames.slice(0, 40).map(String) : [];
+    if (window._gpsDebugData && typeof window._gpsDebugData === 'object') {
+      snap.gpsDebugSummary = {
+        latitude: window._gpsDebugData.latitude,
+        longitude: window._gpsDebugData.longitude,
+        gpsRange: window._gpsDebugData.gpsRange,
+        storeCount: window._gpsDebugData.storeCount,
+        storesSample: (window._gpsDebugData.stores || []).slice(0, 15)
+      };
+    }
+    const purchaseStores = Object.keys(snap.storeHistoryCounts);
+    const nearbyLower = snap.gpsNearby.map(function (s) { return String(s).toLowerCase(); });
+    purchaseStores.slice(0, 50).forEach(function (ps) {
+      let hit = false;
+      const pl = String(ps).toLowerCase();
+      for (let i = 0; i < nearbyLower.length; i++) {
+        if (pl.indexOf(nearbyLower[i]) >= 0 || nearbyLower[i].indexOf(pl) >= 0) { hit = true; break; }
+      }
+      snap.gpsStoreMatchNotes.push({ store: ps, nearGpsCandidate: hit });
+    });
+    try { spDbg('[FULL_AUDIT_GPS_SUMMARY]', { nearby: snap.gpsNearby.length, purchaseStores: purchaseStores.length }); } catch (e8) {}
+
+    if (window._imgDiagData && typeof window._imgDiagData === 'object') {
+      snap.imgDiagSummary = {
+        candidateCount: window._imgDiagData.candidateCount,
+        selectedUrl: (window._imgDiagData.selected && window._imgDiagData.selected.url) ? String(window._imgDiagData.selected.url).slice(0, 200) : '',
+        saveRoute: window._imgDiagData.saveRoute
+      };
+    }
+
+    if (window.lastProductDebug) {
+      const lp = window.lastProductDebug;
+      snap.lastProductDebugSummary = {
+        jan: lp.jan || '',
+        source: lp.source || '',
+        formName: lp.form && lp.form.name ? String(lp.form.name).slice(0, 80) : ''
+      };
+    }
+
+    const logs = collectAuditLogsFromUi(50);
+    snap.internalLogs = logs;
+    try { spDbg('[FULL_AUDIT_LOGS_COLLECTED]', { count: logs.count, source: logs.source }); } catch (e9) {}
+
+    try { spDbg('[FULL_AUDIT_COMPLETE]', { products: snap.productCount, yesterdayRows: yesterdayFound }); } catch (e10) {}
+    return snap;
+  } catch (e) {
+    try { spDbg('[FULL_AUDIT_ERROR]', { message: e.message || String(e) }); } catch (e11) {}
+    try { spDbg('[ERROR]', { context: 'buildFullAuditSnapshot', message: e.message || String(e) }); } catch (e12) {}
+    snap._error = e.message || String(e);
+    return snap;
+  }
+}
+
+function buildFullAuditMarkdown(audit) {
+  const a = audit || buildFullAuditSnapshot();
+  let md = '';
+  md += '# Smart Price 全体検証レポート\n\n';
+  md += '## 基本情報\n';
+  md += '- 生成時刻（UTC）: `' + String(a.generatedAt || '') + '`\n';
+  md += '- APP_VERSION: `' + String(a.appVersion || '') + '`\n';
+  md += '- BUILD_ID: `' + String(a.buildId || '') + '`\n';
+  md += '- deviceId: `' + String(a.deviceId || '') + '`\n';
+  md += '- Firebase準備完了: `' + String(!!a.firebaseReady) + '`\n';
+  md += '- 現在ストア（保存先）: `' + String(a.curStore || '') + '`\n';
+  md += '- 登録キー数（商品コード）: ' + String(a.productCount || 0) + '\n';
+  if (a._error) md += '- **スナップショット取得エラー**: ' + String(a._error) + '\n';
+  md += '\n## 昨日（JST）の購入\n';
+  md += '- 判定に用いた「昨日」カレンダー日（互換ロジック）: `' + String(a.yesterdayJst || '') + '`\n';
+  md += '- 本文に列挙した昨日分履歴: **' + String((a.yesterdayEntries || []).length) + '** 件（最大500）\n';
+  md += '- 価格合計（数値化できた price のみ）: **' + String(a.yesterdayTotalPrice || 0) + '**\n';
+  md += '- ストア別件数（昨日分のみ）:\n';
+  Object.keys(a.yesterdayByStore || {}).sort().forEach(function (k) {
+    md += '  - `' + k + '`: ' + String(a.yesterdayByStore[k]) + '\n';
+  });
+  md += '\n### 昨日分サンプル（最大20件）\n';
+  (a.yesterdayEntries || []).slice(0, 20).forEach(function (row, i) {
+    md += String(i + 1) + '. JAN `' + row.jan + '` / 店 `' + row.store + '` / price=' + String(row.price) + ' / ts=' + String(row.ts) + '\n';
+  });
+
+  md += '\n## マスタ（商品）検証\n';
+  md += '### 画像参照（本体）\n';
+  md += '- indexeddb（imageKey）: ' + String((a.imageBodyCounts && a.imageBodyCounts.indexeddb) || 0) + '\n';
+  md += '- url_ref（http/https）: ' + String((a.imageBodyCounts && a.imageBodyCounts.url_ref) || 0) + '\n';
+  md += '- base64 / imageData: ' + String((a.imageBodyCounts && a.imageBodyCounts.base64) || 0) + '\n';
+  md += '- no_image: ' + String((a.imageBodyCounts && a.imageBodyCounts.no_image) || 0) + '\n';
+  md += '- 本体と履歴末尾で両方ともno_image以外かつ種別不一致の件数: **' + String(a.imageHistMismatch || 0) + '**\n';
+
+  md += '### 必須系欠損サンプル（最大40件）\n';
+  if (!(a.masterIssues || []).length) md += '（該当なし）\n';
+  else (a.masterIssues || []).slice(0, 40).forEach(function (m, i) {
+    md += String(i + 1) + '. `' + m.jan + '` name欠=' + !!m.missing.name + ' maker欠=' + !!m.missing.maker + ' category欠=' + !!m.missing.category + '\n';
+  });
+
+  md += '\n## GPS / ストア\n';
+  md += '- 近隣候補（window.nearbyStoreNames 先頭40）: ' + JSON.stringify(a.gpsNearby || []) + '\n';
+  md += '- GPSデバッグサマリー: \n```json\n' + JSON.stringify(a.gpsDebugSummary || {}, null, 2) + '\n```\n';
+  md += '- 購入履歴に現れる店名 vs GPS候補の部分一致（先頭50店から最大30件表示）: \n```json\n' + JSON.stringify((a.gpsStoreMatchNotes || []).slice(0, 30), null, 2) + '\n```\n';
+
+  md += '\n## 画像診断（最新）\n```json\n' + JSON.stringify(a.imgDiagSummary || {}, null, 2) + '\n```\n';
+
+  md += '\n## lastProductDebug（要約）\n```json\n' + JSON.stringify(a.lastProductDebugSummary || {}, null, 2) + '\n```\n';
+
+  md += '\n## 内部ログ（最大50件）\n';
+  md += '- 状態: ' + String((a.internalLogs && a.internalLogs.status) || '') + ' / source=' + String((a.internalLogs && a.internalLogs.source) || '') + '\n';
+  if (!(a.internalLogs && a.internalLogs.collected && a.internalLogs.collected.length))
+    md += '（' + String((a.internalLogs && a.internalLogs.status) || '未収集（セッション内ログなし）') + '）\n';
+  else (a.internalLogs.collected || []).forEach(function (line, i) {
+    md += String(i + 1) + '. ' + line + '\n';
+  });
+
+  md += '\n## 全履歴ストア集計（上位30）\n';
+  const pairs = Object.keys(a.storeHistoryCounts || {}).map(function (k) {
+    return [k, a.storeHistoryCounts[k]];
+  }).sort(function (x, y) { return y[1] - x[1]; });
+  pairs.slice(0, 30).forEach(function (pr, i) {
+    md += String(i + 1) + '. `' + pr[0] + '`: ' + String(pr[1]) + '\n';
+  });
+
+  md += '\n---\n_Generated by Smart Price full-audit export_\n';
+  return md;
+}
+
+function copyFullAuditForYui() {
+  try { spDbg('[FULL_AUDIT_COPY]', {}); } catch (e0) {}
+  let md = '';
+  let len = 0;
+  try {
+    const audit = buildFullAuditSnapshot();
+    md = buildFullAuditMarkdown(audit);
+    len = String(md).trim().length;
+    try { spDbg('[COPY_RESULT_START]', copyResultLogBase({ jan: '(全体検証)', textLength: len, error: '' })); } catch (e1) {}
+  } catch (e) {
+    try { spDbg('[ERROR]', { context: 'copyFullAuditForYui', message: e.message }); } catch (e2) {}
+    showToast('❌ 全体検証の生成に失敗: ' + e.message, 4000);
+    return;
+  }
+
+  if (len < 20) {
+    showCopyResultModal({
+      clipboardStatus: 'diagnostic',
+      fullText: md,
+      jan: '(全体検証)',
+      clipboardMessage: 'markdown_short',
+      clipboardAttempted: false,
+      isMainEntry: false
+    });
+    return;
+  }
+  const hasCB = typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function';
+  if (!hasCB) {
+    showCopyResultModal({
+      clipboardStatus: 'fail',
+      fullText: md,
+      jan: '(全体検証)',
+      clipboardMessage: 'no_clipboard_api',
+      clipboardAttempted: true,
+      isMainEntry: false
+    });
+    return;
+  }
+  navigator.clipboard.writeText(md).then(function () {
+    try { spDbg('[COPY_RESULT_CLIPBOARD_SUCCESS]', copyResultLogBase({ jan: '(全体検証)', textLength: len, error: '' })); } catch (e3) {}
+    showCopyResultModal({
+      clipboardStatus: 'success',
+      fullText: md,
+      jan: '(全体検証)',
+      clipboardMessage: '',
+      clipboardAttempted: true,
+      isMainEntry: false
+    });
+    try { showToast('✅ 全体検証データをコピーしました', 2500); } catch (e4) {}
+  }).catch(function (err) {
+    const em = err && err.message ? err.message : String(err);
+    showCopyResultModal({
+      clipboardStatus: 'fail',
+      fullText: md,
+      jan: '(全体検証)',
+      clipboardMessage: em,
+      clipboardAttempted: true,
+      isMainEntry: false
+    });
+  });
+}
+
+function shareFullAuditForYui() {
+  try { spDbg('[FULL_AUDIT_SHARE]', {}); } catch (e0) {}
+  let md = '';
+  try {
+    md = buildFullAuditMarkdown(buildFullAuditSnapshot());
+  } catch (e) {
+    showToast('❌ 全体検証の生成に失敗: ' + e.message, 4000);
+    return;
+  }
+  if (navigator.share) {
+    navigator.share({ title: 'Smart Price 全体検証データ', text: md }).then(function () {
+      try { showToast('✅ 共有しました', 2000); } catch (e1) {}
+    }).catch(function (err) {
+      if (!err || err.name !== 'AbortError') copyFullAuditForYui();
+    });
+  } else copyFullAuditForYui();
+}
+
+function showFullAuditPreview() {
+  try { spDbg('[FULL_AUDIT_PREVIEW]', {}); } catch (e0) {}
+  try {
+    const md = buildFullAuditMarkdown(buildFullAuditSnapshot());
+    const ta = document.getElementById('debugPreviewTextarea');
+    const modal = document.getElementById('debugPreviewModal');
+    if (ta) ta.value = md;
+    if (modal) modal.style.display = 'flex';
+    try { showToast('全体検証をプレビュー表示しました', 2000); } catch (e1) {}
+  } catch (e) {
+    try { spDbg('[ERROR]', { context: 'showFullAuditPreview', message: e.message }); } catch (e2) {}
+    showToast('❌ プレビュー失敗: ' + e.message, 4000);
+  }
+}
+
 // グローバル公開
 window.buildProductDebugSnapshot = buildProductDebugSnapshot;
 window.getCurrentProductDebugJan = getCurrentProductDebugJan;
@@ -12113,6 +12492,11 @@ window.copyImageDebugForYui = copyImageDebugForYui;
 window.copyAllDebugForYui = copyAllDebugForYui;
 window.openDebugHub = openDebugHub;
 window.closeDebugHub = closeDebugHub;
+window.buildFullAuditSnapshot = buildFullAuditSnapshot;
+window.buildFullAuditMarkdown = buildFullAuditMarkdown;
+window.copyFullAuditForYui = copyFullAuditForYui;
+window.shareFullAuditForYui = shareFullAuditForYui;
+window.showFullAuditPreview = showFullAuditPreview;
 
 </script>
 
@@ -12164,6 +12548,12 @@ window.closeDebugHub = closeDebugHub;
           try { suffix = ' ' + JSON.stringify(payload); } catch(_) { suffix = ' ' + String(payload); }
         }
         spDbgLog(String(tag || '') + suffix);
+        try {
+          window._auditLogs = window._auditLogs || [];
+          var _line = String(tag || '') + suffix;
+          window._auditLogs.push({ t: new Date().toISOString(), tag: String(tag || ''), line: _line });
+          if (window._auditLogs.length > 200) window._auditLogs.shift();
+        } catch (_al) {}
         return;
       }
       if (typeof console !== 'undefined' && console.log) {
