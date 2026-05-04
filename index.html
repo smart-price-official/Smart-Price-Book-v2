@@ -18,8 +18,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.111";
-  const BUILD_ID    = "2026-05-04_copy-result-visible-r1";
+  const APP_VERSION = "v23.9.112";
+  const BUILD_ID    = "2026-05-04_debug-data-source-fix-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -4459,6 +4459,12 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     renderDetailHistory(exists ? p.history : []);
     renderStats(exists ? p.history : []);
     renderStorePriceStats(exists ? p.history : []);
+
+    try {
+      if (typeof window.updateLastProductDebugFromForm === 'function') {
+        window.updateLastProductDebugFromForm();
+      }
+    } catch (ePD) {}
   }
 
   function renderStats(history) {
@@ -6414,7 +6420,7 @@ function startScanner() {
       { fps: 10 },
       async (code) => {
         await stopScanner();
-        try { await processBarcodeData(code); } catch(e) { showToast(`エラー: ${e.message}`, 8000); }
+        try { await processBarcodeData(code, 'scan'); } catch(e) { showToast(`エラー: ${e.message}`, 8000); }
       }
     ).then(() => {
       setTimeout(() => {
@@ -7588,7 +7594,7 @@ function spVisibleTrace(tag, payload, cls) {
   }
 
   // ✅ バーコードデータ処理（スキャン/手入力共通）with OFF優先 + dirtyフラグ保護 + P0タイムラグ対策
-  async function processBarcodeData(code) {
+  async function processBarcodeData(code, debugSourceTag) {
     // ✅ P0: JAN正規化（数字のみに統一・空白・ハイフン除去）
     let jan = normalizeJan(code);
     
@@ -7667,6 +7673,12 @@ function spVisibleTrace(tag, payload, cls) {
     }
     
     curBarcode = jan; // ✅ P0: 正規化後のJANをセット（取得前）
+
+    try {
+      if (typeof window.saveLastProductDebugInit === 'function') {
+        window.saveLastProductDebugInit(jan, debugSourceTag || 'unknown');
+      }
+    } catch (eInit) {}
 
     if (isDebug()) showToast(`📷 JAN: ${jan}`, 2000);
     
@@ -10018,7 +10030,7 @@ function searchByManualBarcode() {
   }
   
   closeBarcodeManual();
-  if (typeof processBarcodeData === 'function') processBarcodeData(barcode);
+  if (typeof processBarcodeData === 'function') processBarcodeData(barcode, 'manual');
 }
 
 window.openBarcodeManual = openBarcodeManual;
@@ -10930,27 +10942,158 @@ window.importBackup   = importBackup;
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // v23.9.108: 検証ハブ機能（商品情報スナップショット取得）
+// v23.9.112: lastProductDebug / JAN復元 / 正しいフォームDOM ID
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 // グローバル変数：最後にスキャン/検索した商品の検証データを保持
 window._lastProductDebugSnapshot = null;
+window.lastProductDebug = window.lastProductDebug || null;
+
+/** v23.9.112: 検証ログ用メタ（指示書フィールド） */
+function productDebugLogMeta(extra) {
+  const o = extra || {};
+  let _jan = '';
+  let _cb = '';
+  try { _jan = (typeof getCurrentProductDebugJan === 'function' ? getCurrentProductDebugJan() : '') || ''; } catch (e0) { _jan = ''; }
+  try { _cb = (typeof curBarcode !== 'undefined' && curBarcode != null) ? String(curBarcode) : ''; } catch (e1) { _cb = ''; }
+  let _store = '';
+  try { _store = (typeof curStore !== 'undefined' && curStore != null) ? String(curStore) : ''; } catch (e2) { _store = ''; }
+  return {
+    jan: o.jan != null ? String(o.jan) : _jan,
+    curBarcode: o.curBarcode != null ? String(o.curBarcode) : _cb,
+    textLength: o.textLength != null ? Number(o.textLength) : 0,
+    formName: o.formName != null ? String(o.formName) : '',
+    maker: o.maker != null ? String(o.maker) : '',
+    imageState: o.imageState != null ? String(o.imageState) : '',
+    currentStore: o.currentStore != null ? String(o.currentStore) : _store,
+    reason: o.reason != null ? String(o.reason) : ''
+  };
+}
+
+function getCurrentProductDebugJan() {
+  let jan = '';
+  try {
+    if (typeof curBarcode !== 'undefined' && curBarcode != null && String(curBarcode).trim()) {
+      jan = String(curBarcode).trim();
+    }
+  } catch (e0) {}
+  if (!jan) {
+    const el = document.getElementById('manualCodeInput');
+    if (el && el.value) jan = String(el.value).replace(/\D/g, '').trim();
+  }
+  if (!jan && window.lastProductDebug && window.lastProductDebug.jan) {
+    jan = String(window.lastProductDebug.jan).trim();
+  }
+  if (!jan) {
+    try {
+      const inputs = document.querySelectorAll('#barcode-input-container .barcode-digit');
+      if (inputs && inputs.length) {
+        const code = Array.from(inputs).map(function (n) { return n.value || ''; }).join('').replace(/\D/g, '');
+        if (code.length >= 8) jan = code;
+      }
+    } catch (e1) {}
+  }
+  return jan;
+}
+
+function getCurrentProductFormSnapshot() {
+  const nameEl = document.getElementById('inputName');
+  const makerEl = document.getElementById('inputMaker');
+  const categoryEl = document.getElementById('inputCategory');
+  const subCategoryEl = document.getElementById('inputSubCategory');
+  const imgPreview = document.getElementById('previewImg');
+  let imageState = 'no_image';
+  try {
+    const src = imgPreview && imgPreview.src ? String(imgPreview.src) : '';
+    let ph = '';
+    try { if (typeof placeholderImg === 'function') ph = String(placeholderImg() || ''); } catch (e0) {}
+    if (src && (!ph || src !== ph) && !src.includes('placeholder')) imageState = 'loaded';
+  } catch (e1) {}
+  return {
+    name: nameEl ? String(nameEl.value || '') : '',
+    maker: makerEl ? String(makerEl.value || '') : '',
+    category: categoryEl ? String(categoryEl.value || '') : '',
+    subCategory: subCategoryEl ? String(subCategoryEl.value || '') : '',
+    imageState: imageState
+  };
+}
+
+window.saveLastProductDebugInit = function (jan, sourceTag) {
+  window.lastProductDebug = window.lastProductDebug || null;
+  const j = String(jan || '').trim();
+  window.lastProductDebug = {
+    appVersion: window.APP_VERSION || '',
+    buildId: window.BUILD_ID || '',
+    checkedAt: new Date().toISOString(),
+    jan: j,
+    source: sourceTag || 'unknown',
+    form: { name: '', maker: '', category: '', subCategory: '', imageState: '' },
+    lookup: { local: null, firebase: null, yahoo: null, rakuten: null, googleCse: null, ai: null, final: null },
+    image: { previewSrc: '', candidateCount: 0, candidates: [], selected: null, reason: '' },
+    gps: { currentStore: '', settings: null, stores: null, storesDebug: null },
+    errors: [],
+    notes: []
+  };
+  try {
+    spDbg('[PRODUCT_DEBUG_INIT]', Object.assign(productDebugLogMeta({ jan: j, reason: '' }), {
+      appVersion: window.lastProductDebug.appVersion,
+      buildId: window.lastProductDebug.buildId,
+      source: window.lastProductDebug.source
+    }));
+  } catch (e2) {}
+};
+
+window.updateLastProductDebugFromForm = function () {
+  window.lastProductDebug = window.lastProductDebug || null;
+  const fs = getCurrentProductFormSnapshot();
+  const base = window.lastProductDebug || { form: {}, jan: '', source: 'form' };
+  base.form = Object.assign({}, base.form || {}, fs);
+  base.jan = String(base.jan || getCurrentProductDebugJan() || '').trim();
+  try {
+    const ind = document.getElementById('previewImg');
+    base.image = base.image || {};
+    base.image.previewSrc = ind && ind.src ? String(ind.src) : (base.image.previewSrc || '');
+  } catch (e0) {}
+  base.gps = base.gps || {};
+  try { base.gps.currentStore = (typeof curStore !== 'undefined' ? String(curStore || '') : (base.gps.currentStore || '')); } catch (e1) {}
+  window.lastProductDebug = base;
+  try {
+    spDbg('[PRODUCT_DEBUG_FORM_SNAPSHOT]', productDebugLogMeta({
+      jan: base.jan,
+      formName: base.form.name,
+      maker: base.form.maker,
+      imageState: base.form.imageState,
+      currentStore: base.gps.currentStore,
+      reason: 'form_sync'
+    }));
+  } catch (e2) {}
+};
 
 /**
- * 商品情報のデバッグスナップショットを作成
- * @param {string} jan - JAN code
- * @returns {Object} snapshot - 検証用データ
+ * 商品情報のデバッグスナップショットを作成（v23.9.112: JAN/フォーム復元強化）
+ * @param {string} janHint - JAN code（空なら自動復元）
+ * @returns {Object} snapshot
  */
-function buildProductDebugSnapshot(jan) {
-  spDbg('[PRODUCT_DEBUG_SNAPSHOT_START]', { jan });
-  
+function buildProductDebugSnapshot(janHint) {
+  const janResolved = String(janHint || '').trim() || getCurrentProductDebugJan();
+  let dbgReason = '';
+  if (!janResolved) dbgReason = 'jan_not_found';
+
+  try {
+    spDbg('[PRODUCT_DEBUG_SNAPSHOT_BUILD]', productDebugLogMeta({ jan: janResolved, reason: dbgReason }));
+  } catch (eL) {}
+
+  const av = window.APP_VERSION || '';
+  const bid = window.BUILD_ID || '';
   const snapshot = {
-    appVersion: APP_VERSION || '',
-    buildId: BUILD_ID || '',
+    appVersion: av,
+    buildId: bid,
     checkedAt: new Date().toISOString(),
-    jan: jan || '',
-    form: {},
+    jan: janResolved,
+    debugReason: dbgReason,
+    form: { name: '', maker: '', category: '', subCategory: '', imageState: 'no_image' },
     lookup: {
-      local: {},
+      local: { hit: false, reason: 'not_checked' },
       firebase: {},
       yahoo: {},
       rakuten: {},
@@ -10959,40 +11102,35 @@ function buildProductDebugSnapshot(jan) {
       ai: {},
       final: {}
     },
-    image: {
-      candidateCount: 0,
-      candidates: [],
-      selected: {},
-      saveRoute: {}
-    },
-    gps: {
-      settings: {},
-      stores: {},
-      storesDebug: {}
-    },
+    image: { previewSrc: '', candidateCount: 0, candidates: [], selected: {}, saveRoute: {} },
+    gps: { currentStore: '', settings: {}, stores: {}, storesDebug: {} },
     errors: [],
     notes: []
   };
-  
+
   try {
-    // フォーム状態を取得
-    const nameEl = document.getElementById('nameInput');
-    const makerEl = document.getElementById('makerInput');
-    const categoryEl = document.getElementById('categorySelect');
-    const subCategoryEl = document.getElementById('subCategorySelect');
-    const imgPreview = document.getElementById('imgPreview');
-    
-    snapshot.form = {
-      name: nameEl ? nameEl.value : '',
-      maker: makerEl ? makerEl.value : '',
-      category: categoryEl ? categoryEl.value : '',
-      subCategory: subCategoryEl ? subCategoryEl.value : '',
-      imageState: imgPreview && imgPreview.src && imgPreview.src !== '' && !imgPreview.src.includes('placeholder') ? 'loaded' : 'no_image'
-    };
-    
-    // localStorage（ローカルキャッシュ）から取得
-    if (jan && db && db.products && db.products[jan]) {
-      const local = db.products[jan];
+    const domF = getCurrentProductFormSnapshot();
+    const lp = window.lastProductDebug;
+    if (lp && lp.form) {
+      snapshot.form = {
+        name: domF.name || lp.form.name || '',
+        maker: domF.maker || lp.form.maker || '',
+        category: domF.category || lp.form.category || '',
+        subCategory: domF.subCategory || lp.form.subCategory || '',
+        imageState: domF.imageState || lp.form.imageState || 'no_image'
+      };
+    } else {
+      snapshot.form = domF;
+    }
+
+    const imgPreview = document.getElementById('previewImg');
+    snapshot.image.previewSrc = (imgPreview && imgPreview.src) ? String(imgPreview.src) : ((lp && lp.image && lp.image.previewSrc) ? String(lp.image.previewSrc) : '');
+    try {
+      snapshot.gps.currentStore = (typeof curStore !== 'undefined' && curStore) ? String(curStore) : (lp && lp.gps ? String(lp.gps.currentStore || '') : '');
+    } catch (eG) {}
+
+    if (janResolved && typeof db !== 'undefined' && db && db.products && db.products[janResolved]) {
+      const local = db.products[janResolved];
       snapshot.lookup.local = {
         hit: true,
         name: local.name || '',
@@ -11001,49 +11139,70 @@ function buildProductDebugSnapshot(jan) {
         category: local.category || '',
         subCategory: local.subCategory || ''
       };
+      if (!snapshot.form.name && local.name) snapshot.form.name = local.name;
+      if (!snapshot.form.maker && local.maker) snapshot.form.maker = local.maker;
     } else {
-      snapshot.lookup.local = { hit: false, reason: 'not_found_in_local_db' };
+      snapshot.lookup.local = { hit: false, reason: janResolved ? 'not_found_in_local_db' : 'no_jan_for_lookup' };
     }
-    
-    // 画像診断データ
+
+    snapshot.lookup.final = {
+      hit: !!(snapshot.form.name && String(snapshot.form.name).trim()),
+      name: snapshot.form.name || ''
+    };
+
     if (window._imgDiagData) {
-      snapshot.image = {
-        candidateCount: window._imgDiagData.candidateCount || 0,
-        candidates: (window._imgDiagData.candidates || []).slice(0, 5),
-        selected: window._imgDiagData.selected || {},
-        saveRoute: window._imgDiagData.saveRoute || {}
-      };
+      snapshot.image.candidateCount = window._imgDiagData.candidateCount || 0;
+      snapshot.image.candidates = (window._imgDiagData.candidates || []).slice(0, 5);
+      snapshot.image.selected = window._imgDiagData.selected || {};
+      snapshot.image.saveRoute = window._imgDiagData.saveRoute || {};
     }
-    
-    // GPS診断データ
+
     if (window._gpsDebugData) {
-      snapshot.gps = {
-        settings: {
-          gpsRange: window._gpsDebugData.gpsRange || '',
-          latitude: window._gpsDebugData.latitude || '',
-          longitude: window._gpsDebugData.longitude || ''
-        },
-        stores: {
-          count: window._gpsDebugData.storeCount || 0,
-          list: (window._gpsDebugData.stores || []).slice(0, 10)
-        },
-        storesDebug: window._gpsDebugData.storesDebug || {}
+      snapshot.gps.settings = {
+        gpsRange: window._gpsDebugData.gpsRange || '',
+        latitude: window._gpsDebugData.latitude || '',
+        longitude: window._gpsDebugData.longitude || ''
       };
+      snapshot.gps.stores = {
+        count: window._gpsDebugData.storeCount || 0,
+        list: (window._gpsDebugData.stores || []).slice(0, 10)
+      };
+      snapshot.gps.storesDebug = window._gpsDebugData.storesDebug || {};
     }
-    
-    // 過去のログから検索経路情報を収集
+
     snapshot.notes.push('検索経路の詳細はコンソールログ [PRODUCT_LOOKUP_*] を参照');
-    
-    spDbg('[PRODUCT_DEBUG_SNAPSHOT_READY]', { jan, snapshotSize: JSON.stringify(snapshot).length });
-    
+
+    if (!janResolved || !String(snapshot.form.name || '').trim()) {
+      try {
+        spDbg('[PRODUCT_DEBUG_SNAPSHOT_WARN]', productDebugLogMeta({
+          jan: janResolved,
+          formName: snapshot.form.name,
+          maker: snapshot.form.maker,
+          imageState: snapshot.form.imageState,
+          currentStore: snapshot.gps.currentStore,
+          reason: !janResolved ? 'jan_not_found' : 'no_product_name_on_form'
+        }));
+      } catch (eW) {}
+    }
+
+    try {
+      spDbg('[PRODUCT_DEBUG_SNAPSHOT_READY]', Object.assign(productDebugLogMeta({
+        jan: janResolved,
+        formName: snapshot.form.name,
+        maker: snapshot.form.maker,
+        imageState: snapshot.form.imageState,
+        currentStore: snapshot.gps.currentStore,
+        reason: dbgReason,
+        textLength: JSON.stringify(snapshot).length
+      }), { snapshotSize: JSON.stringify(snapshot).length }));
+    } catch (eR) {}
   } catch (e) {
     snapshot.errors.push({ message: e.message || String(e), stack: e.stack || '' });
-    spDbg('[PRODUCT_DEBUG_ERROR]', { jan, error: e.message });
+    try { spDbg('[ERROR]', productDebugLogMeta({ jan: janResolved, reason: e.message || String(e) })); } catch (e2) {}
+    try { spDbg('[PRODUCT_DEBUG_ERROR]', { jan: janResolved, error: e.message }); } catch (e3) {}
   }
-  
-  // グローバルに保存
+
   window._lastProductDebugSnapshot = snapshot;
-  
   return snapshot;
 }
 
@@ -11085,6 +11244,9 @@ function spRefreshCopyResultSummaryDOM(statusKey, fullText, jan) {
   } else if (statusKey === 'empty') {
     statusLabel = 'データ空';
     msg = 'コピー対象データが空です。商品をスキャンしてから再実行してください。';
+  } else if (statusKey === 'diagnostic') {
+    statusLabel = '診断情報あり（商品データ不足）';
+    msg = 'JANまたは商品名が不足している可能性があります。全文を確認してください。';
   }
   const el = document.getElementById('sp-copy-result-summary-pre');
   const msgEl = document.getElementById('sp-copy-result-msg');
@@ -11118,9 +11280,13 @@ function showCopyResultModal(p) {
   const jan = p.jan != null ? String(p.jan) : '';
   const fullText = p.fullText != null ? String(p.fullText) : '';
   const clipStat = p.clipboardStatus || 'fail';
+  const uiDiag = p.uiStatus === 'diagnostic' || clipStat === 'diagnostic';
   let statusLabel = 'コピー失敗';
   let msg = '自動コピーに失敗しました。下の全文を選択してコピーしてください。';
-  if (clipStat === 'success') {
+  if (uiDiag) {
+    statusLabel = '診断情報あり（商品データ不足）';
+    msg = 'JANまたは商品名が不足している可能性があります。全文を確認してください。';
+  } else if (clipStat === 'success') {
     statusLabel = 'コピー成功';
     msg = 'コピー成功：ChatGPTへ貼り付けできます';
   } else if (clipStat === 'empty') {
@@ -11278,26 +11444,64 @@ function retryCopyResultClipboard() {
  * @returns {string} markdown text
  */
 function buildProductDebugMarkdown(snapshot) {
+  const av = window.APP_VERSION || '';
+  const bid = window.BUILD_ID || '';
+  const minMd = function (janLine, stateLine, reasonLine, formName, formMaker, formCat, imgSt) {
+    let s = '# Smart Price 商品検証ログ\n\n';
+    s += '## 基本情報\n';
+    s += '- APP_VERSION: ' + av + '\n';
+    s += '- BUILD_ID: ' + bid + '\n';
+    s += '- JAN: ' + janLine + '\n';
+    s += '- 取得状態: ' + stateLine + '\n';
+    s += '- reason: ' + reasonLine + '\n\n';
+    s += '## 画面上の商品情報\n';
+    s += '- 商品名: ' + formName + '\n';
+    s += '- メーカー: ' + formMaker + '\n';
+    s += '- カテゴリ: ' + formCat + '\n';
+    s += '- 画像状態: ' + imgSt + '\n\n';
+    s += '## 検証メモ\n';
+    s += '- データが不足している場合の理由: ' + reasonLine + '\n\n';
+    s += '---\n';
+    s += 'Generated by Smart Price ' + av + ' (' + bid + ')\n';
+    return s;
+  };
+
   if (!snapshot) {
     try { spDbg('[ERROR]', { at: 'buildProductDebugMarkdown', reason: 'no_snapshot' }); } catch (e0) {}
     try { spDbg('[COPY_RESULT_TEXT_EMPTY]', copyResultLogBase({ textLength: 0, jan: '', error: 'no_snapshot' })); } catch (e1) {}
-    return '# エラー\n\nスナップショットが存在しません。';
+    const md0 = minMd('(未取得)', '不足', 'no_snapshot', '', '', '', '不明');
+    try { spDbg('[PRODUCT_DEBUG_MARKDOWN_BUILD]', productDebugLogMeta({ jan: '', reason: 'no_snapshot' })); } catch (e2) {}
+    try { spDbg('[PRODUCT_DEBUG_MARKDOWN_EMPTY_PREVENTED]', { reason: 'no_snapshot' }); } catch (e3) {}
+    try { spDbg('[TEXT_READY]', { length: md0.length, jan: '' }); } catch (e4) {}
+    try { spDbg('[COPY_RESULT_TEXT_BUILT]', copyResultLogBase({ textLength: md0.length, jan: '', error: 'min_template' })); } catch (e5) {}
+    return md0;
   }
-  
+
+  try { spDbg('[PRODUCT_DEBUG_MARKDOWN_BUILD]', productDebugLogMeta({
+    jan: snapshot.jan,
+    formName: snapshot.form && snapshot.form.name,
+    maker: snapshot.form && snapshot.form.maker,
+    imageState: snapshot.form && snapshot.form.imageState,
+    currentStore: snapshot.gps && snapshot.gps.currentStore,
+    reason: snapshot.debugReason || ''
+  })); } catch (eB) {}
+
   let md = '# Smart Price 商品検証ログ\n\n';
   md += '## 基本情報\n';
   md += `- APP_VERSION: ${snapshot.appVersion}\n`;
   md += `- BUILD_ID: ${snapshot.buildId}\n`;
-  md += `- JAN: ${snapshot.jan}\n`;
-  md += `- 検証日時: ${snapshot.checkedAt}\n\n`;
-  
+  md += `- JAN: ${snapshot.jan || '(未取得)'}\n`;
+  md += `- 検証日時: ${snapshot.checkedAt}\n`;
+  md += `- 取得状態: ${snapshot.jan ? 'ok' : '不足'}\n`;
+  md += `- reason: ${snapshot.debugReason || '(なし)'}\n\n`;
+
   md += '## 画面上の商品情報\n';
-  md += `- 商品名: ${snapshot.form.name}\n`;
-  md += `- メーカー: ${snapshot.form.maker}\n`;
-  md += `- カテゴリ: ${snapshot.form.category}\n`;
-  md += `- サブカテゴリ: ${snapshot.form.subCategory}\n`;
-  md += `- 画像状態: ${snapshot.form.imageState}\n\n`;
-  
+  md += `- 商品名: ${snapshot.form.name || ''}\n`;
+  md += `- メーカー: ${snapshot.form.maker || ''}\n`;
+  md += `- カテゴリ: ${snapshot.form.category || ''}\n`;
+  md += `- サブカテゴリ: ${snapshot.form.subCategory || ''}\n`;
+  md += `- 画像状態: ${snapshot.form.imageState || ''}\n\n`;
+
   md += '## 商品検索ルート\n';
   md += `- localStorage: ${snapshot.lookup.local.hit ? '✅ HIT - ' + snapshot.lookup.local.name : '❌ MISS'}\n`;
   md += `- Firebase: 未収集\n`;
@@ -11307,30 +11511,36 @@ function buildProductDebugMarkdown(snapshot) {
   md += `- Google CSE: 未収集\n`;
   md += `- AI整形: 未収集\n`;
   md += `- Final: ${snapshot.form.name ? '✅ ' + snapshot.form.name : '❌'}\n\n`;
-  
+
   md += '## 画像診断\n';
   md += `- 候補数: ${snapshot.image.candidateCount}\n`;
   md += `- 保存可否: ${snapshot.form.imageState === 'loaded' ? '✅ 保存済' : '❌ 未保存'}\n`;
   if (snapshot.image.selected && snapshot.image.selected.url) {
     md += `- 選択URL: ${snapshot.image.selected.url}\n`;
   }
+  if (snapshot.image.previewSrc) {
+    md += `- previewSrc: ${snapshot.image.previewSrc}\n`;
+  }
   md += '\n';
-  
+
   md += '## GPS診断\n';
-  if (snapshot.gps.settings.gpsRange) {
+  if (snapshot.gps && snapshot.gps.settings && snapshot.gps.settings.gpsRange) {
     md += `- 半径: ${snapshot.gps.settings.gpsRange}\n`;
     md += `- 店舗候補: ${snapshot.gps.stores.count}件\n`;
     if (snapshot.gps.stores.list && snapshot.gps.stores.list.length > 0) {
       md += '- トップ3:\n';
       snapshot.gps.stores.list.slice(0, 3).forEach((store, i) => {
-        md += `  ${i+1}. ${store.name || store}\n`;
+        md += `  ${i + 1}. ${store.name || store}\n`;
       });
     }
   } else {
     md += '- GPS未実行\n';
   }
+  if (snapshot.gps && snapshot.gps.currentStore) {
+    md += `- currentStore: ${snapshot.gps.currentStore}\n`;
+  }
   md += '\n';
-  
+
   md += '## 判定メモ\n';
   if (snapshot.notes && snapshot.notes.length > 0) {
     snapshot.notes.forEach(note => {
@@ -11340,75 +11550,77 @@ function buildProductDebugMarkdown(snapshot) {
     md += '- 特記事項なし\n';
   }
   md += '\n';
-  
+
+  md += '## 検証メモ\n';
+  md += '- データが不足している場合の理由: ' + (snapshot.debugReason || '特になし') + '\n\n';
+
   if (snapshot.errors && snapshot.errors.length > 0) {
     md += '## エラー情報\n';
     snapshot.errors.forEach((err, i) => {
-      md += `${i+1}. ${err.message}\n`;
+      md += `${i + 1}. ${err.message}\n`;
     });
     md += '\n';
   }
-  
+
   md += '---\n';
   md += `Generated by Smart Price ${snapshot.appVersion} (${snapshot.buildId})\n`;
-  
-  try { spDbg('[TEXT_READY]', { length: md.length, jan: snapshot.jan }); } catch (e0) {}
-  try { spDbg('[COPY_RESULT_TEXT_BUILT]', copyResultLogBase({ textLength: md.length, jan: snapshot.jan, error: '' })); } catch (e1) {}
+
+  if (!String(md || '').trim()) {
+    const mdF = minMd('(未取得)', '不足', 'markdown_empty_guard', '', '', '', '不明');
+    try { spDbg('[PRODUCT_DEBUG_MARKDOWN_EMPTY_PREVENTED]', { reason: 'zero_length_guard' }); } catch (e6) {}
+    try { spDbg('[TEXT_READY]', { length: mdF.length, jan: snapshot.jan }); } catch (e7) {}
+    try { spDbg('[COPY_RESULT_TEXT_BUILT]', copyResultLogBase({ textLength: mdF.length, jan: snapshot.jan, error: 'min_template' })); } catch (e8) {}
+    return mdF;
+  }
+
+  try { spDbg('[TEXT_READY]', { length: md.length, jan: snapshot.jan }); } catch (e9) {}
+  try { spDbg('[COPY_RESULT_TEXT_BUILT]', copyResultLogBase({ textLength: md.length, jan: snapshot.jan, error: '' })); } catch (e10) {}
   return md;
 }
 
 /**
- * 商品情報をクリップボードにコピー（v23.9.111: 結果モーダル必須表示）
+ * 商品情報をクリップボードにコピー（v23.9.111: 結果モーダル / v23.9.112: データソース修正）
  */
 function copyProductDebugForYui(isMainEntry) {
   const useMainEntry = !!isMainEntry;
   try { spDbg('[DEBUG_HUB_OPEN]', { action: 'copy_product_debug' }); } catch (e0) {}
 
   try {
+    try { if (typeof window.updateLastProductDebugFromForm === 'function') window.updateLastProductDebugFromForm(); } catch (eU) {}
     try { spDbg('[COPY_RESULT_START]', copyResultLogBase({ jan: '', textLength: 0, error: '' })); } catch (e1) {}
 
-    const janEl = document.getElementById('codeInput');
-    const jan = janEl ? janEl.value.trim() : '';
-
-    if (!jan) {
-      try { spDbg('[COPY_RESULT_TEXT_EMPTY]', copyResultLogBase({ jan: '', textLength: 0, error: 'no_jan' })); } catch (e2) {}
-      showCopyResultModal({
-        clipboardStatus: 'empty',
-        fullText: '',
-        jan: '',
-        clipboardMessage: '',
-        clipboardAttempted: false,
-        isMainEntry: useMainEntry
-      });
-      try { showToast('❌ JAN codeが入力されていません', 3000); } catch (e3) {}
-      return;
-    }
-
-    const snapshot = buildProductDebugSnapshot(jan);
+    const snapshot = buildProductDebugSnapshot('');
     const md = buildProductDebugMarkdown(snapshot);
     const trimmed = String(md || '').trim();
     const len = trimmed.length;
+    const snapJan = String(snapshot.jan || '').trim();
+    const weakJan = !snapJan;
+    const weakForm = !String(snapshot.form && snapshot.form.name || '').trim();
+    const uiDiag = weakJan || weakForm;
 
     if (len < 20) {
-      try { spDbg('[COPY_RESULT_TEXT_EMPTY]', copyResultLogBase({ jan: jan, textLength: len, error: 'text_too_short' })); } catch (e4) {}
+      try { spDbg('[COPY_RESULT_TEXT_EMPTY]', copyResultLogBase({ jan: snapJan, textLength: len, error: 'text_too_short' })); } catch (e4) {}
       showCopyResultModal({
-        clipboardStatus: 'empty',
+        clipboardStatus: 'diagnostic',
+        uiStatus: 'diagnostic',
         fullText: md || '',
-        jan: jan,
-        clipboardMessage: '',
+        jan: snapJan,
+        clipboardMessage: 'markdown_short',
         clipboardAttempted: false,
         isMainEntry: useMainEntry
       });
+      try { showToast('検証データを確認してください', 3500); } catch (eT) {}
       return;
     }
 
     const hasCB = typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function';
     if (!hasCB) {
-      try { spDbg('[COPY_RESULT_CLIPBOARD_FAIL]', copyResultLogBase({ jan: jan, textLength: len, error: 'no_clipboard_api' })); } catch (e5) {}
+      try { spDbg('[COPY_RESULT_CLIPBOARD_FAIL]', copyResultLogBase({ jan: snapJan, textLength: len, error: 'no_clipboard_api' })); } catch (e5) {}
       showCopyResultModal({
         clipboardStatus: 'fail',
+        uiStatus: uiDiag ? 'diagnostic' : undefined,
         fullText: md,
-        jan: jan,
+        jan: snapJan,
         clipboardMessage: 'no_clipboard_api',
         clipboardAttempted: true,
         isMainEntry: useMainEntry
@@ -11417,28 +11629,30 @@ function copyProductDebugForYui(isMainEntry) {
     }
 
     navigator.clipboard.writeText(md).then(function () {
-      try { spDbg('[COPY_RESULT_CLIPBOARD_SUCCESS]', copyResultLogBase({ jan: jan, textLength: len, error: '' })); } catch (e6) {}
+      try { spDbg('[COPY_RESULT_CLIPBOARD_SUCCESS]', copyResultLogBase({ jan: snapJan, textLength: len, error: '' })); } catch (e6) {}
       showCopyResultModal({
         clipboardStatus: 'success',
+        uiStatus: uiDiag ? 'diagnostic' : undefined,
         fullText: md,
-        jan: jan,
+        jan: snapJan,
         clipboardMessage: '',
         clipboardAttempted: true,
         isMainEntry: useMainEntry
       });
       try { showToast('✅ コピーしました', 2000); } catch (e7) {}
       if (useMainEntry) {
-        try { spDbg('[DEBUG_EXPORT_MAIN_COPY_SUCCESS]', { jan: jan, length: len }); } catch (e8) {}
+        try { spDbg('[DEBUG_EXPORT_MAIN_COPY_SUCCESS]', { jan: snapJan, length: len }); } catch (e8) {}
       }
-      try { spDbg('[PRODUCT_DEBUG_COPY_SUCCESS]', { jan: jan, length: len }); } catch (e9) {}
+      try { spDbg('[PRODUCT_DEBUG_COPY_SUCCESS]', { jan: snapJan, length: len }); } catch (e9) {}
     }).catch(function (err) {
       const em = err && err.message ? err.message : String(err);
-      try { spDbg('[COPY_RESULT_CLIPBOARD_FAIL]', copyResultLogBase({ jan: jan, textLength: len, error: em })); } catch (e10) {}
+      try { spDbg('[COPY_RESULT_CLIPBOARD_FAIL]', copyResultLogBase({ jan: snapJan, textLength: len, error: em })); } catch (e10) {}
       try { spDbg('[PRODUCT_DEBUG_ERROR]', { action: 'copy', error: em }); } catch (e11) {}
       showCopyResultModal({
         clipboardStatus: 'fail',
+        uiStatus: uiDiag ? 'diagnostic' : undefined,
         fullText: md,
-        jan: jan,
+        jan: snapJan,
         clipboardMessage: em,
         clipboardAttempted: true,
         isMainEntry: useMainEntry
@@ -11456,25 +11670,19 @@ function copyProductDebugForYui(isMainEntry) {
  */
 function exportProductDebugJson() {
   spDbg('[DEBUG_HUB_OPEN]', { action: 'export_json' });
-  
+
   try {
-    const janEl = document.getElementById('codeInput');
-    const jan = janEl ? janEl.value.trim() : '';
-    
-    if (!jan) {
-      showToast('❌ JAN codeが入力されていません', 3000);
-      return;
-    }
-    
+    const jan = (typeof getCurrentProductDebugJan === 'function' ? getCurrentProductDebugJan() : '');
     const snapshot = buildProductDebugSnapshot(jan);
     const json = JSON.stringify(snapshot, null, 2);
-    
+    const safeJan = jan || 'UNKNOWN';
+
     // ダウンロード
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `SmartPrice_ProductDebug_${jan}_${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `SmartPrice_ProductDebug_${safeJan}_${new Date().toISOString().slice(0, 10)}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -11494,25 +11702,19 @@ function exportProductDebugJson() {
  */
 function exportProductDebugMd() {
   spDbg('[DEBUG_HUB_OPEN]', { action: 'export_md' });
-  
+
   try {
-    const janEl = document.getElementById('codeInput');
-    const jan = janEl ? janEl.value.trim() : '';
-    
-    if (!jan) {
-      showToast('❌ JAN codeが入力されていません', 3000);
-      return;
-    }
-    
+    const jan = (typeof getCurrentProductDebugJan === 'function' ? getCurrentProductDebugJan() : '');
     const snapshot = buildProductDebugSnapshot(jan);
     const md = buildProductDebugMarkdown(snapshot);
-    
+    const safeJan = jan || 'UNKNOWN';
+
     // ダウンロード
     const blob = new Blob([md], { type: 'text/markdown; charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `SmartPrice_ProductDebug_${jan}_${new Date().toISOString().slice(0, 10)}.md`;
+    a.download = `SmartPrice_ProductDebug_${safeJan}_${new Date().toISOString().slice(0, 10)}.md`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -11584,23 +11786,21 @@ function copyImageDebugForYui() {
  */
 function copyAllDebugForYui() {
   spDbg('[DEBUG_HUB_OPEN]', { action: 'copy_all_debug' });
-  
+
   try {
-    const janEl = document.getElementById('codeInput');
-    const jan = janEl ? janEl.value.trim() : '';
-    
+    const jan = (typeof getCurrentProductDebugJan === 'function' ? getCurrentProductDebugJan() : '');
+    const av = window.APP_VERSION || '';
+    const bid = window.BUILD_ID || '';
+
     let allText = '# Smart Price 全検証ログ\n\n';
     allText += `- 取得日時: ${new Date().toLocaleString('ja-JP')}\n`;
-    allText += `- APP_VERSION: ${APP_VERSION}\n`;
-    allText += `- BUILD_ID: ${BUILD_ID}\n`;
-    allText += `- JAN: ${jan}\n\n`;
-    
-    // 商品情報
-    if (jan) {
-      const snapshot = buildProductDebugSnapshot(jan);
-      const md = buildProductDebugMarkdown(snapshot);
-      allText += md + '\n\n';
-    }
+    allText += `- APP_VERSION: ${av}\n`;
+    allText += `- BUILD_ID: ${bid}\n`;
+    allText += `- JAN: ${jan || '(未取得)'}\n\n`;
+
+    const snapshot = buildProductDebugSnapshot(jan);
+    const md = buildProductDebugMarkdown(snapshot);
+    allText += md + '\n\n';
     
     // GPSログ
     const gpsDebugContent = document.getElementById('gps-debug-content');
@@ -11617,7 +11817,7 @@ function copyAllDebugForYui() {
     }
     
     allText += '---\n';
-    allText += `Generated by Smart Price ${APP_VERSION} (${BUILD_ID})\n`;
+    allText += `Generated by Smart Price ${av} (${bid})\n`;
     
     navigator.clipboard.writeText(allText).then(() => {
       showToast('✅ 全ログをコピーしました', 2000);
@@ -11679,41 +11879,31 @@ function copyProductDebugForYuiMain() {
  */
 function shareProductDebugForYui() {
   spDbg('[DEBUG_EXPORT_SHARE_START]', {});
-  
+
   try {
-    const janEl = document.getElementById('codeInput');
-    const jan = janEl ? janEl.value.trim() : '';
-    
-    if (!jan) {
-      showToast('❌ JAN codeが入力されていません', 3000);
-      return;
-    }
-    
+    try { if (typeof window.updateLastProductDebugFromForm === 'function') window.updateLastProductDebugFromForm(); } catch (e0) {}
+    const jan = (typeof getCurrentProductDebugJan === 'function' ? getCurrentProductDebugJan() : '');
     const snapshot = buildProductDebugSnapshot(jan);
     const md = buildProductDebugMarkdown(snapshot);
-    
-    // Web Share API対応チェック
+    const titleJan = String(snapshot.jan || jan || '不明');
+
     if (navigator.share) {
       navigator.share({
-        title: `Smart Price 検証データ (JAN: ${jan})`,
+        title: `Smart Price 検証データ (JAN: ${titleJan})`,
         text: md
       }).then(() => {
-        spDbg('[DEBUG_EXPORT_SHARE_SUCCESS]', { jan });
+        spDbg('[DEBUG_EXPORT_SHARE_SUCCESS]', { jan: titleJan });
         showToast('✅ 共有しました', 2000);
       }).catch(err => {
-        // ユーザーがキャンセルした場合もここに来る
         if (err.name !== 'AbortError') {
           spDbg('[DEBUG_EXPORT_SHARE_FALLBACK_COPY]', { error: err.message });
-          // フォールバック: コピー
           copyProductDebugForYuiMain();
         }
       });
     } else {
-      // Web Share API非対応の場合はコピーにフォールバック
       spDbg('[DEBUG_EXPORT_SHARE_FALLBACK_COPY]', { reason: 'share_api_not_supported' });
       copyProductDebugForYuiMain();
     }
-    
   } catch (e) {
     spDbg('[DEBUG_EXPORT_SHARE_FALLBACK_COPY]', { error: e.message });
     showToast('❌ エラー: ' + e.message, 3000);
@@ -11728,16 +11918,10 @@ function showProductDebugPreview() {
   spDbg('[DEBUG_EXPORT_PREVIEW_OPEN]', {});
 
   try {
+    try { if (typeof window.updateLastProductDebugFromForm === 'function') window.updateLastProductDebugFromForm(); } catch (eF) {}
     try { spDbg('[COPY_RESULT_START]', copyResultLogBase({ jan: '', textLength: 0, error: 'preview_open' })); } catch (e0) {}
 
-    const janEl = document.getElementById('codeInput');
-    const jan = janEl ? janEl.value.trim() : '';
-
-    if (!jan) {
-      showToast('❌ JAN codeが入力されていません', 3000);
-      return;
-    }
-
+    const jan = (typeof getCurrentProductDebugJan === 'function' ? getCurrentProductDebugJan() : '');
     const snapshot = buildProductDebugSnapshot(jan);
     const md = buildProductDebugMarkdown(snapshot);
     const trimmed = String(md || '').trim();
@@ -11746,9 +11930,10 @@ function showProductDebugPreview() {
     if (tlen < 20) {
       try { spDbg('[COPY_RESULT_TEXT_EMPTY]', copyResultLogBase({ jan: jan, textLength: tlen, error: 'preview_too_short' })); } catch (e1) {}
       showCopyResultModal({
-        clipboardStatus: 'empty',
+        clipboardStatus: 'diagnostic',
+        uiStatus: 'diagnostic',
         fullText: md || '',
-        jan: jan,
+        jan: snapshot.jan || '',
         clipboardMessage: '',
         clipboardAttempted: false,
         isMainEntry: false
@@ -11774,8 +11959,7 @@ function showProductDebugPreview() {
  */
 function copyDebugPreviewText() {
   try {
-    const janEl = document.getElementById('codeInput');
-    const jan = janEl ? janEl.value.trim() : '';
+    const jan = (typeof getCurrentProductDebugJan === 'function' ? getCurrentProductDebugJan() : '');
     try { spDbg('[COPY_RESULT_START]', copyResultLogBase({ jan: jan, textLength: 0, error: 'preview_copy' })); } catch (e0) {}
 
     const textarea = document.getElementById('debugPreviewTextarea');
@@ -11870,17 +12054,10 @@ function closeDebugPreview() {
  */
 function copyProductDebugJson() {
   try {
-    const janEl = document.getElementById('codeInput');
-    const jan = janEl ? janEl.value.trim() : '';
-    
-    if (!jan) {
-      showToast('❌ JAN codeが入力されていません', 3000);
-      return;
-    }
-    
+    const jan = (typeof getCurrentProductDebugJan === 'function' ? getCurrentProductDebugJan() : '');
     const snapshot = buildProductDebugSnapshot(jan);
     const json = JSON.stringify(snapshot, null, 2);
-    
+
     navigator.clipboard.writeText(json).then(() => {
       showToast('✅ JSONをコピーしました', 2000);
     }).catch(err => {
@@ -11897,17 +12074,10 @@ function copyProductDebugJson() {
  */
 function copyProductDebugMarkdown() {
   try {
-    const janEl = document.getElementById('codeInput');
-    const jan = janEl ? janEl.value.trim() : '';
-    
-    if (!jan) {
-      showToast('❌ JAN codeが入力されていません', 3000);
-      return;
-    }
-    
+    const jan = (typeof getCurrentProductDebugJan === 'function' ? getCurrentProductDebugJan() : '');
     const snapshot = buildProductDebugSnapshot(jan);
     const md = buildProductDebugMarkdown(snapshot);
-    
+
     navigator.clipboard.writeText(md).then(() => {
       showToast('✅ Markdownをコピーしました', 2000);
     }).catch(err => {
@@ -11921,6 +12091,8 @@ function copyProductDebugMarkdown() {
 
 // グローバル公開
 window.buildProductDebugSnapshot = buildProductDebugSnapshot;
+window.getCurrentProductDebugJan = getCurrentProductDebugJan;
+window.getCurrentProductFormSnapshot = getCurrentProductFormSnapshot;
 window.copyProductDebugForYui = copyProductDebugForYui;
 window.copyProductDebugForYuiMain = copyProductDebugForYuiMain;
 window.showCopyResultModal = showCopyResultModal;
