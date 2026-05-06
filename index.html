@@ -18,8 +18,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.117";
-  const BUILD_ID    = "2026-05-04_gps-learning-model-r1";
+  const APP_VERSION = "v23.9.118";
+  const BUILD_ID    = "2026-05-06_search-pipeline-diagnostics-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -1303,6 +1303,8 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
               <button class="btn btn-outline-light w-100 mb-2" style="font-size:0.9rem;" onclick="copyGpsDebugForYui()">📍 GPSのみコピー</button>
               <button class="btn btn-outline-light w-100 mb-2" style="font-size:0.9rem;" onclick="copyImageDebugForYui()">🖼️ 画像診断のみコピー</button>
               <button class="btn btn-outline-light w-100 mb-2" style="font-size:0.9rem;" onclick="copyAllDebugForYui()">🎯 全ログコピー</button>
+              <button class="btn btn-outline-light w-100 mb-2" style="font-size:0.9rem;" onclick="copyLookupTraceForYui()">🔎 商品検索診断をコピー</button>
+              <button class="btn btn-outline-light w-100 mb-2" style="font-size:0.9rem;" onclick="copyBootDiagForYui()">🚀 起動診断をコピー</button>
               
               <div class="small text-secondary mb-2 mt-3">保存系</div>
               <button class="btn btn-outline-secondary w-100 mb-2" style="font-size:0.9rem;" onclick="exportProductDebugJson()">💾 JSON保存</button>
@@ -8145,6 +8147,8 @@ function spVisibleTrace(tag, payload, cls) {
   async function processBarcodeData(code, debugSourceTag) {
     // ✅ P0: JAN正規化（数字のみに統一・空白・ハイフン除去）
     let jan = normalizeJan(code);
+    try { spDbg('[BARCODE_START]', { raw: String(code != null ? code : '') }); } catch (_bs) {}
+    try { spDbg('[BARCODE_NORMALIZED]', { raw: String(code != null ? code : ''), normalized: jan }); } catch (_bn) {}
     
     // v23.9.102: JAN正規化ログ（指示書対応）
     spDbg('[JAN_NORMALIZE]', { input: code, normalized: jan });
@@ -8221,6 +8225,7 @@ function spVisibleTrace(tag, payload, cls) {
     }
     
     curBarcode = jan; // ✅ P0: 正規化後のJANをセット（取得前）
+    try { setLastScannedJanSafe(jan, code); } catch (_sj) {}
 
     try {
       if (typeof window.saveLastProductDebugInit === 'function') {
@@ -8251,6 +8256,14 @@ function spVisibleTrace(tag, payload, cls) {
       
       try {
           const p = db.products[jan] || { history: [] };
+        window.__lookupTraceSteps = [];
+        window.__lookupTraceStartTs = Date.now();
+        window.__lookupTraceComplete = false;
+        window.__lookupJanOnlySaveOk = false;
+        try { scheduleProductLookupSlowWatchers(jan); } catch (_sch) {}
+        try { showLookupProgressToast(); } catch (_pt) {}
+        let rakutenInvoked = false;
+        let offInvoked = false;
         let yahooInfo = null;
         let rakutenInfo = null;
         let offInfo = null;
@@ -8272,6 +8285,8 @@ function spVisibleTrace(tag, payload, cls) {
         const localConfirmedName = (p && p.name && String(p.name).trim().length > 3)
           ? p.name
           : (cachedData && cachedData.name && String(cachedData.name).trim().length > 3 ? cachedData.name : null);
+
+        markLookupPipelineStepStart(jan, 'localStorage');
 
         if (localConfirmedName) {
           // v23.9.104: ローカル検索結果ログ（Claude版の改善: 詳細化）
@@ -8309,6 +8324,8 @@ function spVisibleTrace(tag, payload, cls) {
             showToast(`[ローカル確定] ${finalInfo.name.substring(0, 20)}`, 2500);
             console.log('[LOOKUP_LOCAL_HIT] applied', { jan, finalInfo });
           }
+          markLookupPipelineStep(jan, 'localStorage', 'HIT', { name: localConfirmedName, maker: (p && p.maker) || (cachedData && cachedData.maker) || '', reason: 'db.products_or_cache' });
+          markLookupPipelineStep(jan, 'Final', 'HIT', { name: finalInfo.name || '', maker: finalInfo.maker || '', reason: 'local_early_return' });
           applyPreviewImage(finalInfo.imageUrl || '');
           // DBへの同期保存（既にあるはずだが念のため）
           if (finalInfo.name && (!p.name || !p.name.trim())) p.name = finalInfo.name;
@@ -8324,9 +8341,11 @@ function spVisibleTrace(tag, payload, cls) {
         
         // v23.9.104: ローカルミスログ（Claude版の改善: 詳細化）
         spDbg('[PRODUCT_LOOKUP_LOCAL]', { jan, called: true, hit: false, reason: 'no local data' });
+        markLookupPipelineStep(jan, 'localStorage', 'MISS', { reason: 'no_local_confirmed_name' });
 
         // ========= [lookup-aiflow] STEP 2: サーバー確定データ（Firebase RTDB） =========
         spDbg('[LOOKUP_EXTERNAL_START]', { jan, reason: 'local miss' });
+        markLookupPipelineStepStart(jan, 'Firebase');
         const serverConfirmed = await lookupServerConfirmedProduct(jan);
         if (serverConfirmed && serverConfirmed.confirmedName) {
           // v23.9.104: Firebase検索結果ログ（Claude版の改善: 詳細化）
@@ -8376,6 +8395,8 @@ function spVisibleTrace(tag, payload, cls) {
           if (isDebug()) {
             showToast(`[サーバー確定] ${finalInfo.name.substring(0, 20)}`, 2500);
           }
+          markLookupPipelineStep(jan, 'Firebase', 'HIT', { name: finalInfo.name || '', maker: finalInfo.maker || '', reason: 'firebase_rtdb_confirmed' });
+          markLookupPipelineStep(jan, 'Final', 'HIT', { name: finalInfo.name || '', maker: finalInfo.maker || '', reason: 'firebase_early_return' });
           applyPreviewImage(finalInfo.imageUrl || '');
           processBarcodeInFlight.delete(jan);
           // v23.9.102: 最終結果ログ（指示書対応）
@@ -8385,12 +8406,14 @@ function spVisibleTrace(tag, payload, cls) {
         
         // v23.9.104: Firebaseミスログ（Claude版の改善: 詳細化）
         spDbg('[PRODUCT_LOOKUP_FIREBASE]', { jan, called: true, hit: false, reason: 'no firebase data' });
+        markLookupPipelineStep(jan, 'Firebase', 'MISS', { reason: 'no_firebase_data' });
 
         // ========= [lookup-aiflow] STEP 3以降: 外部候補取得（既存ロジックに続く） =========
         spDbg('[LOOKUP_EXTERNAL_START]', { jan, reason: 'server miss' });
 
         // ✅ P0: 最優先: LocalStorageキャッシュをチェック（旧キャッシュ互換 / 外部候補取得前に軽量チェック）
         if (cachedData && cachedData.name) {
+          markLookupPipelineStep(jan, 'localStorage', 'HIT', { name: cachedData.name || '', maker: cachedData.maker || '', reason: 'jan_cache_restore' });
           // キャッシュから復元
           finalInfo.name = cachedData.name || '';
           finalInfo.maker = cachedData.maker || '';
@@ -8442,6 +8465,7 @@ function spVisibleTrace(tag, payload, cls) {
 
             // ✅ 処理完了
             processBarcodeInFlight.delete(jan);
+            markLookupPipelineStep(jan, 'Final', 'HIT', { name: finalInfo.name || '', maker: finalInfo.maker || '', reason: 'jan_cache_sufficient' });
             return;
           }
         }
@@ -8454,10 +8478,16 @@ function spVisibleTrace(tag, payload, cls) {
         let candidateSource = 'none';
 
         // ✅ 優先順位1: Yahoo最優先
+        markLookupPipelineStepStart(jan, 'Yahoo');
         yahooInfo = await lookupYahooByJan(jan);
         
         // v23.9.104: Yahoo検索結果ログ（詳細化）
         const yahooHit = !!(yahooInfo && yahooInfo.name);
+        markLookupPipelineStep(jan, 'Yahoo', yahooHit ? 'HIT' : 'MISS', {
+          name: yahooInfo && yahooInfo.name ? yahooInfo.name : '',
+          maker: yahooInfo && yahooInfo.maker ? yahooInfo.maker : '',
+          reason: yahooHit ? 'found' : 'not_found'
+        });
         spDbg('[PRODUCT_LOOKUP_YAHOO]', { 
           jan, 
           called: true, 
@@ -8553,10 +8583,17 @@ function spVisibleTrace(tag, payload, cls) {
           // ✅ Yahoo結果が弱い場合は楽天で補完
           const yahooWeak = !candidateName || !candidateMaker || !candidateImageUrl || yahooTrustScore < 70;
           if (yahooWeak) {
+            markLookupPipelineStepStart(jan, 'Rakuten');
+            rakutenInvoked = true;
             rakutenInfo = await lookupRakutenByJan(jan);
             
             // v23.9.104: Rakuten検索結果ログ（詳細化）
             const rakutenHit = !!(rakutenInfo && rakutenInfo.name);
+            markLookupPipelineStep(jan, 'Rakuten', rakutenHit ? 'HIT' : 'MISS', {
+              name: rakutenInfo && rakutenInfo.name ? rakutenInfo.name : '',
+              maker: rakutenInfo && rakutenInfo.maker ? rakutenInfo.maker : '',
+              reason: rakutenHit ? 'found' : 'not_found'
+            });
             spDbg('[PRODUCT_LOOKUP_RAKUTEN]', { 
               jan, 
               called: true, 
@@ -8601,10 +8638,17 @@ function spVisibleTrace(tag, payload, cls) {
           }
         } else {
           // ✅ Yahoo未取得 → 楽天
+          markLookupPipelineStepStart(jan, 'Rakuten');
+          rakutenInvoked = true;
           rakutenInfo = await lookupRakutenByJan(jan);
           
           // v23.9.104: Rakuten検索結果ログ（詳細化）
           const rakutenHit = !!(rakutenInfo && rakutenInfo.name);
+          markLookupPipelineStep(jan, 'Rakuten', rakutenHit ? 'HIT' : 'MISS', {
+            name: rakutenInfo && rakutenInfo.name ? rakutenInfo.name : '',
+            maker: rakutenInfo && rakutenInfo.maker ? rakutenInfo.maker : '',
+            reason: rakutenHit ? 'found' : 'not_found'
+          });
           spDbg('[PRODUCT_LOOKUP_RAKUTEN]', { 
             jan, 
             called: true, 
@@ -8627,7 +8671,15 @@ function spVisibleTrace(tag, payload, cls) {
             candidateSource = 'rakuten';
           } else {
             // ✅ 楽天も未取得 → OFF（最終補助）
+            markLookupPipelineStepStart(jan, 'OpenFoodFacts');
+            offInvoked = true;
             offInfo = await lookupOffByJan(jan);
+            const offHit = !!(offInfo && offInfo.name && String(offInfo.name).trim());
+            markLookupPipelineStep(jan, 'OpenFoodFacts', offHit ? 'HIT' : 'MISS', {
+              name: offInfo && offInfo.name ? offInfo.name : '',
+              maker: offInfo && offInfo.maker ? offInfo.maker : '',
+              reason: offHit ? 'found' : 'not_found'
+            });
             if (isDebug()) {
               console.log('[BARCODE] off result', offInfo);
               spVisibleTrace('[BARCODE] off', { name: offInfo?.name || '', maker: offInfo?.maker || '', hasImage: !!offInfo?.imageUrl }, 'w');
@@ -8656,6 +8708,13 @@ function spVisibleTrace(tag, payload, cls) {
           }
         }
 
+        if (!rakutenInvoked) {
+          markLookupPipelineStep(jan, 'Rakuten', 'MISS', { reason: 'not_invoked' });
+        }
+        if (!offInvoked) {
+          markLookupPipelineStep(jan, 'OpenFoodFacts', 'MISS', { reason: 'not_invoked' });
+        }
+
         // 履歴fallback候補ログ
         {
           const hist = (p && Array.isArray(p.history) && p.history.length > 0) ? p.history[p.history.length - 1] : null;
@@ -8666,8 +8725,9 @@ function spVisibleTrace(tag, payload, cls) {
           });
         }
 
-        // v23.9.105: Web検索（Yahoo/Rakuten/OFFすべてミスの場合）
+        // v23.9.105: Web検索（プロキシ・Google CSE 相当）Yahoo/Rakuten/OFF 後段
         if (!candidateName || candidateName.trim().length < 3) {
+          markLookupPipelineStepStart(jan, 'Google CSE');
           try {
             const proxyUrl = (window.SP_CONFIG && window.SP_CONFIG.yahooProxyExecUrl) ? window.SP_CONFIG.yahooProxyExecUrl.trim() : '';
             if (proxyUrl) {
@@ -8698,19 +8758,28 @@ function spVisibleTrace(tag, payload, cls) {
                     candidateCategory = String(webJson.category).trim();
                   }
                   candidateSource = 'web_search';
+                  markLookupPipelineStep(jan, 'Google CSE', 'HIT', { name: candidateName, maker: candidateMaker, reason: 'proxy_web_search' });
                   
                   if (isDebug()) showToast(`[WEB] 検索で発見: ${candidateName}`, 3000);
+                } else {
+                  markLookupPipelineStep(jan, 'Google CSE', 'MISS', { reason: (webJson && webJson.error) ? String(webJson.error) : 'not_found' });
                 }
               } else {
                 spDbg('[PRODUCT_LOOKUP_WEB]', { jan, called: true, hit: false, reason: 'http_error', status: webRes.status });
+                markLookupPipelineStep(jan, 'Google CSE', 'ERROR', { reason: 'http_error', error: 'HTTP ' + webRes.status });
               }
             } else {
               spDbg('[PRODUCT_LOOKUP_WEB]', { jan, called: false, hit: false, reason: 'no_proxy_url' });
+              markLookupPipelineStep(jan, 'Google CSE', 'MISS', { reason: 'no_proxy_url' });
             }
           } catch (webErr) {
-            spDbg('[PRODUCT_LOOKUP_WEB]', { jan, called: true, hit: false, reason: 'exception', error: webErr.message });
+            const aborted = webErr && (webErr.name === 'AbortError' || String(webErr.message || '').toLowerCase().indexOf('abort') >= 0);
+            spDbg('[PRODUCT_LOOKUP_WEB]', { jan, called: true, hit: false, reason: aborted ? 'timeout' : 'exception', error: webErr && webErr.message ? webErr.message : String(webErr) });
+            markLookupPipelineStep(jan, 'Google CSE', aborted ? 'TIMEOUT' : 'ERROR', { error: webErr && webErr.message ? webErr.message : String(webErr), reason: aborted ? 'fetch_abort' : 'exception' });
           }
         } else {
+          markLookupPipelineStepStart(jan, 'Google CSE');
+          markLookupPipelineStep(jan, 'Google CSE', 'MISS', { reason: 'already_found_by_api' });
           // 既に商品名が見つかっているのでWeb検索はスキップ
           spDbg('[PRODUCT_LOOKUP_WEB]', { jan, called: false, hit: false, reason: 'already_found_by_api' });
         }
@@ -8729,9 +8798,9 @@ function spVisibleTrace(tag, payload, cls) {
         finalInfo.imageUrl = candidateImageUrl || '';
         sourceUsed = candidateSource || 'none';
         
-        // v23.9.102: AI検索ログ（指示書対応）
-        // 現在のコードではAI整形は使用されていない（Yahoo/Rakutenの結果をそのまま使用）
+        // v23.9.102: AI検索ログ（クライアント側では未使用・トレースのみ）
         spDbg('[PRODUCT_LOOKUP_AI]', { called: false, result: null });
+        markLookupPipelineStep(jan, 'AI', 'MISS', { reason: 'client_no_ai_normalize' });
         
         // v23.9.102: 最終結果ログ（指示書対応）
         spDbg('[PRODUCT_LOOKUP_FINAL]', { name: finalInfo.name, maker: finalInfo.maker, source: sourceUsed });
@@ -8790,6 +8859,7 @@ function spVisibleTrace(tag, payload, cls) {
             console.log("[ProcessBarcode] JAN mismatch, skip update:", currentJan, "!=", jan);
             showToast("処理がキャンセルされました", 2000);
           }
+          try { markLookupPipelineStep(jan, 'Final', 'MISS', { reason: 'jan_mismatch_cancel', error: 'currentJan=' + currentJan }); } catch (_mj) {}
           processBarcodeInFlight.delete(jan);
           return; // 古い結果は反映しない
         }
@@ -9013,6 +9083,12 @@ function spVisibleTrace(tag, payload, cls) {
           }
           } // end if(!finalInfo.name) - STEP1/STEP2
           showToast(`商品情報が見つかりませんでした\nJAN: ${jan}\n商品名・メーカーを手入力してください`, 8000);
+          try { spDbg('[LOOKUP_TOAST_FALLBACK]', { reason: 'no_product_data', jan: jan }); } catch (_ltf) {}
+        }
+
+        {
+          const fn = !!(finalInfo.name && String(finalInfo.name).trim());
+          markLookupPipelineStep(jan, 'Final', fn ? 'HIT' : 'MISS', { name: finalInfo.name || '', maker: finalInfo.maker || '', reason: String(sourceUsed || '') });
         }
         
         // ✅ P0: debug=1 時の詳細表示（LAST_JAN / SOURCE / STATUS / 取得データ）
@@ -9043,6 +9119,10 @@ function spVisibleTrace(tag, payload, cls) {
       } catch(e) {
         // [scan-ux-improve] STEP4: catchでも必ずトースト表示
         showToast('エラーが発生しました', 5000);
+        try {
+          markLookupPipelineStep(String(jan || ''), 'Final', 'ERROR', { error: e && e.message ? e.message : String(e), reason: 'processBarcodeData_catch' });
+        } catch (_mle) {}
+        try { spDbg('[LOOKUP_TOAST_FALLBACK]', { reason: 'exception', jan: jan || '' }); } catch (_lte) {}
         spDbg('[ERROR]', { message: e && e.message ? e.message : String(e), jan: jan || '' });
         if (isDebug()) {
           showToast(`情報取得エラー: ${e.message}`, 5000);
@@ -9055,6 +9135,7 @@ function spVisibleTrace(tag, payload, cls) {
           nameInput.placeholder = originalPlaceholder;
         }
       } finally {
+        try { markLookupTraceComplete(); } catch (_mlc) {}
         // ✅ P0: 処理完了時にフラグを解除
         if (jan && /^\d{8,14}$/.test(jan)) {
           processBarcodeInFlight.delete(jan);
@@ -11581,6 +11662,20 @@ function getCurrentProductDebugJan() {
     }
   } catch (e0) {}
   if (!jan) {
+    try {
+      if (window.lastScannedJan != null && String(window.lastScannedJan).trim()) {
+        jan = String(window.lastScannedJan).trim();
+      }
+    } catch (eLs) {}
+  }
+  if (!jan) {
+    try {
+      if (window.__lastLookupJan != null && String(window.__lastLookupJan).trim()) {
+        jan = String(window.__lastLookupJan).trim();
+      }
+    } catch (eLk) {}
+  }
+  if (!jan) {
     const el = document.getElementById('manualCodeInput');
     if (el && el.value) jan = String(el.value).replace(/\D/g, '').trim();
   }
@@ -11681,6 +11776,17 @@ function buildProductDebugSnapshot(janHint) {
   const janResolved = String(janHint || '').trim() || getCurrentProductDebugJan();
   let dbgReason = '';
   if (!janResolved) dbgReason = 'jan_not_found';
+
+  try {
+    spDbg('[DEBUG_JAN_SOURCE]', {
+      janResolved: janResolved,
+      janHint: String(janHint || ''),
+      curBarcode: (typeof curBarcode !== 'undefined' ? String(curBarcode || '') : ''),
+      lastScannedJan: String(window.lastScannedJan || ''),
+      __lastLookupJan: String(window.__lastLookupJan || ''),
+      __lastBarcodeRaw: String(window.__lastBarcodeRaw || '')
+    });
+  } catch (_djs) {}
 
   try {
     spDbg('[PRODUCT_DEBUG_SNAPSHOT_BUILD]', productDebugLogMeta({ jan: janResolved, reason: dbgReason }));
@@ -13166,7 +13272,226 @@ window.copyFullAuditForYui = copyFullAuditForYui;
 window.shareFullAuditForYui = shareFullAuditForYui;
 window.showFullAuditPreview = showFullAuditPreview;
 
-</script>
+// v23.9.118: 商品検索パイプライン診断（ログ・コピー用。取得ロジック本体は変更しない）
+window.__lookupTraceSteps = window.__lookupTraceSteps || [];
+window.__productLookupSlowTimers = window.__productLookupSlowTimers || [];
+window.__lookupToastTimer = null;
+window.__lookupTraceStartTs = 0;
+window.__lookupTraceComplete = false;
+window.__lookupJanOnlySaveOk = false;
+
+function clearProductLookupSlowTimers() {
+  (window.__productLookupSlowTimers || []).forEach(function (t) {
+    try { clearTimeout(t); } catch (_e) {}
+  });
+  window.__productLookupSlowTimers = [];
+}
+
+function scheduleProductLookupSlowWatchers(jan) {
+  clearProductLookupSlowTimers();
+  var j = String(jan || '').trim();
+  if (!j) return;
+  var milestones = [
+    { ms: 3000, tag: '[PRODUCT_LOOKUP_SLOW_3S]' },
+    { ms: 5000, tag: '[PRODUCT_LOOKUP_SLOW_5S]' },
+    { ms: 10000, tag: '[PRODUCT_LOOKUP_SLOW_10S]' },
+    { ms: 20000, tag: '[PRODUCT_LOOKUP_SLOW_20S]' }
+  ];
+  milestones.forEach(function (m) {
+    var tid = setTimeout(function () {
+      if (window.__lookupTraceComplete) return;
+      try { spDbg(m.tag, { jan: j, atMs: m.ms }); } catch (_e) {}
+      if (m.ms >= 20000) {
+        window.__lookupJanOnlySaveOk = true;
+        try { spDbg('[LOOKUP_JAN_ONLY_SAVE_OK]', { jan: j, atMs: m.ms }); } catch (_e2) {}
+      }
+    }, m.ms);
+    window.__productLookupSlowTimers.push(tid);
+  });
+}
+
+function clearLookupProgressToastChain() {
+  if (window.__lookupToastTimer) {
+    try { clearTimeout(window.__lookupToastTimer); } catch (_e) {}
+    window.__lookupToastTimer = null;
+  }
+}
+
+function showLookupProgressToast() {
+  try {
+    showToast('商品情報を検索しています…', 6000);
+    spDbg('[LOOKUP_TOAST_SHOW]', { msg: '商品情報を検索しています…' });
+  } catch (_e) {}
+  clearLookupProgressToastChain();
+  window.__lookupToastTimer = setTimeout(function () {
+    try {
+      if (window.__lookupTraceComplete) return;
+      showToast('検索に時間がかかっています。JANだけでも保存できます。', 6000);
+      spDbg('[LOOKUP_TOAST_LATE]', { atMs: 5000 });
+      spDbg('[LOOKUP_TOAST_TIMEOUT]', { atMs: 5000 });
+    } catch (_e2) {}
+  }, 5000);
+}
+
+function markLookupTraceComplete() {
+  window.__lookupTraceComplete = true;
+  clearProductLookupSlowTimers();
+  clearLookupProgressToastChain();
+}
+
+function markLookupPipelineStepStart(jan, step) {
+  try { spDbg('[PRODUCT_LOOKUP_STEP_START]', { jan: String(jan || ''), step: step }); } catch (_e) {}
+}
+
+function markLookupPipelineStep(jan, step, kind, extra) {
+  extra = extra || {};
+  var t0 = window.__lookupTraceStartTs || Date.now();
+  var elapsedMs = extra.elapsedMs != null ? Number(extra.elapsedMs) : Math.max(0, Date.now() - t0);
+  var row = {
+    jan: String(jan || ''),
+    step: step,
+    status: String(kind || '').toUpperCase(),
+    elapsedMs: elapsedMs,
+    name: extra.name || '',
+    maker: extra.maker || '',
+    category: extra.category || '',
+    imageUrl: extra.imageUrl || '',
+    reason: extra.reason || '',
+    error: extra.error || ''
+  };
+  window.__lookupTraceSteps = window.__lookupTraceSteps || [];
+  window.__lookupTraceSteps.push(row);
+  var k = String(kind || '').toUpperCase();
+  try {
+    if (k === 'HIT') spDbg('[PRODUCT_LOOKUP_STEP_HIT]', row);
+    else if (k === 'MISS') spDbg('[PRODUCT_LOOKUP_STEP_MISS]', row);
+    else if (k === 'ERROR') spDbg('[PRODUCT_LOOKUP_STEP_ERROR]', row);
+    else if (k === 'TIMEOUT') spDbg('[PRODUCT_LOOKUP_STEP_TIMEOUT]', row);
+    else spDbg('[PRODUCT_LOOKUP_STEP_' + k + ']', row);
+  } catch (_e2) {}
+}
+
+function setLastScannedJanSafe(normalizedJan, rawBarcode) {
+  var jan = String(normalizedJan || '').trim();
+  var raw = rawBarcode != null ? String(rawBarcode) : '';
+  try {
+    window.lastScannedJan = jan;
+    window.currentJan = jan;
+    window.__lastLookupJan = jan;
+    window.__lastBarcodeRaw = raw;
+  } catch (_e) {}
+  try {
+    spDbg('[BARCODE_SET_CURRENT]', { jan: jan, fieldsSet: ['lastScannedJan', 'currentJan', '__lastLookupJan'], rawPreserved: raw });
+  } catch (_e2) {}
+}
+
+function getLastScannedJanSafe() {
+  return String(window.lastScannedJan || window.__lastLookupJan || '').trim();
+}
+
+function buildLookupTraceMarkdown() {
+  var lines = [];
+  lines.push('# Smart Price 商品検索診断');
+  lines.push('');
+  lines.push('- appVersion: ' + String(window.APP_VERSION || ''));
+  lines.push('- buildId: ' + String(window.BUILD_ID || ''));
+  lines.push('- at: ' + new Date().toISOString());
+  lines.push('- __lastBarcodeRaw: ' + String(window.__lastBarcodeRaw || ''));
+  lines.push('- __lookupJanOnlySaveOk: ' + String(!!window.__lookupJanOnlySaveOk));
+  lines.push('');
+  lines.push('## steps');
+  var steps = window.__lookupTraceSteps || [];
+  if (!steps.length) {
+    lines.push('(no steps recorded)');
+  } else {
+    steps.forEach(function (s, i) {
+      lines.push((i + 1) + '. [' + (s.status || '') + '] ' + (s.step || '') + ' ' + (s.elapsedMs != null ? s.elapsedMs + 'ms' : '') + ' jan=' + (s.jan || ''));
+      if (s.reason) lines.push('   - reason: ' + s.reason);
+      if (s.error) lines.push('   - error: ' + s.error);
+      if (s.name) lines.push('   - name: ' + s.name);
+      if (s.maker) lines.push('   - maker: ' + s.maker);
+    });
+  }
+  lines.push('');
+  return lines.join('\n');
+}
+
+function copyLookupTraceForYui() {
+  var md = buildLookupTraceMarkdown();
+  try { spDbg('[LOOKUP_TRACE_COPY]', { bytes: md.length }); } catch (_e) {}
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(md).then(
+      function () {
+        try { spDbg('[LOOKUP_TRACE_COPY]', { ok: true }); } catch (_e2) {}
+        try { showToast('商品検索診断をコピーしました', 2500); } catch (_e3) {}
+      },
+      function (e) {
+        try { spDbg('[LOOKUP_TRACE_COPY]', { ok: false, error: e && e.message ? e.message : String(e) }); } catch (_e4) {}
+        try { showToast('コピーに失敗しました', 3000); } catch (_e5) {}
+      }
+    );
+  } else {
+    try { showToast('クリップボード未対応', 3000); } catch (_e6) {}
+  }
+}
+
+function buildBootDiagMarkdown() {
+  var lines = [];
+  lines.push('# Smart Price 起動診断');
+  lines.push('');
+  lines.push('- appVersion: ' + String(window.APP_VERSION || ''));
+  lines.push('- buildId: ' + String(window.BUILD_ID || ''));
+  lines.push('- at: ' + new Date().toISOString());
+  lines.push('- href: ' + String(location.href || ''));
+  lines.push('- ua: ' + String(navigator.userAgent || ''));
+  try {
+    lines.push('- firebaseReady: ' + String(typeof isFirebaseReady !== 'undefined' ? !!isFirebaseReady : 'n/a'));
+  } catch (_e) {
+    lines.push('- firebaseReady: (error)');
+  }
+  try {
+    var sp = window.SP_CONFIG || {};
+    lines.push('- SP_CONFIG.yahooProxyExecUrl: ' + String(sp.yahooProxyExecUrl ? 'set' : 'empty'));
+  } catch (_e2) {
+    lines.push('- SP_CONFIG: (error)');
+  }
+  lines.push('- lastScannedJan: ' + String(window.lastScannedJan || ''));
+  lines.push('- __lastLookupJan: ' + String(window.__lastLookupJan || ''));
+  lines.push('');
+  return lines.join('\n');
+}
+
+function copyBootDiagForYui() {
+  var md = buildBootDiagMarkdown();
+  try { spDbg('[BOOT_DIAG_COPY]', { bytes: md.length }); } catch (_e) {}
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(md).then(
+      function () {
+        try { spDbg('[BOOT_DIAG_COPY]', { ok: true }); } catch (_e2) {}
+        try { showToast('起動診断をコピーしました', 2500); } catch (_e3) {}
+      },
+      function (e) {
+        try { spDbg('[BOOT_DIAG_COPY]', { ok: false, error: e && e.message ? e.message : String(e) }); } catch (_e4) {}
+        try { showToast('コピーに失敗しました', 3000); } catch (_e5) {}
+      }
+    );
+  } else {
+    try { showToast('クリップボード未対応', 3000); } catch (_e6) {}
+  }
+}
+
+window.markLookupPipelineStep = markLookupPipelineStep;
+window.markLookupPipelineStepStart = markLookupPipelineStepStart;
+window.markLookupTraceComplete = markLookupTraceComplete;
+window.showLookupProgressToast = showLookupProgressToast;
+window.scheduleProductLookupSlowWatchers = scheduleProductLookupSlowWatchers;
+window.setLastScannedJanSafe = setLastScannedJanSafe;
+window.getLastScannedJanSafe = getLastScannedJanSafe;
+window.buildLookupTraceMarkdown = buildLookupTraceMarkdown;
+window.copyLookupTraceForYui = copyLookupTraceForYui;
+window.buildBootDiagMarkdown = buildBootDiagMarkdown;
+window.copyBootDiagForYui = copyBootDiagForYui;
+
 
 
 </div>
