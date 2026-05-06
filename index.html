@@ -18,8 +18,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.116";
-  const BUILD_ID    = "2026-05-04_gps-store-fix-r1";
+  const APP_VERSION = "v23.9.117";
+  const BUILD_ID    = "2026-05-04_gps-learning-model-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -4057,8 +4057,10 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     }
     
     const customStores = db.config.customStores || [];
-    
-    // v23.9.116: GPS買い物系 → GPS全件 → 履歴補助の順（curStore は自動変更しない）
+
+    const gpsOrdered = (isGpsOn && Array.isArray(window.nearbyStoreNames) && window.nearbyStoreNames.length > 0)
+      ? window.nearbyStoreNames.map(s => canonicalStoreName(s)).filter(Boolean)
+      : [];
     const gpsShop = (Array.isArray(window.nearbyStoreShopping) ? window.nearbyStoreShopping : [])
       .map(s => canonicalStoreName(s)).filter(Boolean);
     const gpsBroad = (Array.isArray(window.nearbyStoreGpsBroad) ? window.nearbyStoreGpsBroad : [])
@@ -4066,19 +4068,33 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     const histCand = (Array.isArray(window.historyStoreCandidates) ? window.historyStoreCandidates : [])
       .map(s => canonicalStoreName(s)).filter(Boolean);
     let mergedNearby = [];
-    if (gpsShop.length) mergedNearby = [...gpsShop];
+    if (gpsOrdered.length) mergedNearby = [...gpsOrdered];
+    else if (gpsShop.length) mergedNearby = [...gpsShop];
     else if (gpsBroad.length) mergedNearby = [...gpsBroad];
     else mergedNearby = [...histCand];
     mergedNearby = [...new Set(mergedNearby)].filter(Boolean);
-    if (!mergedNearby.length && Array.isArray(window.nearbyStoreNames) && window.nearbyStoreNames.length) {
-      mergedNearby = window.nearbyStoreNames.map(s => canonicalStoreName(s)).filter(Boolean);
+    // ✅ 候補を統合（未設定は先頭固定）。v23.9.117: GPSはスコア順（nearbyStoreNames）を維持し全体ソートはしない
+    const storeNames = [];
+    const seen = new Set();
+    function pushUnique(arr) {
+      for (const s of arr) {
+        const t = canonicalStoreName(String(s || '').trim());
+        if (!t || t === '未設定') continue;
+        if (seen.has(t)) continue;
+        seen.add(t);
+        storeNames.push(t);
+      }
     }
-    const nearbyStores = mergedNearby;
-    // ✅ 候補を統合（未設定は先頭固定）
-    const storeNames = [...new Set([...manualPriority, ...customStores, ...nearbyStores, ...sortedFreq])]
-      .filter(s => s && s !== '未設定');
-    // ✅ 店名で並べる（日本語も自然順）
-    storeNames.sort((a,b)=> (a||'').localeCompare((b||''), 'ja'));
+    pushUnique(manualPriority);
+    pushUnique(customStores);
+    pushUnique(nearbyStores);
+    for (const s of sortedFreq) {
+      const t = canonicalStoreName(String(s || '').trim());
+      if (!t || t === '未設定') continue;
+      if (seen.has(t)) continue;
+      seen.add(t);
+      storeNames.push(t);
+    }
     const finalSet = ['未設定', ...storeNames];
 
     // ✅ 起動直後は「未設定」固定（前回選択を引きずらない）
@@ -5447,6 +5463,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       window.nearbyStoreShopping = [];
       window.nearbyStoreGpsBroad = [];
       window.historyStoreCandidates = [];
+      try { window.__gpsLearning117 = null; } catch (eG) {}
       // debug=1時は診断パネルを非表示にしない（記録は残す）
       renderStoreList();
       showToast("GPS OFF", 1500);
@@ -6344,7 +6361,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     return result;
   }
 
-  // 表示前の正規化（汎用・特定チェーン決め打ちなし）
+  // 表示前の正規化（汎用・v23.9.117: 学習スコアの名寄せにも使用）
   function canonicalStoreName(name) {
     const s = normalizeStoreLabel(name);
     if (!s) return '';
@@ -6390,7 +6407,133 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     return Math.max(0.1, Math.min(GPS_MAX_STORE_SEARCH_RADIUS_KM, gpsRangeM / 1000));
   }
 
-  // ===== fetchNearbyStores (v23.9.116: 半径段階 + GAS debug + 履歴補助) =====
+  /** v23.9.117: 購入履歴の店名頻度マップ（db.products の history.store） */
+  function buildHistoryFreqMapForGps() {
+    const freq = {};
+    try {
+      const products = (typeof db !== 'undefined' && db && db.products) ? db.products : {};
+      Object.values(products).forEach(p => {
+        const hlist = Array.isArray(p.history) ? p.history : [];
+        hlist.forEach(h => {
+          const st = h && h.store != null ? String(h.store).trim() : '';
+          if (!st || st === '未設定') return;
+          freq[st] = (freq[st] || 0) + 1;
+        });
+      });
+    } catch (e) {}
+    return freq;
+  }
+
+  /** v23.9.117: 距離スコア（km） */
+  function distanceKmScoreForGps117(dKm) {
+    const d = Number(dKm);
+    if (!Number.isFinite(d) || d < 0) return 0;
+    if (d <= 0.5) return 1.0;
+    if (d <= 1) return 0.8;
+    if (d <= 3) return 0.6;
+    if (d <= 5) return 0.4;
+    if (d <= 10) return 0.2;
+    return 0.0;
+  }
+
+  /** v23.9.117: 業種キーワードのみ（チェーン名の固定辞書は使わない） */
+  function isShoppingCategory(category) {
+    const c = String(category || '');
+    const keys = ['スーパー', 'スーパーマーケット', '食品スーパー', 'ドラッグストア', '薬局', 'コンビニ', 'コンビニエンスストア', 'ホームセンター', 'ディスカウントストア', '100円ショップ', '食品店', '酒屋', '精肉', '青果', 'ショッピングセンター', 'モール'];
+    return keys.some(k => c.indexOf(k) !== -1);
+  }
+
+  /**
+   * v23.9.117: 履歴頻度を 0..1 に正規化（maxFreq ゼロ除算ガード）
+   * 完全一致: freq/maxFreq、部分一致（正規化名）: 0.5*freq/maxFreq
+   */
+  function mergeHistoryStoreScore(storeName, historyFreqMap) {
+    if (!storeName || !historyFreqMap || typeof historyFreqMap !== 'object') return 0;
+    const keys = Object.keys(historyFreqMap);
+    const maxFreq = Math.max(0, ...keys.map(k => Number(historyFreqMap[k]) || 0));
+    if (maxFreq <= 0) return 0;
+    const canon = canonicalStoreName(storeName);
+    if (!canon) return 0;
+    let best = 0;
+    let bestType = null;
+    let bestK = '';
+    let bestF = 0;
+    for (const k of keys) {
+      const fk = Number(historyFreqMap[k]) || 0;
+      if (fk <= 0) continue;
+      const ck = canonicalStoreName(k);
+      if (!ck) continue;
+      if (ck === canon) {
+        const v = fk / maxFreq;
+        if (v > best) { best = v; bestType = 'exact'; bestK = k; bestF = fk; }
+      } else if (canon.length >= 2 && ck.length >= 2 && (ck.includes(canon) || canon.includes(ck))) {
+        const v = 0.5 * (fk / maxFreq);
+        if (v > best) { best = v; bestType = 'partial'; bestK = k; bestF = fk; }
+      }
+    }
+    if (best > 0 && bestType) {
+      try { spDbg('[GPS_HISTORY_MATCH]', { name: storeName, matchType: bestType, freq: bestF, key: bestK }); } catch (e0) {}
+    }
+    return best;
+  }
+
+  /** v23.9.117: 純粋スコア（距離30% + 業種30% + 履歴40%） */
+  function scoreStoreCandidate(store, userLat, userLng, historyFreqMap) {
+    const lat = Number(store && store.lat);
+    const lng = Number(store && store.lng);
+    let dKm = Number(store && store.distance);
+    if (!Number.isFinite(dKm) && Number.isFinite(lat) && Number.isFinite(lng) && Number.isFinite(userLat) && Number.isFinite(userLng)) {
+      dKm = calcDistance(userLat, userLng, lat, lng);
+    }
+    if (!Number.isFinite(dKm)) dKm = 999;
+    const distScore = distanceKmScoreForGps117(dKm);
+    const cat = store && store.category != null ? String(store.category) : '';
+    const categoryScore = isShoppingCategory(cat) ? 1.0 : 0.0;
+    const label = canonicalStoreName(buildNearbyStoreLabel(store)) || canonicalStoreName(String(store.name || ''));
+    try { spDbg('[GPS_CATEGORY_MATCH]', { name: label, category: cat, matched: !!categoryScore }); } catch (e1) {}
+    const historyScore = mergeHistoryStoreScore(label || String(store.name || ''), historyFreqMap);
+    const total = distScore * 0.3 + categoryScore * 0.3 + historyScore * 0.4;
+    try { spDbg('[GPS_SCORE]', { name: label, distScore, categoryScore, historyScore, total, distKm: Math.round(dKm * 1000) / 1000 }); } catch (e2) {}
+    return { label, distScore, categoryScore, historyScore, total, distKm: dKm };
+  }
+
+  /** v23.9.117: スコア降順（同点は距離昇順）。全員0なら距離上位5件 */
+  function applyGpsLearningRank117(storesArr, userLat, userLng, historyFreqMap) {
+    const rows = (storesArr || []).map(store => scoreStoreCandidate(store, userLat, userLng, historyFreqMap));
+    let ranked = rows.filter(r => r.total > 0);
+    ranked.sort((a, b) => (b.total - a.total) || ((a.distKm || 0) - (b.distKm || 0)));
+    if (!ranked.length) {
+      ranked = rows.slice().sort((a, b) => (a.distKm || 0) - (b.distKm || 0)).slice(0, 5);
+    }
+    const seen = new Set();
+    const rankedNames = [];
+    for (const r of ranked) {
+      const n = r.label;
+      if (!n || seen.has(n)) continue;
+      seen.add(n);
+      rankedNames.push(n);
+    }
+    try {
+      spDbg('[GPS_SORT_RESULT]', { ranked: ranked.slice(0, 25).map(x => ({ name: x.label, score: x.total })) });
+      spDbg('[GPS_FINAL]', { finalCandidates: rankedNames.slice(0, 40) });
+    } catch (e3) {}
+    const categoryMatchCount = rows.filter(x => x.categoryScore > 0).length;
+    const historyMatchCount = rows.filter(x => x.historyScore > 0).length;
+    return {
+      rankedNames,
+      auditRows: ranked.slice(0, 20).map(x => ({
+        name: x.label,
+        distScore: x.distScore,
+        categoryScore: x.categoryScore,
+        historyScore: x.historyScore,
+        total: x.total
+      })),
+      categoryMatchCount,
+      historyMatchCount
+    };
+  }
+
+  // ===== fetchNearbyStores (v23.9.117: 116の半径段階維持 + 学習スコアリング) =====
   async function fetchNearbyStores() {
     try {
       const proxyUrl = (window.SP_CONFIG && window.SP_CONFIG.yahooProxyExecUrl) ? window.SP_CONFIG.yahooProxyExecUrl.trim() : '';
@@ -6416,6 +6559,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         let bestAllLabels = [];
         let finalRadiusKm = null;
         let shoppingHit = false;
+        let lastStoresForScore = [];
 
         for (let ri = 0; ri < radiusList.length; ri++) {
           const radiusKm = radiusList[ri];
@@ -6440,6 +6584,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
 
             const storesArr = json.stores;
             const rawCount = storesArr.length;
+            lastStoresForScore = storesArr.slice();
 
             storesArr.forEach(s => { spDbg('[GPS_STORE_RAW]', s); });
 
@@ -6486,18 +6631,27 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         }
 
         let merged = [];
-        if (bestShopping.length) merged = [...bestShopping];
-        else if (bestAllLabels.length) merged = [...bestAllLabels];
-        else {
-          merged = histAll.map(s => canonicalStoreName(s)).filter(Boolean);
-          if (merged.length) spDbg('[GPS_HISTORY_STORE_FALLBACK]', { storeCount: histAll.length });
+        const historyFreqMap = buildHistoryFreqMapForGps();
+        let learn117 = null;
+        if (lastStoresForScore.length > 0) {
+          learn117 = applyGpsLearningRank117(lastStoresForScore, curPos.lat, curPos.lng, historyFreqMap);
+          merged = learn117.rankedNames.slice();
+        }
+        if (!merged.length) {
+          if (bestShopping.length) merged = [...bestShopping];
+          else if (bestAllLabels.length) merged = [...bestAllLabels];
+          else {
+            merged = histAll.map(s => canonicalStoreName(s)).filter(Boolean);
+            if (merged.length) spDbg('[GPS_HISTORY_STORE_FALLBACK]', { storeCount: histAll.length });
+          }
         }
 
         spDbg('[GPS_STORE_MERGE_RESULT]', {
           gpsShoppingCount: bestShopping.length,
           gpsBroadCount: bestAllLabels.length,
           historyCandidatesCount: histAll.length,
-          finalChipCount: merged.length
+          finalChipCount: merged.length,
+          learning117: !!(learn117 && learn117.rankedNames.length)
         });
 
         if (!shoppingHit) {
@@ -6506,10 +6660,25 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
           spDbg('[GPS_SEARCH_DONE]', { finalRadiusKm: fr, finalCount: merged.length, source: src });
         }
 
-        window.nearbyStoreShopping = bestShopping;
-        window.nearbyStoreGpsBroad = bestAllLabels;
+        const broadFromStores = lastStoresForScore.length
+          ? [...new Set(lastStoresForScore.map(s => canonicalStoreName(buildNearbyStoreLabel(s))).filter(Boolean))]
+          : bestAllLabels.slice();
+        window.nearbyStoreShopping = merged.filter(n => isShoppingStore(n));
+        window.nearbyStoreGpsBroad = broadFromStores.length ? broadFromStores : bestAllLabels;
         window.historyStoreCandidates = histAll;
         window.nearbyStoreNames = merged;
+
+        window.__gpsLearning117 = {
+          queryAttempts: (lastGasDebug && lastGasDebug.queryAttempts) ? lastGasDebug.queryAttempts : [],
+          queryAttemptDetails: (lastGasDebug && lastGasDebug.queryAttemptDetails) ? lastGasDebug.queryAttemptDetails : [],
+          rawCount: (lastGasDebug && Number(lastGasDebug.rawCount)) || 0,
+          beforeFilter: (lastGasDebug && Number(lastGasDebug.beforeFilter)) || 0,
+          afterFilter: (lastGasDebug && Number(lastGasDebug.afterFilter)) || 0,
+          categoryMatchCount: learn117 ? learn117.categoryMatchCount : 0,
+          historyMatchCount: learn117 ? learn117.historyMatchCount : 0,
+          scoreRows: learn117 ? learn117.auditRows : [],
+          finalCandidates: merged.slice(0, 40)
+        };
 
         window.__lastGpsStoreFetch = {
           at: Date.now(),
@@ -6522,7 +6691,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
           bestShopping,
           bestAllLabels,
           mergedNearby: merged,
-          historyCandidatesTop: histAll.slice(0, 15)
+          historyCandidatesTop: histAll.slice(0, 15),
+          gpsLearning117: window.__gpsLearning117
         };
 
         return merged;
@@ -6564,10 +6734,29 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
             spDbg('[GPS_HISTORY_STORE_FALLBACK]', { storeCount: histAll.length, mode: 'area' });
             merged = histAll.map(s => canonicalStoreName(s)).filter(Boolean);
           }
-          window.nearbyStoreShopping = shoppingLabels;
+          const hf = buildHistoryFreqMapForGps();
+          const uLat = (typeof curPos !== 'undefined' && curPos && curPos.lat != null) ? curPos.lat : null;
+          const uLng = (typeof curPos !== 'undefined' && curPos && curPos.lng != null) ? curPos.lng : null;
+          let learn117 = null;
+          if (json.stores.length && uLat != null && uLng != null) {
+            learn117 = applyGpsLearningRank117(json.stores, uLat, uLng, hf);
+            if (learn117.rankedNames.length) merged = learn117.rankedNames.slice();
+          }
+          window.nearbyStoreShopping = merged.filter(n => isShoppingStore(n));
           window.nearbyStoreGpsBroad = allLabels;
           window.historyStoreCandidates = histAll;
           window.nearbyStoreNames = merged;
+          window.__gpsLearning117 = {
+            queryAttempts: (json.debug && json.debug.queryAttempts) ? json.debug.queryAttempts : [],
+            queryAttemptDetails: (json.debug && json.debug.queryAttemptDetails) ? json.debug.queryAttemptDetails : [],
+            rawCount: (json.debug && Number(json.debug.rawCount)) || 0,
+            beforeFilter: (json.debug && Number(json.debug.beforeFilter)) || 0,
+            afterFilter: (json.debug && Number(json.debug.afterFilter)) || 0,
+            categoryMatchCount: learn117 ? learn117.categoryMatchCount : 0,
+            historyMatchCount: learn117 ? learn117.historyMatchCount : 0,
+            scoreRows: learn117 ? learn117.auditRows : [],
+            finalCandidates: merged.slice(0, 40)
+          };
           window.__lastGpsStoreFetch = {
             at: Date.now(),
             mode: 'area',
@@ -6576,7 +6765,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
             gasDebug: json.debug || null,
             bestShopping: shoppingLabels,
             bestAllLabels: allLabels,
-            mergedNearby: merged
+            mergedNearby: merged,
+            gpsLearning117: window.__gpsLearning117
           };
           spDbg('[GPS_STORE_MERGE_RESULT]', {
             gpsShoppingCount: shoppingLabels.length,
@@ -12581,6 +12771,7 @@ function buildFullAuditSnapshot() {
     storeHistoryCounts: {},
     gpsNearby: [],
     gpsSearchDetail: null,
+    gpsLearning117: null,
     gpsDebugSummary: null,
     gpsStoreMatchNotes: [],
     imgDiagSummary: null,
@@ -12666,6 +12857,21 @@ function buildFullAuditSnapshot() {
       historyStoreCandidates: Array.isArray(window.historyStoreCandidates) ? window.historyStoreCandidates.slice(0, 40).map(String) : [],
       lastGpsStoreFetch: (window.__lastGpsStoreFetch && typeof window.__lastGpsStoreFetch === 'object') ? window.__lastGpsStoreFetch : null
     };
+    try {
+      const gl = window.__gpsLearning117;
+      if (gl && typeof gl === 'object') {
+        snap.gpsLearning117 = {
+          queryAttempts: Array.isArray(gl.queryAttempts) ? gl.queryAttempts.slice() : [],
+          rawCount: Number(gl.rawCount) || 0,
+          beforeFilter: Number(gl.beforeFilter) || 0,
+          afterFilter: Number(gl.afterFilter) || 0,
+          categoryMatchCount: Number(gl.categoryMatchCount) || 0,
+          historyMatchCount: Number(gl.historyMatchCount) || 0,
+          scoreRows: Array.isArray(gl.scoreRows) ? gl.scoreRows.slice(0, 20) : [],
+          finalCandidates: Array.isArray(gl.finalCandidates) ? gl.finalCandidates.slice(0, 40) : []
+        };
+      }
+    } catch (eGL) { snap.gpsLearning117 = null; }
     if (window._gpsDebugData && typeof window._gpsDebugData === 'object') {
       snap.gpsDebugSummary = {
         latitude: window._gpsDebugData.latitude,
@@ -12790,6 +12996,26 @@ function buildFullAuditMarkdown(audit) {
   md += '\n## GPS詳細検証（v23.9.116）\n';
   md += '- 買い物系のみ（nearbyStoreShopping） / GPS全ラベル（nearbyStoreGpsBroad） / 履歴補助（historyStoreCandidates） / 最終取得メタ（lastGpsStoreFetch）\n';
   md += '```json\n' + JSON.stringify(a.gpsSearchDetail || {}, null, 2) + '\n```\n';
+
+  md += '\n## GPS学習検証（v23.9.117）\n';
+  (function () {
+    const gl = a.gpsLearning117 || {};
+    md += '- queryAttempts: ' + JSON.stringify(gl.queryAttempts || []) + '\n';
+    md += '- rawCount: ' + String(gl.rawCount || 0) + '\n';
+    md += '- beforeFilter / afterFilter: ' + String(gl.beforeFilter || 0) + ' / ' + String(gl.afterFilter || 0) + '\n';
+    md += '- 業種一致数: ' + String(gl.categoryMatchCount || 0) + '\n';
+    md += '- 履歴一致数: ' + String(gl.historyMatchCount || 0) + '\n';
+    md += '- 最終候補: ' + JSON.stringify(gl.finalCandidates || []) + '\n';
+    md += '\n### 候補スコア一覧（上位20）\n';
+    md += '| 店名 | 距離スコア | 業種スコア | 履歴スコア | 合計 |\n';
+    md += '|---|---:|---:|---:|---:|\n';
+    const rows = gl.scoreRows || [];
+    if (!rows.length) md += '（データなし）\n';
+    else rows.forEach(function (row) {
+      const nm = String(row.name || '').replace(/\|/g, '\\|');
+      md += '| `' + nm + '` | ' + String(row.distScore) + ' | ' + String(row.categoryScore) + ' | ' + String(row.historyScore) + ' | ' + String(row.total) + ' |\n';
+    });
+  })();
 
   md += '\n## 画像診断（最新）\n```json\n' + JSON.stringify(a.imgDiagSummary || {}, null, 2) + '\n```\n';
 
