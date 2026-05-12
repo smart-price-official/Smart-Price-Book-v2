@@ -18,8 +18,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.118";
-  const BUILD_ID    = "2026-05-06_search-pipeline-diagnostics-r1";
+  const APP_VERSION = "v23.9.119";
+  const BUILD_ID    = "2026-05-07_history-search-ui-log-fix-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -1305,6 +1305,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
               <button class="btn btn-outline-light w-100 mb-2" style="font-size:0.9rem;" onclick="copyAllDebugForYui()">🎯 全ログコピー</button>
               <button class="btn btn-outline-light w-100 mb-2" style="font-size:0.9rem;" onclick="copyLookupTraceForYui()">🔎 商品検索診断をコピー</button>
               <button class="btn btn-outline-light w-100 mb-2" style="font-size:0.9rem;" onclick="copyBootDiagForYui()">🚀 起動診断をコピー</button>
+              <button class="btn btn-outline-light w-100 mb-2" style="font-size:0.9rem;" onclick="copyHistoryDiagForYui()">🧾 購入履歴診断をコピー</button>
               
               <div class="small text-secondary mb-2 mt-3">保存系</div>
               <button class="btn btn-outline-secondary w-100 mb-2" style="font-size:0.9rem;" onclick="exportProductDebugJson()">💾 JSON保存</button>
@@ -1388,7 +1389,10 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
       <button class="btn btn-outline-light w-100 mb-2" style="font-size:0.9rem;" onclick="copyProductDebugMarkdown()">📋 Markdownコピー</button>
       <button class="btn btn-outline-light w-100 mb-2" style="font-size:0.9rem;" onclick="copyGpsDebugForYui()">📍 GPSのみ</button>
       <button class="btn btn-outline-light w-100 mb-2" style="font-size:0.9rem;" onclick="copyImageDebugForYui()">🖼️ 画像診断のみ</button>
-      <button class="btn btn-outline-light w-100 mb-3" style="font-size:0.9rem;" onclick="copyAllDebugForYui()">🎯 全ログ</button>
+      <button class="btn btn-outline-light w-100 mb-2" style="font-size:0.9rem;" onclick="copyAllDebugForYui()">🎯 全ログ</button>
+      <button class="btn btn-outline-light w-100 mb-2" style="font-size:0.9rem;" onclick="copyLookupTraceForYui()">🔎 商品検索診断</button>
+      <button class="btn btn-outline-light w-100 mb-2" style="font-size:0.9rem;" onclick="copyBootDiagForYui()">🚀 起動診断</button>
+      <button class="btn btn-outline-light w-100 mb-3" style="font-size:0.9rem;" onclick="copyHistoryDiagForYui()">🧾 購入履歴診断</button>
       
       <div class="small text-secondary mb-2">保存・表示</div>
       <button class="btn btn-outline-secondary w-100 mb-2" style="font-size:0.9rem;" onclick="exportProductDebugJson()">💾 JSON保存</button>
@@ -2984,9 +2988,10 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
     host.id = "toastHost";
     host.style.position = "fixed";
     host.style.left = "50%";
-    host.style.top = "72px";
+    host.style.top = "auto";
+    host.style.bottom = "80px";
     host.style.transform = "translateX(-50%)";
-    host.style.zIndex = "9999";
+    host.style.zIndex = "1500";
     host.style.width = "min(560px, calc(100vw - 24px))";
     host.style.pointerEvents = "none";
     document.body.appendChild(host);
@@ -3476,7 +3481,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     if (!entry.store || !String(entry.store).trim()) {
       return { ok: false, reason: 'store_empty' };
     }
-    if (!Number.isFinite(Number(entry.ts))) {
+    const tsRaw = entry.ts ?? entry.timestamp ?? entry.time;
+    if (!Number.isFinite(Number(tsRaw))) {
       return { ok: false, reason: 'ts_invalid' };
     }
     return { ok: true };
@@ -4172,22 +4178,40 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     
     try {
     const list = document.getElementById('historyList');
-    if(!list) { renderHistoryInFlight = false; return; }
+    if(!list) {
+      try { spDbg('[HISTORY_RENDER_EMPTY]', { reason: 'historyList_dom_missing' }); } catch (_he) {}
+      renderHistoryInFlight = false;
+      return;
+    }
       
       // ✅ 必ずまっさらにする
     list.innerHTML = "";
 
     const items = Object.keys(db.products).map(k => ({ code: k, ...db.products[k] }));
     items.sort((a,b) => (histTs(b.history?.[b.history.length-1]) || 0) - (histTs(a.history?.[a.history.length-1]) || 0));
+    const totalEntries = items.reduce(function (acc, x) {
+      return acc + (x.history && Array.isArray(x.history) ? x.history.length : 0);
+    }, 0);
+    const productsWithHistory = items.filter(function (x) { return x.history && x.history.length; }).length;
+    try {
+      spDbg('[HISTORY_RENDER_START]', { totalEntries: totalEntries, filtered: productsWithHistory, productsTotal: items.length });
+    } catch (_hs) {}
+
     // ✅ PCなどで「何も表示されない」を避ける：履歴0件でもメッセージは出す
     const hasAnyHistory = items.some(x => x.history && x.history.length);
     if(!hasAnyHistory){
       list.innerHTML = `<div class="text-secondary small text-center py-3" style="opacity:.85;">購入履歴がありません（必要なら「設定保存と同期」を実行してください）</div>`;
+      try {
+        window.__historyRenderLastAt = new Date().toISOString();
+        window.__historyRenderDisplayed = 0;
+        window.__historyRenderFilterNote = '';
+        spDbg('[HISTORY_RENDER_EMPTY]', { reason: 'no_db_product_history', totalEntries: 0 });
+        spDbg('[HISTORY_RENDER_DONE]', { displayed: 0, totalEntries: 0 });
+      } catch (_hd) {}
       renderHistoryInFlight = false; return;
     }
 
-
-    // ✅ 重複防止ガード（codeキー + 正規化キー）
+    let displayedCount = 0;
     const renderedKeys = new Set();
     const renderedNormalizedKeys = new Set();
 
@@ -4290,6 +4314,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
           </div>
         </div>`;
       list.appendChild(div);
+      displayedCount++;
 
       // ✅ IndexedDB画像を適用（優先順位：last.imageKey → it.imageKey、失敗時はimageUrlへフォールバック）
       const imgEl = div.querySelector('img.prod-thumb');
@@ -4366,6 +4391,19 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         }
       }
     }
+
+    if (hasAnyHistory && displayedCount === 0) {
+      list.innerHTML = `<div class="text-secondary small text-center py-3" style="opacity:.85;">履歴データはありますが表示用のデータがありません（ログイン・店舗名・価格・日時の形式を確認してください）</div>`;
+      try { spDbg('[HISTORY_RENDER_EMPTY]', { reason: 'all_entries_filtered', totalEntries: totalEntries, uid: String(currentAuthUid || '') }); } catch (_hf) {}
+    }
+
+    try {
+      window.__historyRenderLastAt = new Date().toISOString();
+      window.__historyRenderDisplayed = displayedCount;
+      window.__historyRenderFilterNote = '';
+      spDbg('[HISTORY_RENDER_DONE]', { displayed: displayedCount, totalEntries: totalEntries });
+    } catch (_hdone) {}
+
     } finally {
       // ✅ ロック解除
       renderHistoryInFlight = false;
@@ -8190,6 +8228,9 @@ function spVisibleTrace(tag, payload, cls) {
       console.log("[ProcessBarcode] Valid JAN:", jan, "original:", code);
       // 画面に詳細情報を表示（後続で追加）
     }
+
+    curBarcode = jan;
+    try { setLastScannedJanSafe(jan, code); } catch (_sj) {}
     
     // ✅ P0: 同一JANの二重発火を止める（連続読取り対策）
     if (jan && processBarcodeInFlight.has(jan)) {
@@ -8224,9 +8265,6 @@ function spVisibleTrace(tag, payload, cls) {
       processBarcodeInFlight.add(jan);
     }
     
-    curBarcode = jan; // ✅ P0: 正規化後のJANをセット（取得前）
-    try { setLastScannedJanSafe(jan, code); } catch (_sj) {}
-
     try {
       if (typeof window.saveLastProductDebugInit === 'function') {
         window.saveLastProductDebugInit(jan, debugSourceTag || 'unknown');
@@ -13154,6 +13192,14 @@ function copyFullAuditForYui() {
   try {
     const audit = buildFullAuditSnapshot();
     md = buildFullAuditMarkdown(audit);
+    var lookupAppend = '';
+    try {
+      if (typeof buildLookupTraceMarkdown === 'function') {
+        lookupAppend = '\n---\n' + buildLookupTraceMarkdown();
+        try { spDbg('[LOOKUP_TRACE_INCLUDED_IN_AUDIT]', { bytes: lookupAppend.length }); } catch (_lti) {}
+      }
+    } catch (_lta) {}
+    md = md + lookupAppend;
     len = String(md).trim().length;
     try { spDbg('[COPY_RESULT_START]', copyResultLogBase({ jan: '(全体検証)', textLength: len, error: '' })); } catch (e1) {}
   } catch (e) {
@@ -13272,7 +13318,7 @@ window.copyFullAuditForYui = copyFullAuditForYui;
 window.shareFullAuditForYui = shareFullAuditForYui;
 window.showFullAuditPreview = showFullAuditPreview;
 
-// v23.9.118: 商品検索パイプライン診断（ログ・コピー用。取得ロジック本体は変更しない）
+// v23.9.119: 商品検索パイプライン診断（v23.9.118 由来・ログ用）
 window.__lookupTraceSteps = window.__lookupTraceSteps || [];
 window.__productLookupSlowTimers = window.__productLookupSlowTimers || [];
 window.__lookupToastTimer = null;
@@ -13480,6 +13526,98 @@ function copyBootDiagForYui() {
   }
 }
 
+function buildHistoryDiagMarkdown() {
+  var lines = [];
+  lines.push('# Smart Price 購入履歴診断');
+  lines.push('');
+  lines.push('## 基本情報');
+  lines.push('- APP_VERSION: ' + String(window.APP_VERSION || ''));
+  lines.push('- BUILD_ID: ' + String(window.BUILD_ID || ''));
+  var spCount = 0;
+  var spParseErr = '';
+  try {
+    var rawSp = localStorage.getItem('sp_history');
+    if (rawSp) {
+      var hintObj = JSON.parse(rawSp);
+      spCount = Object.keys(hintObj || {}).length;
+    }
+  } catch (e0) {
+    spParseErr = e0 && e0.message ? e0.message : String(e0);
+  }
+  lines.push('- localStorage.sp_history 件数（名前ヒント）: ' + spCount);
+  lines.push('');
+  var parseErrDb = '';
+  var rows = [];
+  try {
+    if (typeof db !== 'undefined' && db && db.products) {
+      Object.keys(db.products).forEach(function (code) {
+        var p = db.products[code];
+        if (!p || !Array.isArray(p.history)) return;
+        p.history.forEach(function (h) {
+          var v = h && (h.ts != null ? h.ts : (h.timestamp != null ? h.timestamp : h.time));
+          var n = Number(v);
+          var ts = Number.isFinite(n) ? n : 0;
+          rows.push({
+            jan: code,
+            store: h && h.store ? String(h.store) : '',
+            price: h && h.price != null ? h.price : '',
+            ts: ts,
+            iso: ts ? new Date(ts).toISOString() : ''
+          });
+        });
+      });
+    }
+  } catch (e1) {
+    parseErrDb = e1 && e1.message ? e1.message : String(e1);
+  }
+  rows.sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
+  lines.push('## 最新5件（JAN / 店名 / 価格 / 日時）');
+  if (!rows.length) {
+    lines.push('（db.products から履歴行を取得できませんでした）');
+  } else {
+    rows.slice(0, 5).forEach(function (r, i) {
+      lines.push(String(i + 1) + '. `' + r.jan + '` | ' + r.store + ' | ' + String(r.price) + ' | ' + r.iso);
+    });
+  }
+  lines.push('');
+  lines.push('## 表示状態');
+  lines.push('- renderHistory() 最終実行時刻: ' + String(window.__historyRenderLastAt || ''));
+  lines.push('- 表示件数: ' + String(window.__historyRenderDisplayed != null ? window.__historyRenderDisplayed : ''));
+  lines.push('- フィルター条件: ' + String(window.__historyRenderFilterNote !== undefined && window.__historyRenderFilterNote !== null ? window.__historyRenderFilterNote : '（日付・店名フィルタなし／整合性・uid のみ）'));
+  lines.push('');
+  lines.push('## エラー');
+  lines.push('- parse error (sp_history): ' + (spParseErr || '(none)'));
+  lines.push('- render error (db scan): ' + (parseErrDb || '(none)'));
+  lines.push('');
+  return lines.join('\n');
+}
+
+function copyHistoryDiagForYui() {
+  var md = '';
+  try {
+    md = buildHistoryDiagMarkdown();
+  } catch (e) {
+    try { spDbg('[HISTORY_DIAG_COPY]', { ok: false, error: e && e.message ? e.message : String(e) }); } catch (_e2) {}
+    try { showToast('履歴診断の生成に失敗しました', 3000); } catch (_e3) {}
+    return;
+  }
+  try { spDbg('[HISTORY_DIAG_COPY]', { bytes: md.length }); } catch (_e4) {}
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(md).then(
+      function () {
+        try { spDbg('[HISTORY_DIAG_COPY]', { ok: true }); } catch (_e5) {}
+        try { showToast('購入履歴診断をコピーしました', 2500); } catch (_e6) {}
+      },
+      function (e) {
+        try { spDbg('[HISTORY_DIAG_COPY]', { ok: false, error: e && e.message ? e.message : String(e) }); } catch (_e7) {}
+        try { showToast('コピーに失敗しました', 3000); } catch (_e8) {}
+      }
+    );
+  } else {
+    try { showToast('クリップボード未対応', 3000); } catch (_e9) {}
+  }
+}
+
 window.markLookupPipelineStep = markLookupPipelineStep;
 window.markLookupPipelineStepStart = markLookupPipelineStepStart;
 window.markLookupTraceComplete = markLookupTraceComplete;
@@ -13491,6 +13629,8 @@ window.buildLookupTraceMarkdown = buildLookupTraceMarkdown;
 window.copyLookupTraceForYui = copyLookupTraceForYui;
 window.buildBootDiagMarkdown = buildBootDiagMarkdown;
 window.copyBootDiagForYui = copyBootDiagForYui;
+window.buildHistoryDiagMarkdown = buildHistoryDiagMarkdown;
+window.copyHistoryDiagForYui = copyHistoryDiagForYui;
 
 
 
@@ -13503,7 +13643,7 @@ window.copyBootDiagForYui = copyBootDiagForYui;
   <div id="sp-dbg-log"><div class="ok">== SP Debug Log ==</div></div>
   <div id="sp-dbg-bar">
     <button onclick="document.getElementById('sp-dbg-log').innerHTML='<div class=ok>cleared</div>'">CLR</button>
-    <button onclick="(function(){var t=document.createElement('textarea');t.value=Array.from(document.querySelectorAll('#sp-dbg-log div')).map(function(d){return d.textContent}).join('\n');t.style.cssText='position:fixed;top:-9999px';document.body.appendChild(t);t.select();document.execCommand('copy');t.remove();document.getElementById('sp-dbg-toggle').textContent='📋Copied!';setTimeout(function(){document.getElementById('sp-dbg-toggle').textContent='🔍DBG'},2000);})()">📋COPY LOG</button>
+    <button onclick="(function(){var lines=Array.from(document.querySelectorAll('#sp-dbg-log div')).map(function(d){return d.textContent});var extra='';try{if(typeof buildLookupTraceMarkdown==='function'){extra='\n---\n'+buildLookupTraceMarkdown();try{if(typeof spDbg==='function')spDbg('[LOOKUP_TRACE_INCLUDED_IN_AUDIT]',{via:'dbg_panel_copy'});}catch(e1){}}catch(e2){}var t=document.createElement('textarea');t.value=lines.join('\n')+extra;t.style.cssText='position:fixed;top:-9999px';document.body.appendChild(t);t.select();document.execCommand('copy');t.remove();document.getElementById('sp-dbg-toggle').textContent='📋Copied!';setTimeout(function(){document.getElementById('sp-dbg-toggle').textContent='🔍DBG'},2000);})()">📋COPY LOG</button>
     <button onclick="spDbgDump()">DUMP STATE</button>
     <span id="sp-dbg-count" style="color:#fa0;margin-left:auto;"></span>
   </div>
