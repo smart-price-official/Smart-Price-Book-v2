@@ -1248,6 +1248,8 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
         </div>
         <div id="operatorPassMsg" class="small text-secondary mb-2"></div>
         <div id="operatorPanelBody" style="display:none;">
+          <!-- v23.9.120: 人間向けログ導線（全ログ統合・最上部） -->
+          <button type="button" class="btn btn-outline-info w-100 py-3 fw-bold mb-3" style="font-size:1rem;" onclick="copyAllLogsForYui()">📋 全ログをコピー</button>
           <!-- v23.9.109: Yuiへ検証データ送信（主導線） -->
           <div class="mb-3" style="border:2px solid #4a4aff; border-radius:8px; padding:12px; background:rgba(74,74,255,0.1);">
             <button class="btn btn-primary w-100 py-3 fw-bold mb-2" style="font-size:1.1rem;" onclick="copyProductDebugForYuiMain()">
@@ -1305,9 +1307,6 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
               <button class="btn btn-outline-light w-100 mb-2" style="font-size:0.9rem;" onclick="copyGpsDebugForYui()">📍 GPSのみコピー</button>
               <button class="btn btn-outline-light w-100 mb-2" style="font-size:0.9rem;" onclick="copyImageDebugForYui()">🖼️ 画像診断のみコピー</button>
               <button class="btn btn-outline-light w-100 mb-2" style="font-size:0.9rem;" onclick="copyAllDebugForYui()">🎯 全ログコピー</button>
-              <button class="btn btn-outline-light w-100 mb-2" style="font-size:0.9rem;" onclick="copyLookupTraceForYui()">🔎 商品検索診断をコピー</button>
-              <button class="btn btn-outline-light w-100 mb-2" style="font-size:0.9rem;" onclick="copyBootDiagForYui()">🚀 起動診断をコピー</button>
-              <button class="btn btn-outline-light w-100 mb-2" style="font-size:0.9rem;" onclick="copyHistoryDiagForYui()">🧾 購入履歴診断をコピー</button>
               
               <div class="small text-secondary mb-2 mt-3">保存系</div>
               <button class="btn btn-outline-secondary w-100 mb-2" style="font-size:0.9rem;" onclick="exportProductDebugJson()">💾 JSON保存</button>
@@ -1391,10 +1390,6 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
       <button class="btn btn-outline-light w-100 mb-2" style="font-size:0.9rem;" onclick="copyProductDebugMarkdown()">📋 Markdownコピー</button>
       <button class="btn btn-outline-light w-100 mb-2" style="font-size:0.9rem;" onclick="copyGpsDebugForYui()">📍 GPSのみ</button>
       <button class="btn btn-outline-light w-100 mb-2" style="font-size:0.9rem;" onclick="copyImageDebugForYui()">🖼️ 画像診断のみ</button>
-      <button class="btn btn-outline-light w-100 mb-2" style="font-size:0.9rem;" onclick="copyAllDebugForYui()">🎯 全ログ</button>
-      <button class="btn btn-outline-light w-100 mb-2" style="font-size:0.9rem;" onclick="copyLookupTraceForYui()">🔎 商品検索診断</button>
-      <button class="btn btn-outline-light w-100 mb-2" style="font-size:0.9rem;" onclick="copyBootDiagForYui()">🚀 起動診断</button>
-      <button class="btn btn-outline-light w-100 mb-3" style="font-size:0.9rem;" onclick="copyHistoryDiagForYui()">🧾 購入履歴診断</button>
       
       <div class="small text-secondary mb-2">保存・表示</div>
       <button class="btn btn-outline-secondary w-100 mb-2" style="font-size:0.9rem;" onclick="exportProductDebugJson()">💾 JSON保存</button>
@@ -11366,7 +11361,6 @@ window.showReferralStatus = showReferralStatus;
   <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
     <button id="btnDbgReload" style="padding:6px 10px; border-radius:10px; border:1px solid rgba(255,255,255,0.25); background:#222; color:#fff;">再読込</button>
     <button id="btnDbgReset" style="padding:6px 10px; border-radius:10px; border:1px solid rgba(255,255,255,0.25); background:#5a2; color:#fff;">SW解除+キャッシュ削除</button>
-    <button id="btnDbgCopy" style="padding:6px 10px; border-radius:10px; border:1px solid rgba(255,255,255,0.25); background:#248; color:#fff;">ログコピー</button>
     <button id="btnDbgHide" style="padding:6px 10px; border-radius:10px; border:1px solid rgba(255,255,255,0.25); background:#822; color:#fff;">閉じる</button>
   </div>
 </div>
@@ -11422,15 +11416,6 @@ window.showReferralStatus = showReferralStatus;
 
     document.getElementById("btnDbgReload")?.addEventListener("click", ()=>location.reload());
     document.getElementById("btnDbgHide")?.addEventListener("click", ()=>{ ov.style.display="none"; });
-
-    document.getElementById("btnDbgCopy")?.addEventListener("click", async ()=>{
-      try{
-        await navigator.clipboard.writeText(info.textContent||"");
-      }catch(e){}
-      const old = info.textContent||"";
-      info.textContent = old + "\n\n[copied]";
-      setTimeout(()=>{ info.textContent = old; }, 800);
-    });
 
     document.getElementById("btnDbgReset")?.addEventListener("click", async ()=>{
       try{
@@ -13862,6 +13847,82 @@ window.copyBootDiagForYui = copyBootDiagForYui;
 window.buildHistoryDiagMarkdown = buildHistoryDiagMarkdown;
 window.copyHistoryDiagForYui = copyHistoryDiagForYui;
 
+// v23.9.120: 管理メニュー「📋 全ログをコピー」（統合ログ）
+async function copyAllLogsForYui() {
+  try {
+    var av = '';
+    try { av = (typeof APP_VERSION !== 'undefined' ? APP_VERSION : window.APP_VERSION) || ''; } catch (_av) { av = ''; }
+    var bd = '';
+    try { bd = (typeof BUILD_ID !== 'undefined' ? BUILD_ID : window.BUILD_ID) || ''; } catch (_bd) { bd = ''; }
+    var text = '# Smart Price 全ログ\n';
+    text += 'APP_VERSION: ' + av + '\n';
+    text += 'BUILD_ID: ' + bd + '\n';
+    text += '取得日時: ' + new Date().toISOString() + '\n\n';
+
+    text += '## 起動ログ（_auditLogs）\n';
+    var logs = window._auditLogs || [];
+    if (logs.length === 0) {
+      text += '（ログなし）\n';
+    } else {
+      logs.forEach(function (l) {
+        text += (l.t || '') + ' ' + (l.line || '') + '\n';
+      });
+    }
+
+    text += '\n## 全体検証レポート\n';
+    try {
+      if (typeof buildFullAuditMarkdown === 'function') {
+        text += await buildFullAuditMarkdown() || '（取得失敗）';
+      } else {
+        text += '（buildFullAuditMarkdown 未定義）';
+      }
+    } catch (e) {
+      text += '（エラー: ' + (e && e.message ? e.message : String(e)) + '）';
+    }
+
+    text += '\n\n## 商品検索診断\n';
+    try {
+      if (typeof buildLookupTraceMarkdown === 'function') {
+        text += buildLookupTraceMarkdown() || '（取得失敗）';
+      } else {
+        text += '（buildLookupTraceMarkdown 未定義）';
+      }
+    } catch (e2) {
+      text += '（エラー: ' + (e2 && e2.message ? e2.message : String(e2)) + '）';
+    }
+
+    text += '\n\n## Firebase状態\n';
+    try {
+      text += '- firebaseAuth: ' + (window.firebaseAuth ? '定義済み' : '未定義') + '\n';
+      text += '- firebaseDb: ' + (window.firebaseDb ? '定義済み' : '未定義') + '\n';
+      text += '- isFirebaseReady: ' + String(typeof isFirebaseReady !== 'undefined' ? !!isFirebaseReady : (typeof window._isFirebaseReady !== 'undefined' ? !!window._isFirebaseReady : '不明')) + '\n';
+      text += '- currentAuthUid: ' + String(typeof currentAuthUid !== 'undefined' && currentAuthUid ? currentAuthUid : 'なし') + '\n';
+    } catch (e3) {
+      text += '（エラー: ' + (e3 && e3.message ? e3.message : String(e3)) + '）\n';
+    }
+
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (e4) {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.cssText = 'position:fixed;top:-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+    }
+
+    try { spDbg('[ALL_LOGS_COPY_SUCCESS]', { length: text.length }); } catch (_) {}
+    alert('全ログをコピーしました（' + text.length + '文字）');
+
+  } catch (eTop) {
+    try { spDbg('[ALL_LOGS_COPY_ERROR]', { message: String(eTop && eTop.message ? eTop.message : eTop) }); } catch (_) {}
+    alert('コピー失敗: ' + (eTop && eTop.message ? eTop.message : String(eTop)));
+  }
+}
+window.copyAllLogsForYui = copyAllLogsForYui;
+
 </script>
 
 <!-- SP DEBUG PANEL v2 -->
@@ -13899,27 +13960,21 @@ window.copyHistoryDiagForYui = copyHistoryDiagForYui;
   }
   window.spDbgLog = spDbgLog;
 
-  // [spdbg-fix] spDbg: spDbgLog への薄いラッパー（未定義エラー防止）
+  // [spdbg-fix] spDbg: _auditLogs + DBGパネル両方へ
   function spDbg(tag, payload) {
     try {
-      if (typeof spDbgLog === 'function') {
-        var suffix = '';
-        if (payload !== undefined) {
-          try { suffix = ' ' + JSON.stringify(payload); } catch(_) { suffix = ' ' + String(payload); }
-        }
-        spDbgLog(String(tag || '') + suffix);
-        try {
-          window._auditLogs = window._auditLogs || [];
-          var _line = String(tag || '') + suffix;
-          window._auditLogs.push({ t: new Date().toISOString(), tag: String(tag || ''), line: _line });
-          if (window._auditLogs.length > 200) window._auditLogs.shift();
-        } catch (_al) {}
-        return;
+      window._auditLogs = window._auditLogs || [];
+      var line = '[' + String(tag || '') + '] ' + JSON.stringify(payload || {});
+      window._auditLogs.push({
+        t: new Date().toISOString(),
+        tag: String(tag || ''),
+        line: line
+      });
+      if (window._auditLogs.length > 200) window._auditLogs.shift();
+      if (typeof window.spDbgLog === 'function') {
+        window.spDbgLog(line);
       }
-      if (typeof console !== 'undefined' && console.log) {
-        console.log(tag, payload);
-      }
-    } catch(_) {}
+    } catch (e) {}
   }
   window.spDbg = spDbg;
 
