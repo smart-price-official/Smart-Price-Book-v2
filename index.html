@@ -2831,106 +2831,157 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   });
 
   window.onload = async () => {
-    // ✅ 起動時の黒画面対策：即座に表示を確実にする
+    // [p0-boot-chain-diagnosis] 工程ごとに try/catch を分離（1工程の失敗で後続を止めない）。ログのみ追加。
+    try { spDbg('[APP_BOOT_START]', { version: typeof APP_VERSION !== 'undefined' ? APP_VERSION : '', build: typeof BUILD_ID !== 'undefined' ? BUILD_ID : '' }); } catch (_abs) {}
+
     try {
       document.body.style.display = 'block';
       const mainView = document.getElementById('mainView');
       if (mainView) mainView.style.display = 'block';
-    } catch(e) {
+    } catch (e) {
+      try { spDbg('[BOOT_STEP_ERROR]', { step: 'display_block', message: String(e && e.message), stack: String(e && e.stack) }); } catch (_) {}
       if (isDebug()) console.warn('[onload] display error:', e);
     }
 
     try {
-      // ✅ Config.json読み込み（Yahoo Proxy URL）
+      try { spDbg('[LOAD_CONFIG_START]', {}); } catch (_) {}
       await loadConfig();
+      try { spDbg('[LOAD_CONFIG_DONE]', {}); } catch (_) {}
+    } catch (e) {
+      try { spDbg('[BOOT_STEP_ERROR]', { step: 'loadConfig', message: String(e && e.message), stack: String(e && e.stack) }); } catch (_) {}
+    }
 
-      // ✅ 保管箱の保護（自動整理されにくくする）
+    try {
       if ('storage' in navigator && 'persist' in navigator.storage) {
-        try {
-          const persisted = await navigator.storage.persist();
-          if (isDebug()) console.log('[Storage] Persist granted:', persisted);
-        } catch(e) {
-          if (isDebug()) console.warn('[Storage] Persist failed:', e);
-        }
+        const persisted = await navigator.storage.persist();
+        if (isDebug()) console.log('[Storage] Persist granted:', persisted);
       }
+    } catch (e) {
+      try { spDbg('[BOOT_STEP_ERROR]', { step: 'navigatorStoragePersist', message: String(e && e.message) }); } catch (_) {}
+      if (isDebug()) console.warn('[Storage] Persist failed:', e);
+    }
 
-      // ✅ Firebase初期化（匿名ログイン）
+    try {
+      try { spDbg('[FIREBASE_INIT_START]', {}); } catch (_) {}
       await initializeFirebase();
       setupAuthListener();
+      try { spDbg('[FIREBASE_INIT_DONE]', { uid: String(typeof currentAuthUid !== 'undefined' && currentAuthUid ? currentAuthUid : 'none') }); } catch (_) {}
+    } catch (e) {
+      try { spDbg('[BOOT_STEP_ERROR]', { step: 'initializeFirebase', message: String(e && e.message), stack: String(e && e.stack) }); } catch (_) {}
+    }
 
-      loadLocal();
+    try {
+      try { spDbg('[LOAD_LOCAL_START]', {}); } catch (_) {}
+      await loadLocal();
+      try { spDbg('[LOAD_LOCAL_DONE]', { productCount: Object.keys((db && db.products) || {}).length }); } catch (_) {}
+    } catch (e) {
+      try { spDbg('[BOOT_STEP_ERROR]', { step: 'loadLocal', message: String(e && e.message), stack: String(e && e.stack) }); } catch (_) {}
+    }
+
+    try {
+      try { spDbg('[NORMALIZE_DB_START]', {}); } catch (_) {}
       db = normalizeDb(db);
+      try { spDbg('[NORMALIZE_DB_DONE]', { productCount: Object.keys((db && db.products) || {}).length }); } catch (_) {}
+    } catch (e) {
+      try { spDbg('[BOOT_STEP_ERROR]', { step: 'normalizeDb', message: String(e && e.message), stack: String(e && e.stack) }); } catch (_) {}
+    }
 
-      // 旧data:imageが残っている端末は、IndexedDBへ移行して画像復活
+    try {
       await migrateLegacyImagesToIdb();
+    } catch (e) {
+      try { spDbg('[BOOT_STEP_ERROR]', { step: 'migrateLegacyImages', message: String(e && e.message) }); } catch (_) {}
+    }
 
-      // ✅ M_商品とJANの自動統合（起動時・Yahoo成功に依存しない）
+    try {
       migrateMergeManualToJan();
+    } catch (e) {
+      try { spDbg('[BOOT_STEP_ERROR]', { step: 'migrateMergeManualToJan', message: String(e && e.message) }); } catch (_) {}
+    }
 
-      try {
-        if (typeof migrateProductCategoriesLight === 'function') migrateProductCategoriesLight();
-      } catch (_mig) {}
+    try {
+      if (typeof migrateProductCategoriesLight === 'function') migrateProductCategoriesLight();
+    } catch (e) {
+      try { spDbg('[BOOT_STEP_ERROR]', { step: 'migrateCategories', message: String(e && e.message) }); } catch (_) {}
+    }
 
+    try {
+      try { spDbg('[INIT_CATEGORY_START]', {}); } catch (_) {}
       initCategorySelect();
-      try { spDbg('[BOOT_RENDER_STORE_START]', {}); } catch (_b0) {}
-      try {
-        renderStoreList();
-      } catch (eBootS) {
-        try { spDbg('[BOOT_RENDER_STORE_ERROR]', { message: String(eBootS && eBootS.message) }); } catch (_b1) {}
-      }
-      try { spDbg('[BOOT_RENDER_STORE_DONE]', {}); } catch (_b2) {}
-      try { spDbg('[BOOT_RENDER_HISTORY_START]', {}); } catch (_b3) {}
-      try {
-        renderHistory();
-      } catch (eBootH) {
-        try { spDbg('[BOOT_RENDER_HISTORY_ERROR]', { message: String(eBootH && eBootH.message) }); } catch (_b4) {}
-      }
-      try { spDbg('[BOOT_RENDER_HISTORY_DISPATCHED]', { note: 'renderHistory_is_async' }); } catch (_b5) {}
+      try { spDbg('[INIT_CATEGORY_DONE]', {}); } catch (_) {}
+    } catch (e) {
+      try { spDbg('[BOOT_STEP_ERROR]', { step: 'initCategorySelect', message: String(e && e.message), stack: String(e && e.stack) }); } catch (_) {}
+    }
 
-      if (fbUrl) {
-        await syncFirebase(); // ✅ マージ方式で画像が消えない
-        renderHistory();
-        renderStoreList();
-      }
+    try {
+      try { spDbg('[RENDER_STORE_START_BOOT]', {}); } catch (_) {}
+      renderStoreList();
+      try { spDbg('[RENDER_STORE_DONE_BOOT]', {}); } catch (_) {}
+    } catch (e) {
+      try { spDbg('[BOOT_STEP_ERROR]', { step: 'renderStoreList', message: String(e && e.message), stack: String(e && e.stack) }); } catch (_) {}
+    }
 
+    try {
+      try { spDbg('[RENDER_HISTORY_START_BOOT]', {}); } catch (_) {}
+      await renderHistory();
+      try { spDbg('[RENDER_HISTORY_DONE_BOOT]', {}); } catch (_) {}
+    } catch (e) {
+      try { spDbg('[BOOT_STEP_ERROR]', { step: 'renderHistory', message: String(e && e.message), stack: String(e && e.stack) }); } catch (_) {}
+    }
+
+    try {
       setupFocusGuides();
+    } catch (e) {
+      try { spDbg('[BOOT_STEP_ERROR]', { step: 'setupFocusGuides', message: String(e && e.message) }); } catch (_) {}
+    }
 
-      // ✅ 起動時に近隣店舗を取得（GPS OFF でも生活圏があれば取得）
-      try {
-        const _ns = await fetchNearbyStores();
-        nearbyStores = Array.isArray(_ns) ? _ns : [];
-        if (nearbyStores.length > 0) {
-          window.nearbyStoreNames = nearbyStores;
-          renderStoreList(); // 近隣店舗を反映して再描画
-          if (isDebug()) console.log('[onload] Nearby stores loaded:', nearbyStores.length);
-        }
-      } catch(e) {
-        if (isDebug()) console.warn('[onload] fetchNearbyStores failed:', e);
-        nearbyStores = [];
+    try {
+      if (fbUrl) {
+        try { spDbg('[SYNC_FIREBASE_START]', {}); } catch (_) {}
+        await syncFirebase();
+        await renderHistory();
+        renderStoreList();
+        try { spDbg('[SYNC_FIREBASE_DONE]', {}); } catch (_) {}
       }
+    } catch (e) {
+      try { spDbg('[BOOT_STEP_ERROR]', { step: 'syncFirebase', message: String(e && e.message), stack: String(e && e.stack) }); } catch (_) {}
+    }
 
+    try {
+      const _ns = await fetchNearbyStores();
+      nearbyStores = Array.isArray(_ns) ? _ns : [];
+      if (nearbyStores.length > 0) {
+        window.nearbyStoreNames = nearbyStores;
+        renderStoreList();
+        if (isDebug()) console.log('[onload] Nearby stores loaded:', nearbyStores.length);
+      }
+    } catch (e) {
+      if (isDebug()) console.warn('[onload] fetchNearbyStores failed:', e);
+      try { spDbg('[BOOT_STEP_ERROR]', { step: 'fetchNearbyStores', message: String(e && e.message) }); } catch (_) {}
+      try { spDbg('[GPS_FETCH_ERROR]', { message: String(e && e.message) }); } catch (_gfe) {}
+      nearbyStores = [];
+    }
+
+    try { spDbg('[APP_BOOT_DONE]', { productCount: Object.keys((db && db.products) || {}).length }); } catch (_) {}
+
+    try {
       if (isDebug()) {
-        // ✅ P0: debug=1のときだけスキャンガイド枠を表示
         document.body.setAttribute('data-debug', '1');
         setTimeout(() => {
           showToast(`DEBUG:${FULL_VERSION} / ${BUILD_ID} / Firebase:${isFirebaseReady?'ON':'OFF'}`, 4000);
         }, 300);
-        // GPS診断パネルを初期表示（debug=1時のみ）
         try {
           const gpsPanel = document.getElementById('gps-debug-panel');
           if (gpsPanel) gpsPanel.classList.add('visible');
-        } catch(e) {}
-        // v23.9.108: 検証ハブボタンを表示（debug=1時のみ）
+        } catch (e) {}
         try {
           const debugHubBtn = document.getElementById('debugHubButton');
           if (debugHubBtn) debugHubBtn.style.display = 'block';
-        } catch(e) {}
+        } catch (e) {}
       } else {
         document.body.removeAttribute('data-debug');
       }
-    } catch(e) {
-      showToast(`起動エラー: ${e.message || '不明なエラー'}`, 10000);
-      if (isDebug()) console.error('[onload]', e);
+    } catch (e) {
+      try { spDbg('[BOOT_STEP_ERROR]', { step: 'debugUiInit', message: String(e && e.message) }); } catch (_) {}
     }
   };
 
