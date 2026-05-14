@@ -12,14 +12,16 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 /*
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
+現在の版（ここにも同期表示・正本は下の const のみ）
+APP_VERSION=v23.9.120  BUILD_ID=2026-05-14_p0-basic-restore-r1
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.119";
-  const BUILD_ID    = "2026-05-07_history-search-ui-log-fix-r1";
+  const APP_VERSION = "v23.9.120";
+  const BUILD_ID    = "2026-05-14_p0-basic-restore-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -2740,6 +2742,8 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   
   // ✅ 近隣店舗候補（GPS/生活圏から取得）
   window.nearbyStoreNames = [];
+  /** 生活圏 fetch の配列（renderStoreList の pushUnique 用。未定義だと ReferenceError で店舗帯全域が停止する）[Yui 2026-05-14 fix] */
+  let nearbyStores = [];
 
   // ========= Config.json読み込み =========
   // --- P0 FIX: loadConfig with root fallback (UI_FREEZE / internal only) ---
@@ -2868,8 +2872,20 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
       } catch (_mig) {}
 
       initCategorySelect();
-      renderStoreList();
-      renderHistory();
+      try { spDbg('[BOOT_RENDER_STORE_START]', {}); } catch (_b0) {}
+      try {
+        renderStoreList();
+      } catch (eBootS) {
+        try { spDbg('[BOOT_RENDER_STORE_ERROR]', { message: String(eBootS && eBootS.message) }); } catch (_b1) {}
+      }
+      try { spDbg('[BOOT_RENDER_STORE_DONE]', {}); } catch (_b2) {}
+      try { spDbg('[BOOT_RENDER_HISTORY_START]', {}); } catch (_b3) {}
+      try {
+        renderHistory();
+      } catch (eBootH) {
+        try { spDbg('[BOOT_RENDER_HISTORY_ERROR]', { message: String(eBootH && eBootH.message) }); } catch (_b4) {}
+      }
+      try { spDbg('[BOOT_RENDER_HISTORY_DISPATCHED]', { note: 'renderHistory_is_async' }); } catch (_b5) {}
 
       if (fbUrl) {
         await syncFirebase(); // ✅ マージ方式で画像が消えない
@@ -2881,14 +2897,16 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 
       // ✅ 起動時に近隣店舗を取得（GPS OFF でも生活圏があれば取得）
       try {
-        const nearbyStores = await fetchNearbyStores();
-        if (nearbyStores && nearbyStores.length > 0) {
+        const _ns = await fetchNearbyStores();
+        nearbyStores = Array.isArray(_ns) ? _ns : [];
+        if (nearbyStores.length > 0) {
           window.nearbyStoreNames = nearbyStores;
           renderStoreList(); // 近隣店舗を反映して再描画
           if (isDebug()) console.log('[onload] Nearby stores loaded:', nearbyStores.length);
         }
       } catch(e) {
         if (isDebug()) console.warn('[onload] fetchNearbyStores failed:', e);
+        nearbyStores = [];
       }
 
       if (isDebug()) {
@@ -3471,6 +3489,21 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
 
   // ===== [data-integrity-check] 整合性チェック関数 =====
 
+  /** ISO文字列など数値以外の ts も許可（履歴が全欠落しないように）[p0-basic-restore-r1 / history-search-ui] */
+  function parseHistEntryTsMs(entry) {
+    if (!entry || typeof entry !== 'object') return NaN;
+    const raw = entry.ts ?? entry.timestamp ?? entry.time;
+    if (raw == null || raw === '') return NaN;
+    if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+    const num = Number(raw);
+    if (Number.isFinite(num)) return num;
+    if (typeof raw === 'string' && raw.trim()) {
+      const d = Date.parse(raw);
+      return Number.isFinite(d) ? d : NaN;
+    }
+    return NaN;
+  }
+
   function validateHistoryEntry(entry) {
     if (!entry || typeof entry !== 'object') {
       return { ok: false, reason: 'entry_invalid' };
@@ -3481,10 +3514,24 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     if (!entry.store || !String(entry.store).trim()) {
       return { ok: false, reason: 'store_empty' };
     }
-    const tsRaw = entry.ts ?? entry.timestamp ?? entry.time;
-    if (!Number.isFinite(Number(tsRaw))) {
+    const tsMs = parseHistEntryTsMs(entry);
+    if (!Number.isFinite(tsMs)) {
       return { ok: false, reason: 'ts_invalid' };
     }
+    return { ok: true };
+  }
+
+  /** ホーム履歴の表示用（uid は見ない／厳しい sync 用 validate と分離）[Yui 2026-05-14 focus-gps-history-restore] */
+  function validateHistoryEntryForDisplay(entry) {
+    if (!entry || typeof entry !== 'object') {
+      return { ok: false, reason: 'entry_invalid' };
+    }
+    const pr = Number(entry.price);
+    const hasPrice = Number.isFinite(pr);
+    const storeRaw = entry.store != null ? String(entry.store).trim() : '';
+    const hasStore = !!storeRaw;
+    const tsOk = Number.isFinite(parseHistEntryTsMs(entry));
+    if (!hasPrice && !hasStore && !tsOk) return { ok: false, reason: 'no_displayable_signal' };
     return { ok: true };
   }
 
@@ -4036,10 +4083,23 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     }
   }
 
+  /** Claude P0-1: フォーム表示中もヘッダ `#store-list` を再描画し GPS ボタンを維持する */
+  function renderStoreSectionForForm(ctx) {
+    try {
+      spDbg('[GPS_BUTTON_SHOW]', { reason: 'renderStoreSectionForForm', ctx: String(ctx || '') });
+    } catch (_g0) {}
+    renderStoreList();
+  }
+
   function renderStoreList(manualPriority = []) {
+    try { spDbg('[STORE_RENDER_START]', {}); } catch (_s0) {}
+    try {
     db = normalizeDb(db);
     const list = document.getElementById('store-list');
-    if(!list) return;
+    if(!list) {
+      try { spDbg('[STORE_RENDER_ERROR]', { reason: 'store-list_dom_missing' }); } catch (_s1) {}
+      return;
+    }
 
     const freq = {};
     const storePositions = {}; // 店名 → {lat, lng} のマップ（履歴から取得）
@@ -4105,6 +4165,14 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     }
     const finalSet = ['未設定', ...storeNames];
 
+    try {
+      spDbg('[STORE_RENDER_CONFIG]', {
+        customStoresLen: (db.config.customStores || []).length,
+        curStore: String(typeof curStore !== 'undefined' ? (curStore || '') : ''),
+        nearbyStoresLen: Array.isArray(nearbyStores) ? nearbyStores.length : -1
+      });
+    } catch (_s2) {}
+
     // ✅ 起動直後は「未設定」固定（前回選択を引きずらない）
     if (window.SP_BOOT_RESET_STORE) {
       curStore = '未設定';
@@ -4112,7 +4180,22 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     }
 
     const gpsTxt = isGpsOn ? `GPS<span class="gps-status">●${lastGpsTime}</span>` : `GPS<span class="gps-status">OFF</span>`;
-    list.innerHTML = `<span class="store-tag gps-btn ${isGpsOn?'on':''}" onclick="toggleGps()">${gpsTxt}</span>`;
+    list.innerHTML = `<span class="store-tag gps-btn ${isGpsOn?'on':''}" onclick="toggleGps()">📍 ${gpsTxt}</span>`;
+    try {
+      spDbg('[GPS_BUTTON_SHOW]', {
+        reason: 'renderStoreList_header',
+        mergedNearby: mergedNearby.length,
+        gpsOrderedCount: gpsOrdered.length,
+        gpsShopCount: gpsShop.length,
+        gpsBroadCount: gpsBroad.length,
+        histCandCount: histCand.length,
+        namedStoreChipCount: storeNames.length,
+        finalSetCount: finalSet.length - 1,
+        isGpsOn: !!isGpsOn,
+        nearbyStoresInjected: Array.isArray(nearbyStores) ? nearbyStores.length : -1
+      });
+    } catch (_gRs) {}
+    try { spDbg('[STORE_RENDER_GPS_BUTTON]', { innerLen: (list.innerHTML || '').length }); } catch (_sG) {}
 
     finalSet.forEach(name => {
       const span = document.createElement('span');
@@ -4147,6 +4230,29 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     addBtn.innerText = '＋店名入力';
     addBtn.onclick = () => promptAddStore();
     list.appendChild(addBtn);
+    try {
+      spDbg('[STORE_RENDER_DONE]', { storeTagCount: list.querySelectorAll('.store-tag').length });
+    } catch (_s3) {}
+    } catch (storeRenderErr) {
+      try {
+        spDbg('[STORE_RENDER_ERROR]', {
+          message: String(storeRenderErr && storeRenderErr.message),
+          stack: String(storeRenderErr && storeRenderErr.stack || '').slice(0, 800)
+        });
+      } catch (_) {}
+      try {
+        const list2 = document.getElementById('store-list');
+        if (list2) {
+          const on = typeof isGpsOn !== 'undefined' && isGpsOn;
+          const t = typeof lastGpsTime !== 'undefined' ? lastGpsTime : '';
+          const gpsTxtF = on ? `GPS<span class="gps-status">●${t}</span>` : `GPS<span class="gps-status">OFF</span>`;
+          list2.innerHTML = `<span class="store-tag gps-btn ${on ? 'on' : ''}" onclick="toggleGps()">📍 ${gpsTxtF}</span>`;
+          try {
+            spDbg('[GPS_BUTTON_SHOW]', { reason: 'renderStoreList_error_fallback', isGpsOn: !!on, note: 'chips_below_not_restored_after_error' });
+          } catch (_gFb) {}
+        }
+      } catch (_) {}
+    }
   }
 
   // ========= Home History =========
@@ -4179,7 +4285,11 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     try {
     const list = document.getElementById('historyList');
     if(!list) {
-      try { spDbg('[HISTORY_RENDER_EMPTY]', { reason: 'historyList_dom_missing' }); } catch (_he) {}
+      try {
+        spDbg('[HISTORY_RENDER_EMPTY]', { reason: 'historyList_dom_missing' });
+        spDbg('[HISTORY_RENDER_ERROR]', { phase: 'dom', reason: 'historyList_dom_missing' });
+        spDbg('[HISTORY_RENDER_EMPTY_REASON]', { reason: 'historyList_dom_missing' });
+      } catch (_he) {}
       renderHistoryInFlight = false;
       return;
     }
@@ -4193,8 +4303,24 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       return acc + (x.history && Array.isArray(x.history) ? x.history.length : 0);
     }, 0);
     const productsWithHistory = items.filter(function (x) { return x.history && x.history.length; }).length;
+
+    let histRawTotal = 0;
+    let histDispValidateOk = 0;
+    let histDispValidateNg = 0;
+    items.forEach(function (x) {
+      if (!x.history || !Array.isArray(x.history)) return;
+      x.history.forEach(function (h) {
+        histRawTotal++;
+        if (validateHistoryEntryForDisplay(h).ok) histDispValidateOk++; else histDispValidateNg++;
+      });
+    });
+
     try {
       spDbg('[HISTORY_RENDER_START]', { totalEntries: totalEntries, filtered: productsWithHistory, productsTotal: items.length });
+      spDbg('[HISTORY_PRODUCTS_COUNT]', { count: items.length });
+      spDbg('[HISTORY_RAW_COUNT]', { count: histRawTotal });
+      spDbg('[HISTORY_VALIDATE_OK_COUNT]', { count: histDispValidateOk });
+      spDbg('[HISTORY_VALIDATE_NG_COUNT]', { count: histDispValidateNg });
     } catch (_hs) {}
 
     // ✅ PCなどで「何も表示されない」を避ける：履歴0件でもメッセージは出す
@@ -4207,6 +4333,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         window.__historyRenderFilterNote = '';
         spDbg('[HISTORY_RENDER_EMPTY]', { reason: 'no_db_product_history', totalEntries: 0 });
         spDbg('[HISTORY_RENDER_DONE]', { displayed: 0, totalEntries: 0 });
+        spDbg('[HISTORY_RENDER_EMPTY_REASON]', { reason: 'no_db_product_history' });
+        spDbg('[HISTORY_RENDERED_COUNT]', { count: 0 });
       } catch (_hd) {}
       renderHistoryInFlight = false; return;
     }
@@ -4236,8 +4364,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         renderedNormalizedKeys.add(normalized);
       }
       const hlist = (it.history||[])
-        .filter(h => (!h.uid) || (h.uid===currentAuthUid))
-        .filter(h => validateHistoryEntry(h).ok); // [data-integrity-check] 壊れたentryを除外
+        .filter(h => validateHistoryEntryForDisplay(h).ok); // uid は表示には使わない [Yui 2026-05-14 focus-gps-history-restore]
       if(!hlist.length) continue;
       const last = hlist[hlist.length-1];
       const div = document.createElement('div');
@@ -4274,27 +4401,13 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         hasMyImage = true;
       }
 
-      // 自分の画像がない場合、共有画像からランダム表示
-      if (!hasMyImage && fbUrl) {
-        try {
-          const sharedImages = await getSharedImages(it.code);
-          if (sharedImages.length > 0) {
-            // ランダムに1つ選ぶ
-            const randomImg = sharedImages[Math.floor(Math.random() * sharedImages.length)];
-            if (randomImg && randomImg.imageUrl) {
-              imgSrc = randomImg.imageUrl;
-            }
-          }
-        } catch(e) {
-          if (isDebug()) console.warn('[renderHistory] getSharedImages failed:', e);
-        }
-      }
-
       // ✅ 統計計算（平均・最安・前回）
       const allPrices = hlist.map(h => Number(h.price)).filter(p => !isNaN(p) && p > 0);
       const avgP = allPrices.length ? Math.round(allPrices.reduce((a,b)=>a+b,0)/allPrices.length) : null;
       const minP = allPrices.length ? Math.min(...allPrices) : null;
-      const lastP = last && last.price ? Number(last.price) : null;
+      const lastPN = Number(last && last.price);
+      const lastP = Number.isFinite(lastPN) ? lastPN : null;
+      const lastPriceMain = Number.isFinite(lastPN) ? String(last.price) : '—';
       const statsHtml = (allPrices.length >= 2) ? `
         <div class="d-flex gap-2 mt-1" style="font-size:0.6rem; color:#aaa;">
           <span>平均 <b style="color:#fff;">${avgP}円</b></span>
@@ -4310,7 +4423,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
             ${statsHtml}
           </div>
           <div class="text-end ms-2 flex-shrink-0">
-            <div class="price-main">${last.price}<span style="font-size:0.6rem;">円</span></div>
+            <div class="price-main">${lastPriceMain}<span style="font-size:0.6rem;">円</span></div>
           </div>
         </div>`;
       list.appendChild(div);
@@ -4318,6 +4431,20 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
 
       // ✅ IndexedDB画像を適用（優先順位：last.imageKey → it.imageKey、失敗時はimageUrlへフォールバック）
       const imgEl = div.querySelector('img.prod-thumb');
+      if (!hasMyImage && fbUrl && imgEl) {
+        (async () => {
+          try {
+            const sharedImages = await getSharedImages(it.code);
+            if (!sharedImages || !sharedImages.length) return;
+            const randomImg = sharedImages[Math.floor(Math.random() * sharedImages.length)];
+            if (!randomImg || !randomImg.imageUrl) return;
+            const el = div.querySelector('img.prod-thumb');
+            if (el) el.src = randomImg.imageUrl;
+          } catch (e) {
+            if (isDebug()) console.warn('[renderHistory] deferred getSharedImages failed:', e);
+          }
+        })();
+      }
       if (imgEl) {
         imgEl.referrerPolicy = "no-referrer";
         
@@ -4394,7 +4521,11 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
 
     if (hasAnyHistory && displayedCount === 0) {
       list.innerHTML = `<div class="text-secondary small text-center py-3" style="opacity:.85;">履歴データはありますが表示用のデータがありません（ログイン・店舗名・価格・日時の形式を確認してください）</div>`;
-      try { spDbg('[HISTORY_RENDER_EMPTY]', { reason: 'all_entries_filtered', totalEntries: totalEntries, uid: String(currentAuthUid || '') }); } catch (_hf) {}
+      try {
+        spDbg('[HISTORY_RENDER_EMPTY]', { reason: 'all_entries_filtered', totalEntries: totalEntries, uid: String(currentAuthUid || '') });
+        spDbg('[HISTORY_RENDER_EMPTY_REASON]', { reason: 'all_entries_filtered_or_display_rules', totalEntries });
+        spDbg('[HISTORY_RENDERED_COUNT]', { count: 0 });
+      } catch (_hf) {}
     }
 
     try {
@@ -4402,9 +4533,23 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       window.__historyRenderDisplayed = displayedCount;
       window.__historyRenderFilterNote = '';
       spDbg('[HISTORY_RENDER_DONE]', { displayed: displayedCount, totalEntries: totalEntries });
+      spDbg('[HISTORY_RENDERED_COUNT]', { count: displayedCount });
+      if (!displayedCount && hasAnyHistory) {
+        try { spDbg('[HISTORY_RENDER_EMPTY_REASON]', { reason: 'no_cards_after_loop', totalEntries }); } catch (_he2) {}
+      }
     } catch (_hdone) {}
 
+    } catch (histRenderOuter) {
+      try {
+        spDbg('[HISTORY_RENDER_ERROR]', {
+          message: String(histRenderOuter && histRenderOuter.message),
+          stack: String(histRenderOuter && histRenderOuter.stack || '').slice(0, 800)
+        });
+      } catch (_her) {}
     } finally {
+      try {
+        spDbg('[BOOT_RENDER_HISTORY_DONE]', { displayed: (typeof window.__historyRenderDisplayed === 'number') ? window.__historyRenderDisplayed : -1 });
+      } catch (_bfh) {}
       // ✅ ロック解除
       renderHistoryInFlight = false;
     }
@@ -4740,9 +4885,11 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         window.updateLastProductDebugFromForm();
       }
     } catch (ePD) {}
-  }
 
-  function renderStats(history) {
+    try {
+      renderStoreSectionForForm('openForm_after_bind');
+    } catch (_rsf) {}
+  }
     const box = document.getElementById('statsBox');
     if (!box) return;
     if (!Array.isArray(history) || history.length === 0) { box.innerHTML = "過去データなし"; return; }
@@ -11729,6 +11876,25 @@ function getCurrentProductDebugJan() {
       }
     } catch (e1) {}
   }
+  if (!jan) {
+    try {
+      if (typeof db !== 'undefined' && db && db.products) {
+        let best = '', bestTs = -1;
+        for (const code of Object.keys(db.products)) {
+          const p = db.products[code];
+          if (!p || !Array.isArray(p.history) || !p.history.length) continue;
+          const ent = p.history[p.history.length - 1];
+          const t = parseHistEntryTsMs(ent);
+          const ts = Number.isFinite(t) ? t : 0;
+          if (ts >= bestTs) {
+            bestTs = ts;
+            best = code;
+          }
+        }
+        if (best) jan = best;
+      }
+    } catch (_eDbJan) {}
+  }
   return jan;
 }
 
@@ -12088,7 +12254,7 @@ function showCopyResultModal(p) {
 
   const btnRetry = document.createElement('button');
   btnRetry.type = 'button';
-  btnRetry.textContent = 'もう一度コピー';
+  btnRetry.textContent = 'コピー';
   btnRetry.setAttribute('style', 'padding:8px 12px;font-size:14px;cursor:pointer;');
   btnRetry.onclick = function () { retryCopyResultClipboard(); };
 
@@ -12336,7 +12502,8 @@ function copyProductDebugForYui(isMainEntry) {
     try { if (typeof window.updateLastProductDebugFromForm === 'function') window.updateLastProductDebugFromForm(); } catch (eU) {}
     try { spDbg('[COPY_RESULT_START]', copyResultLogBase({ jan: '', textLength: 0, error: '' })); } catch (e1) {}
 
-    const snapshot = buildProductDebugSnapshot('');
+    const janHint = (typeof getCurrentProductDebugJan === 'function' ? getCurrentProductDebugJan() : '');
+    const snapshot = buildProductDebugSnapshot(janHint);
     const md = buildProductDebugMarkdown(snapshot);
     const trimmed = String(md || '').trim();
     const len = trimmed.length;
@@ -13318,7 +13485,7 @@ window.copyFullAuditForYui = copyFullAuditForYui;
 window.shareFullAuditForYui = shareFullAuditForYui;
 window.showFullAuditPreview = showFullAuditPreview;
 
-// v23.9.119: 商品検索パイプライン診断（v23.9.118 由来・ログ用）
+// v23.9.120: 商品検索パイプライン診断（v23.9.118 由来・ログ用）
 window.__lookupTraceSteps = window.__lookupTraceSteps || [];
 window.__productLookupSlowTimers = window.__productLookupSlowTimers || [];
 window.__lookupToastTimer = null;
