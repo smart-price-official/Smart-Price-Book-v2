@@ -1645,6 +1645,11 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
       firebaseApp = firebase.initializeApp(FIREBASE_CONFIG);
       firebaseAuth = firebase.auth();
       firebaseDb = firebase.database();
+      try {
+        window.firebaseApp = firebaseApp;
+        window.firebaseAuth = firebaseAuth;
+        window.firebaseDb = firebaseDb;
+      } catch (_wfb) {}
 
       // 匿名ログイン
       await firebaseAuth.signInAnonymously();
@@ -2831,6 +2836,11 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   });
 
   window.onload = async () => {
+    // [_auditLogs] 別スクリプトより先に実行される起動ログ用（spDbg より前）
+    try {
+      if (!window._auditLogs) window._auditLogs = [];
+    } catch (_) {}
+
     // [p0-boot-chain-diagnosis] 工程ごとに try/catch を分離（1工程の失敗で後続を止めない）。ログのみ追加。
     try { spDbg('[APP_BOOT_START]', { version: typeof APP_VERSION !== 'undefined' ? APP_VERSION : '', build: typeof BUILD_ID !== 'undefined' ? BUILD_ID : '' }); } catch (_abs) {}
 
@@ -11126,18 +11136,19 @@ async function testFirebaseConnection() {
   
   try {
     // Firebase認証状態を確認
-    if (!firebaseAuth) {
+    const _fa = window.firebaseAuth;
+    if (!_fa) {
       statusDiv.innerHTML = '<div class="text-danger">❌ Firebase初期化エラー</div>';
       return;
     }
-    
-    const user = firebaseAuth.currentUser;
+
+    const user = _fa.currentUser;
     if (!user) {
       statusDiv.innerHTML = '<div class="text-warning">⚠️ 未ログイン（匿名認証を試行中...）</div>';
-      
+
       // 匿名認証を試行
       try {
-        await firebaseAuth.signInAnonymously();
+        await _fa.signInAnonymously();
         statusDiv.innerHTML = '<div class="text-success">✅ 匿名認証成功</div>';
       } catch (authError) {
         statusDiv.innerHTML = `<div class="text-danger">❌ 認証失敗: ${authError.message}</div>`;
@@ -11146,10 +11157,11 @@ async function testFirebaseConnection() {
     } else {
       statusDiv.innerHTML = `<div class="text-success">✅ 接続中 (UID: ${user.uid.substring(0, 8)}...)</div>`;
     }
-    
+
+    const _fdb = window.firebaseDb;
     // データベース接続テスト
-    if (firebaseDb && db && db.config && db.config.personalId) {
-      const testRef = firebaseDb.ref(`users/${firebaseAuth.currentUser.uid}/test`);
+    if (_fdb && db && db.config && db.config.personalId) {
+      const testRef = _fdb.ref(`users/${_fa.currentUser.uid}/test`);
       await testRef.set({ timestamp: Date.now(), test: true });
       await testRef.remove();
       
