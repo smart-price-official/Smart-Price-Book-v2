@@ -5,29 +5,23 @@ POLICY: UI_FREEZE / 単一HTML / VERSION SSOT
 NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-->
 <html lang="ja">
 <head>
-  <!-- ★ 生存確認 SURVIVAL-01 (P0 script survival check) -->
-  <script>
-    console.log('[SURVIVAL-01] HEAD script OK');
-    try { document.title = '[S01]' + document.title; } catch (e) {}
-  </script>
 <!-- SW GUARD: prevent old Service Worker from serving stale index.html -->
 
 <!-- VERSION SSOT CORE: APP_VERSION/BUILD_IDのみ編集可。他は自動生成。 -->
 <script id="version-ssot-core">
-console.log('[SURVIVAL-PRE1] INLINE version-ssot-core START');
 /*
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.120  BUILD_ID=2026-05-14_p0-basic-restore-r1
+APP_VERSION=v23.9.121  BUILD_ID=2026-05-14_p0-renderStats-fix-r1
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.120";
-  const BUILD_ID    = "2026-05-14_p0-basic-restore-r1";
+  const APP_VERSION = "v23.9.121";
+  const BUILD_ID    = "2026-05-14_p0-renderStats-fix-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -141,7 +135,6 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 
   <meta charset="UTF-8">
   <script>
-  console.log('[SURVIVAL-PRE2] INLINE head SSOT stub START');
   // === VERSION SSOT: APP_VERSION/BUILD_IDのみで管理 ===
   </script>
 
@@ -150,10 +143,9 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#D50000">
-  <title>Smart Price</title><!-- VERSION SSOT: applyVersionEverywhere() が自動上書き -->
+  <title>Smart Price v23.9.121</title><!-- VERSION SSOT: applyVersionEverywhere() が自動上書き -->
   <!-- ✅ SW RESET TOOL (v22.7.0) : ?reset=sw -->
   <script>
-  console.log('[SURVIVAL-PRE3] INLINE SW-reset tool START');
   (function() {
     try {
       var params = new URLSearchParams(location.search);
@@ -941,7 +933,6 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 </style>
 
 <script>
-console.log('[SURVIVAL-PRE4] INLINE safety-wrappers START');
 // === SAFETY WRAPPERS (keep onclick working) ===
 // startScanner SAFETY WRAPPER removed - function defined below
 window.showVeggieMenu = window.showVeggieMenu || function() {
@@ -1611,17 +1602,12 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 <div id="debug-error-display" style="display:none; position:fixed; top:10px; right:10px; background:rgba(255,0,0,0.9); color:#fff; padding:8px 12px; border-radius:5px; font-size:0.75rem; z-index:99997; max-width:300px; word-break:break-word; box-shadow:0 2px 10px rgba(0,0,0,0.5); border:2px solid #ff0000;"></div>
 
 <!-- Firebase SDK (v9 compat) -->
-<script>console.log('[SURVIVAL-07] BEFORE Firebase CDN');</script>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
-<script>console.log('[SURVIVAL-08] AFTER Firebase CDN');</script>
 
-<script>console.log('[SURVIVAL-09] BEFORE html5-qrcode');</script>
 <script src="https://unpkg.com/html5-qrcode"></script>
-<script>console.log('[SURVIVAL-10] AFTER html5-qrcode');</script>
 <script>
-console.log('[SURVIVAL-02] SCRIPT-A START (firebase+main block)');
   // ========= Firebase Configuration =========
   const FIREBASE_CONFIG = {
     apiKey: "AIzaSyCYjQ79KgsohOPlEViHBX5BygVUvX-70l4",
@@ -2844,9 +2830,7 @@ console.log('[SURVIVAL-02] SCRIPT-A START (firebase+main block)');
     }
   });
 
-  console.log('[SURVIVAL-11] BEFORE window.onload assignment');
   window.onload = async () => {
-  console.log('[SURVIVAL-12] window.onload EXECUTING');
     // [_auditLogs] 別スクリプトより先に実行される起動ログ用（spDbg より前）
     try {
       if (!window._auditLogs) window._auditLogs = [];
@@ -4962,6 +4946,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       renderStoreSectionForForm('openForm_after_bind');
     } catch (_rsf) {}
   }
+  function renderStats(history) {
     const box = document.getElementById('statsBox');
     if (!box) return;
     if (!Array.isArray(history) || history.length === 0) { box.innerHTML = "過去データなし"; return; }
@@ -10561,7 +10546,6 @@ function spVisibleTrace(tag, payload, cls) {
 </script>
 
 <script>
-console.log('[SURVIVAL-03] SCRIPT-B START (modal fix)');
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Smart Price 設定モーダル - COMPLETE FIX
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -11384,7 +11368,6 @@ window.showReferralStatus = showReferralStatus;
 
 
 <script>
-console.log('[SURVIVAL-04] SCRIPT-C START (debugOverlay)');
 (function(){
   try{
     const url = new URL(location.href);
@@ -11680,7 +11663,6 @@ window.spShareFamilyId = spShareFamilyId;
 </script>
 
 <script>
-console.log('[SURVIVAL-05] SCRIPT-D START (stubs)');
 /* === 未定義関数の補完 (v22.7 fix) === */
 
 // ブラウザ版URLモーダル
@@ -13958,7 +13940,6 @@ window.copyAllLogsForYui = copyAllLogsForYui;
 
 
 <script>
-console.log('[SURVIVAL-06] SCRIPT-E START (spDbg block)');
 // === SP DEBUG SYSTEM v2 ===
 (function() {
   var logs = [];
