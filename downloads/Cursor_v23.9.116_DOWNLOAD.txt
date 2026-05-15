@@ -1,0 +1,13 @@
+Smart Price / v23.9.116 単体HTML の入手先
+
+■ ファイル名（このフォルダ内）
+  Cursor_SmartPrice_v23.9.116_index.html
+
+■ GitHub 固定コミット（6ae4255）から保存
+  https://github.com/smart-price-official/Smart-Price-Book-v2/raw/6ae4255/index.html
+
+■ raw.githubusercontent
+  https://raw.githubusercontent.com/smart-price-official/Smart-Price-Book-v2/6ae4255/index.html
+
+■ 記録
+  APP_VERSION=v23.9.116 / BUILD_ID=2026-05-04_gps-store-fix-r1 / commit=6ae4255
