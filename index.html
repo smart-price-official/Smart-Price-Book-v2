@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.121  BUILD_ID=2026-05-19_admin-pw-unify-r1
+APP_VERSION=v23.9.122  BUILD_ID=2026-05-19_device-compare-admin-ui-r1
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.121";
-  const BUILD_ID    = "2026-05-19_admin-pw-unify-r1";
+  const APP_VERSION = "v23.9.122";
+  const BUILD_ID    = "2026-05-19_device-compare-admin-ui-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -1252,10 +1252,10 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
           <button type="button" class="btn btn-outline-info w-100 py-3 fw-bold mb-3" style="font-size:1rem;" onclick="copyAllLogsForYui()">📋 全ログをコピー</button>
           <!-- v23.9.109: Yuiへ検証データ送信（主導線） -->
           <div class="mb-3" style="border:2px solid #4a4aff; border-radius:8px; padding:12px; background:rgba(74,74,255,0.1);">
-            <button class="btn btn-primary w-100 py-3 fw-bold mb-2" style="font-size:1.1rem;" onclick="copyProductDebugForYuiMain()">
+            <button class="btn btn-primary w-100 py-3 fw-bold mb-2" style="font-size:1.1rem;display:none;" onclick="copyProductDebugForYuiMain()">
               🔬 Yuiへ検証データをコピー
             </button>
-            <button class="btn btn-info w-100 py-2" onclick="shareProductDebugForYui()">
+            <button class="btn btn-info w-100 py-2" style="display:none;" onclick="shareProductDebugForYui()">
               📤 検証データを共有
             </button>
             <div class="small text-secondary mt-2 text-center" style="opacity:.8;">
@@ -1264,6 +1264,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
             <div class="mt-3 pt-2" style="border-top:1px solid rgba(74,74,255,0.35);">
               <div class="small text-secondary mb-2 text-center" style="opacity:.85;">全体検証（端末・DB横断）</div>
               <button type="button" class="btn btn-outline-warning w-100 py-2 fw-bold mb-2" onclick="copyFullAuditForYui()">📦 全体検証データをコピー</button>
+              <button type="button" onclick="copyDeviceCompareData()" class="btn btn-outline-info btn-sm w-100 mb-1">🧪 端末比較診断データをコピー</button>
               <button type="button" class="btn btn-outline-warning w-100 py-2 mb-2" onclick="shareFullAuditForYui()">📤 全体検証データを共有</button>
               <button type="button" class="btn btn-outline-secondary w-100 py-2" onclick="showFullAuditPreview()">👁 全体検証データを表示</button>
             </div>
@@ -1310,7 +1311,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
               
               <div class="small text-secondary mb-2 mt-3">保存系</div>
               <button class="btn btn-outline-secondary w-100 mb-2" style="font-size:0.9rem;" onclick="exportProductDebugJson()">💾 JSON保存</button>
-              <button class="btn btn-outline-secondary w-100 mb-2" style="font-size:0.9rem;" onclick="exportProductDebugMd()">📝 MD保存</button>
+              <button class="btn btn-outline-secondary w-100 mb-2" style="font-size:0.9rem;" onclick="exportProductDebugMd()">📝 Markdown保存</button>
               
               <div class="small text-secondary mb-2 mt-3">画面表示（コピー失敗時の保険）</div>
               <button class="btn btn-outline-info w-100 mb-2" style="font-size:0.9rem;" onclick="showProductDebugPreview()">👁️ 検証データを画面に表示</button>
@@ -1373,7 +1374,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
     
     <div id="debugHubContent">
       <!-- v23.9.109: 主導線 -->
-      <button class="btn btn-primary w-100 py-3 mb-2 fw-bold" style="font-size:1.1rem;" onclick="copyProductDebugForYuiMain()">🔬 Yuiへ検証データをコピー</button>
+      <button class="btn btn-primary w-100 py-3 mb-2 fw-bold" style="font-size:1.1rem;display:none;" onclick="copyProductDebugForYuiMain()">🔬 Yuiへ検証データをコピー</button>
       <button class="btn btn-info w-100 mb-3" onclick="shareProductDebugForYui()">📤 検証データを共有</button>
       <div class="mb-3 pb-2" style="border-bottom:1px solid rgba(74,74,255,0.35);">
         <div class="small text-secondary mb-2 text-center" style="opacity:.85;">全体検証（端末・DB横断）</div>
@@ -1393,7 +1394,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
       
       <div class="small text-secondary mb-2">保存・表示</div>
       <button class="btn btn-outline-secondary w-100 mb-2" style="font-size:0.9rem;" onclick="exportProductDebugJson()">💾 JSON保存</button>
-      <button class="btn btn-outline-secondary w-100 mb-2" style="font-size:0.9rem;" onclick="exportProductDebugMd()">📝 MD保存</button>
+      <button class="btn btn-outline-secondary w-100 mb-2" style="font-size:0.9rem;" onclick="exportProductDebugMd()">📝 Markdown保存</button>
       <button class="btn btn-outline-info w-100 mb-2" style="font-size:0.9rem;" onclick="showProductDebugPreview()">👁️ 画面表示</button>
     </div>
     
@@ -1690,7 +1691,8 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   function isDebug() {
     try { return new URL(location.href).searchParams.get('debug') === '1'; } catch(e){ return false; }
   }
-  
+  try { window.isDebug = isDebug; } catch (_isd) {}
+
   // ✅ デバッグログ関数（トーストで表示）
   function debugLog(message, type = 'info') {
     if (!isDebug()) return;
@@ -2135,6 +2137,23 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
       }
     });
   }
+
+  async function idbGetAllKeys() {
+    const dbi = await openImgDb();
+    if (!dbi || !dbi.objectStoreNames.contains(IMG_STORE)) return [];
+    return new Promise((res) => {
+      try {
+        const tx = dbi.transaction(IMG_STORE, 'readonly');
+        const store = tx.objectStore(IMG_STORE);
+        const req = store.getAllKeys();
+        req.onsuccess = () => res(req.result || []);
+        req.onerror = () => res([]);
+      } catch (err) {
+        res([]);
+      }
+    });
+  }
+  try { window.idbGetAllKeys = idbGetAllKeys; } catch (_idk) {}
 
   function dataUrlToBlob(dataUrl) {
     try {
@@ -2719,6 +2738,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 
   // ========= App State =========
   let db = { products: {}, config: JSON.parse(JSON.stringify(DEFAULT_CONFIG)) };
+  try { window.db = db; } catch (_wdb0) {}
   let curBarcode = null, curStore = "未設定";
   // 起動直後は必ず「未設定」から開始（前回選択を引きずらない）
   let SP_BOOT_RESET_STORE = true;
@@ -2827,6 +2847,15 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
       // [VERSION SSOT] document.title は applyVersionEverywhere が自動設定済み
     } catch(e) {
       if (isDebug()) console.warn('[DOMContentLoaded] version update error:', e);
+    }
+    // DBGボタン表示制御（debug=1時のみ表示）
+    try {
+      const dbgToggle = document.getElementById('sp-dbg-toggle');
+      const dbgPanel = document.getElementById('sp-dbg-panel');
+      if (dbgToggle) dbgToggle.style.display = isDebug() ? '' : 'none';
+      if (dbgPanel) dbgPanel.style.display = 'none';
+    } catch (e) {
+      if (isDebug()) console.warn('[DOMContentLoaded] DBG button control error:', e);
     }
   });
 
@@ -3303,6 +3332,7 @@ function isQuotaError(e) {
   function saveLocalOnly() {
     try {
       localStorage.setItem('smart_price_db', JSON.stringify(db));
+      try { window.db = db; } catch (_wdb1) {}
       return true;
     } catch (e) {
       if (!isQuotaError(e)) {
@@ -3313,6 +3343,7 @@ function isQuotaError(e) {
       try {
         localStorage.setItem('smart_price_db', JSON.stringify(slim));
         db = slim;
+        try { window.db = db; } catch (_wdb2) {}
         showToast("端末容量が厳しいので軽量保存に切替えました", 8000);
         return true;
       } catch (e2) {
@@ -3320,6 +3351,7 @@ function isQuotaError(e) {
           localStorage.removeItem('smart_price_db');
           localStorage.setItem('smart_price_db', JSON.stringify(slim));
           db = slim;
+          try { window.db = db; } catch (_wdb3) {}
           showToast("端末容量を整理して復旧しました", 8000);
           return true;
         } catch (e3) {
@@ -3458,6 +3490,7 @@ async function loadLocal() {
       const saved = localStorage.getItem('smart_price_db');
       if (saved) db = JSON.parse(saved);
       db = normalizeDb(db);
+      try { window.db = db; } catch (_wdb4) {}
             // UIFIX21: 別キーに残っている履歴を自動復旧
       tryImportLegacyDbIfEmpty();
 const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
@@ -3465,6 +3498,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       if (el) el.checked = true;
     } catch(e) {
       db = normalizeDb({});
+      try { window.db = db; } catch (_wdb5) {}
       showToast("ローカル読込に失敗（クラウド同期で復旧します）", 8000);
     }
   }
@@ -11033,6 +11067,18 @@ function unlockOperator() {
     msgDiv.textContent = '✅ ロック解除しました';
     msgDiv.style.color = '#28a745';
     passInput.value = '';
+
+    // ▼ 追加：PW欄・開くボタンを非表示
+    try {
+      if (passInput) passInput.style.display = 'none';
+      const unlockBtn = document.getElementById('operatorUnlockBtn');
+      if (unlockBtn) unlockBtn.style.display = 'none';
+      const pwLabel = passInput ? passInput.closest('.d-flex') : null;
+      if (pwLabel) pwLabel.style.display = 'none';
+    } catch (e) {
+      if (isDebug()) console.warn('[unlockOperator] hide pw error:', e);
+    }
+    // ▲ 追加ここまで
     
     // Firebase URLを表示（固定）
     const fbUrlInput = document.getElementById('fb-url-input');
@@ -11122,6 +11168,118 @@ function loadStats() {
 window.unlockOperator = unlockOperator;
 window.loadPurchaseHistory = loadPurchaseHistory;
 window.loadStats = loadStats;
+
+// v23.9.122: 端末比較診断データコピー（商品マスタ横断で購入履歴を集約／IndexedDB キー数は window.idbGetAllKeys）
+async function copyDeviceCompareData() {
+  try {
+    var appDb = null;
+    try {
+      if (typeof window !== 'undefined' && window.db) appDb = window.db;
+    } catch (e0) {}
+    if (!appDb) {
+      try {
+        if (typeof db !== 'undefined') appDb = db;
+      } catch (e1) {}
+    }
+    var products = (appDb && appDb.products) ? Object.values(appDb.products) : [];
+    var history = [];
+    if (appDb && appDb.products) {
+      Object.keys(appDb.products).forEach(function (janK) {
+        var p = appDb.products[janK];
+        var hists = Array.isArray(p.history) ? p.history : [];
+        hists.forEach(function (h) {
+          if (!h) return;
+          var copy = {};
+          for (var k in h) {
+            if (Object.prototype.hasOwnProperty.call(h, k)) copy[k] = h[k];
+          }
+          if (copy.jan == null) copy.jan = janK;
+          if (copy.name == null && p.name) copy.name = p.name;
+          history.push(copy);
+        });
+      });
+    }
+
+    var idbCount = 0;
+    try {
+      var igk = (typeof window !== 'undefined' && typeof window.idbGetAllKeys === 'function') ? window.idbGetAllKeys : null;
+      var keys = igk ? await igk() : [];
+      idbCount = keys ? keys.length : 0;
+    } catch (e) {
+      idbCount = '取得失敗';
+    }
+
+    var noImageCount = products.filter(function (p) { return !p.imageUrl && !p.sharedImageId; }).length;
+    var janOnlyList = products.filter(function (p) { return !p.name || p.name.trim() === ''; }).map(function (p) { return p.jan || '(JAN不明)'; });
+
+    var storeCounts = {};
+    history.forEach(function (h) {
+      var s = h.store || '(不明)';
+      storeCounts[s] = (storeCounts[s] || 0) + 1;
+    });
+    var storeLines = Object.entries(storeCounts)
+      .sort(function (a, b) { return b[1] - a[1]; })
+      .map(function (entry) { return '  ' + entry[0] + ': ' + entry[1] + '件'; })
+      .join('\n');
+
+    var recent20 = history
+      .sort(function (a, b) { return (b.date || 0) - (a.date || 0); })
+      .slice(0, 20)
+      .map(function (h) {
+        return '  ' + (h.date ? new Date(h.date).toLocaleDateString('ja-JP') : '不明') + ' ' + (h.store || '') + ' ' + (h.name || h.jan || '');
+      })
+      .join('\n');
+
+    var prod20 = products.slice(0, 20)
+      .map(function (p) {
+        return '  ' + (p.jan || '(JAN無)') + ' ' + (p.name || '(名前無)') + ' ' + (p.imageUrl || p.sharedImageId ? '画像あり' : '画像なし');
+      })
+      .join('\n');
+
+    var spUserId = (appDb && appDb.config && appDb.config.userId) ? appDb.config.userId : localStorage.getItem('sp_user_id') || '不明';
+
+    var report = [
+      '# 端末比較診断レポート',
+      '',
+      'APP_VERSION: ' + (typeof APP_VERSION !== 'undefined' ? APP_VERSION : '不明'),
+      'BUILD_ID: ' + (typeof BUILD_ID !== 'undefined' ? BUILD_ID : '不明'),
+      'deviceId: ' + (localStorage.getItem('smartPriceDeviceId') || '不明'),
+      'sp_user_id: ' + spUserId,
+      'UA: ' + navigator.userAgent,
+      'Firebase接続状態: ' + (typeof isFirebaseReady !== 'undefined' ? (isFirebaseReady ? 'OK' : 'NG') : '不明'),
+      'Firebase UID: ' + (typeof currentAuthUid !== 'undefined' ? (currentAuthUid || '未認証') : '不明'),
+      '',
+      'localStorage商品件数: ' + products.length,
+      'localStorage購入履歴件数: ' + history.length,
+      'IndexedDB画像件数: ' + idbCount,
+      'No Image件数: ' + noImageCount,
+      'JANのみ表示商品件数: ' + janOnlyList.length,
+      '商品名あり件数: ' + products.filter(function (p) { return p.name && p.name.trim(); }).length,
+      '商品名なし件数: ' + products.filter(function (p) { return !p.name || !p.name.trim(); }).length,
+      '画像あり件数: ' + (products.length - noImageCount),
+      '画像なし件数: ' + noImageCount,
+      '',
+      'ストア別履歴件数:',
+      storeLines || '  (なし)',
+      '',
+      'JANのみ表示商品一覧（先頭20件）:',
+      janOnlyList.slice(0, 20).map(function (j) { return '  ' + j; }).join('\n') || '  (なし)',
+      '',
+      '直近購入履歴20件:',
+      recent20 || '  (なし)',
+      '',
+      '商品マスタ先頭20件:',
+      prod20 || '  (なし)',
+    ].join('\n');
+
+    await navigator.clipboard.writeText(report);
+    showToast('🧪 端末比較診断データをコピーしました', 3000);
+  } catch (e) {
+    showToast('コピー失敗: ' + (e.message || '不明'), 5000);
+    if (typeof window.isDebug === 'function' && window.isDebug()) console.error('[copyDeviceCompareData]', e);
+  }
+}
+window.copyDeviceCompareData = copyDeviceCompareData;
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // v22.7: Firebase接続テスト
@@ -12684,7 +12842,7 @@ function exportProductDebugMd() {
     URL.revokeObjectURL(url);
     
     spDbg('[PRODUCT_DEBUG_EXPORT_MD]', { jan, size: md.length });
-    showToast('✅ MD保存しました', 2000);
+    showToast('✅ Markdown保存しました', 2000);
     
   } catch (e) {
     spDbg('[PRODUCT_DEBUG_ERROR]', { action: 'export_md', error: e.message });
