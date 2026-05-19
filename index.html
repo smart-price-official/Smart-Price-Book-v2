@@ -13,7 +13,7 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.121  BUILD_ID=2026-05-14_p0-renderStats-fix-r1
+APP_VERSION=v23.9.121  BUILD_ID=2026-05-19_admin-pw-unify-r1
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
@@ -21,7 +21,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 (() => {
   // ===== 正本（ここだけ編集可） =====
   const APP_VERSION = "v23.9.121";
-  const BUILD_ID    = "2026-05-14_p0-renderStats-fix-r1";
+  const BUILD_ID    = "2026-05-19_admin-pw-unify-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -11020,7 +11020,7 @@ window.clearBarcodeDigits = clearBarcodeDigits;
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // v22.5: 管理メニュー機能（UIは変更なし、機能のみ追加）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-const OPERATOR_PASSWORD = 'smartprice2026';
+const OPERATOR_PASSWORD = '55533557';
 
 function unlockOperator() {
   const passInput = document.getElementById('operatorPass');
