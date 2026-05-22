@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.123  BUILD_ID=2026-05-19_user-id-unify-r1
+APP_VERSION=v23.9.124  BUILD_ID=2026-05-22_jan-display-fix-r1
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.123";
-  const BUILD_ID    = "2026-05-19_user-id-unify-r1";
+  const APP_VERSION = "v23.9.124";
+  const BUILD_ID    = "2026-05-22_jan-display-fix-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -11195,7 +11195,12 @@ async function copyDeviceCompareData() {
         if (typeof db !== 'undefined') appDb = db;
       } catch (e1) {}
     }
-    var products = (appDb && appDb.products) ? Object.values(appDb.products) : [];
+    var productEntries = (appDb && appDb.products) ? Object.entries(appDb.products) : [];
+    var products = productEntries.map(function(entry) {
+      var p = Object.assign({}, entry[1]);
+      if (!p.jan) p.jan = entry[0]; // DBキーをJANとして補完
+      return p;
+    });
     var history = [];
     if (appDb && appDb.products) {
       Object.keys(appDb.products).forEach(function (janK) {
