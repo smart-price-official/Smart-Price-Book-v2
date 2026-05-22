@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.124  BUILD_ID=2026-05-22_jan-display-fix-r1
+APP_VERSION=v23.9.125  BUILD_ID=2026-05-22_category-maker-fix-r1
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.124";
-  const BUILD_ID    = "2026-05-22_jan-display-fix-r1";
+  const APP_VERSION = "v23.9.125";
+  const BUILD_ID    = "2026-05-22_category-maker-fix-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -1935,15 +1935,16 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   const PARENT_CATEGORY_LIST = ['食品', '飲料', '菓子', '酒', '日用品', '衛生用品', '医薬品', '冷凍食品', '調味料', 'ペット用品', 'その他'];
 
   const INFER_RULES = [
-    { keywords: ['お茶', 'コーヒー', '炭酸', 'ラテ', 'ジュース', 'コーラ', 'ミルク', '水', 'スポーツドリンク'], category: '飲料' },
-    { keywords: ['チョコ', 'グミ', 'ポテトチップス', 'クッキー', 'せんべい', '飴', 'ガム', 'スナック'], category: '菓子' },
+    { keywords: ['お茶', 'コーヒー', '炭酸', 'ラテ', 'ジュース', 'コーラ', 'ミルク', '水', 'スポーツドリンク', 'ほうじ茶', '紅茶', 'カフェ', 'ミルクティー'], category: '飲料' },
+    { keywords: ['チョコ', 'グミ', 'ポテトチップス', 'クッキー', 'せんべい', '飴', 'ガム', 'スナック', 'ポッキー', 'じゃがりこ', 'トッポ', 'きのこの山', 'ガルボ', 'キャラメルコーン', 'ロアンヌ', '柿の種', 'サッポロポテト', 'ドリトス', 'エアリアル', 'ビスケット'], category: '菓子' },
     { keywords: ['洗剤', '柔軟剤', '掃除', 'トイレ', 'ゴミ袋', '食器用'], category: '日用品' },
     { keywords: ['シャンプー', '歯磨き', 'ボディソープ', 'マスク', '生理', 'ナプキン', '綿棒'], category: '衛生用品' },
     { keywords: ['薬', '錠', '目薬', '胃腸', '解熱', 'サプリ', 'ビタミン'], category: '医薬品' },
     { keywords: ['冷凍', 'アイス', 'フローズン'], category: '冷凍食品' },
-    { keywords: ['しょうゆ', '醤油', '味噌', 'ソース', 'だし', 'みりん', '酢', 'ドレッシング'], category: '調味料' },
+    { keywords: ['しょうゆ', '醤油', '味噌', 'ソース', 'だし', 'みりん', '酢', 'ドレッシング', 'ラー油', 'マヨネーズ', 'ケチャップ', 'ポン酢', '油', 'ごま油'], category: '調味料' },
     { keywords: ['ビール', 'チューハイ', 'ワイン', '焼酎', '日本酒', '酎ハイ', 'ハイボール'], category: '酒' },
-    { keywords: ['ペット', '犬', '猫', 'キャット', 'ドッグ', 'フード', 'えさ'], category: 'ペット用品' }
+    { keywords: ['ペット', '犬', '猫', 'キャット', 'ドッグ', 'フード', 'えさ'], category: 'ペット用品' },
+    { keywords: ['ジャム', 'ママレード', 'ブルーベリー', 'チーズ', 'ヨーグルト', 'ベーコン', '豆腐', '納豆', '惣菜', 'レトルト', 'カレー', 'そば', 'うどん', 'パスタ', 'スプレッド', '瓶'], category: '食品' }
   ];
 
   function normalizeCategory(input) {
@@ -3397,7 +3398,8 @@ function isQuotaError(e) {
             afterCat = n;
             method = 'normalize_map';
           }
-        } else {
+        } else if (!beforeCat || beforeCat === 'その他') {
+          // カテゴリが空またはその他 → キーワード推論で補完
           const inf = inferCategoryFromProduct(p.name, p.maker, jan);
           afterCat = normalizeCategory(inf);
           method = afterCat === 'その他' ? 'infer_other' : 'inferred';
@@ -3412,6 +3414,20 @@ function isQuotaError(e) {
         }
       });
       console.log('[CATEGORY_MIGRATE_DONE]', { total: keys.length, changed, skipped });
+      
+      // メーカー補完処理
+      keys.forEach(function(jan) {
+        var p = products[jan];
+        if (!p || typeof p !== 'object') return;
+        if (!p.maker && p.name) {
+          var inferred = inferMakerFromProductName(p.name);
+          if (inferred) {
+            p.maker = inferred;
+            touched = true;
+          }
+        }
+      });
+      
       if (touched) saveLocalOnly();
     } catch (e) {
       try {
@@ -3419,6 +3435,51 @@ function isQuotaError(e) {
       } catch (_) {}
     }
   }
+
+  const MAKER_DICT = [
+    { keywords: ['アヲハタ'], maker: 'アヲハタ' },
+    { keywords: ['江崎グリコ','グリコ'], maker: '江崎グリコ' },
+    { keywords: ['カルビー'], maker: 'カルビー' },
+    { keywords: ['明治'], maker: '明治' },
+    { keywords: ['ロッテ'], maker: 'ロッテ' },
+    { keywords: ['亀田製菓'], maker: '亀田製菓' },
+    { keywords: ['東ハト'], maker: '東ハト' },
+    { keywords: ['ヤマザキビスケット'], maker: 'ヤマザキビスケット' },
+    { keywords: ['六甲バター','QBB'], maker: '六甲バター' },
+    { keywords: ['雪印メグミルク','雪印'], maker: '雪印メグミルク' },
+    { keywords: ['森永乳業'], maker: '森永乳業' },
+    { keywords: ['森永製菓','森永'], maker: '森永製菓' },
+    { keywords: ['日清食品','日清'], maker: '日清食品' },
+    { keywords: ['エースコック'], maker: 'エースコック' },
+    { keywords: ['キッコーマン'], maker: 'キッコーマン' },
+    { keywords: ['味の素'], maker: '味の素' },
+    { keywords: ['ハウス食品','ハウス'], maker: 'ハウス食品' },
+    { keywords: ['カゴメ'], maker: 'カゴメ' },
+    { keywords: ['サントリー'], maker: 'サントリー' },
+    { keywords: ['アサヒ'], maker: 'アサヒ' },
+    { keywords: ['キリン'], maker: 'キリン' },
+    { keywords: ['伊藤ハム'], maker: '伊藤ハム' },
+    { keywords: ['日本ハム'], maker: '日本ハム' },
+    { keywords: ['花王'], maker: '花王' },
+    { keywords: ['ライオン'], maker: 'ライオン' },
+    { keywords: ['ユニ・チャーム','ユニチャーム'], maker: 'ユニ・チャーム' },
+    { keywords: ['小林製薬'], maker: '小林製薬' },
+    { keywords: ['大正製薬'], maker: '大正製薬' },
+    { keywords: ['ロート製薬'], maker: 'ロート製薬' },
+  ];
+
+  function inferMakerFromProductName(name) {
+    if (!name) return '';
+    const n = String(name);
+    for (var i = 0; i < MAKER_DICT.length; i++) {
+      var entry = MAKER_DICT[i];
+      for (var j = 0; j < entry.keywords.length; j++) {
+        if (n.includes(entry.keywords[j])) return entry.maker;
+      }
+    }
+    return '';
+  }
+  window.inferMakerFromProductName = inferMakerFromProductName;
 
   try {
     window.normalizeCategory = normalizeCategory;
