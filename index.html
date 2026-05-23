@@ -3002,7 +3002,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
       if (nearbyStores.length > 0) {
         window.nearbyStoreNames = nearbyStores;
         renderStoreList();
-        if (isDebug()) console.log('[onload] Nearby stores loaded:', nearbyStores.length, JSON.stringify(nearbyStores.slice(0,5)));
+        if (isDebug()) console.log('[onload] Nearby stores loaded:', nearbyStores.length);
       }
     } catch (e) {
       if (isDebug()) console.warn('[onload] fetchNearbyStores failed:', e);
