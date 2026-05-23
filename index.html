@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.127  BUILD_ID=2026-05-23_gps-learning-r1
+APP_VERSION=v23.9.128  BUILD_ID=2026-05-23_store-knowledge-layer-r1
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.127";
-  const BUILD_ID    = "2026-05-23_gps-learning-r1";
+  const APP_VERSION = "v23.9.128";
+  const BUILD_ID    = "2026-05-23_store-knowledge-layer-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -2996,6 +2996,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
     }
 
     try {
+      migrateHistoryCandidatesToStoreLocations();  // [v23.9.128] history移行
       const _ns = await fetchNearbyStores();
       nearbyStores = Array.isArray(_ns) ? _ns : [];
       if (nearbyStores.length > 0) {
@@ -6714,6 +6715,101 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     return result;
   }
 
+  // ===== [v23.9.128] Store Knowledge Layer =====
+  function generateStoreId(name, lat, lng) {
+    const seed = `${canonicalStoreName(name)}_${Math.round((lat || 0) * 1000)}_${Math.round((lng || 0) * 1000)}`;
+    let h = 0;
+    for (const c of seed) h = (Math.imul(31, h) + c.charCodeAt(0)) | 0;
+    return 'store_' + Math.abs(h).toString(16).padStart(8, '0');
+  }
+
+  function isStoreLocationValid(store) {
+    if (!store || typeof store !== 'object') return false;
+    const ageDays = (Date.now() - (store.lastVerified || 0)) / 86400000;
+    return ageDays < (store.ttlDays || 180);
+  }
+
+  function searchStoreLocationsNearby(lat, lng, radiusKm) {
+    const stores = Object.entries(db.storeLocations || {})
+      .filter(([k]) => k.startsWith('store_'))
+      .map(([, v]) => v);
+
+    return stores.filter(s => {
+      if (!isStoreLocationValid(s)) return false;
+      if (s.lat == null || s.lng == null) return false;
+      return calcDistance(lat, lng, s.lat, s.lng) <= radiusKm;
+    }).sort((a, b) =>
+      calcDistance(lat, lng, a.lat, a.lng) - calcDistance(lat, lng, b.lat, b.lng)
+    );
+  }
+
+  function saveStoresToStoreLocations(storesArr) {
+    if (!storesArr?.length) return;
+    if (!db.storeLocations) db.storeLocations = {};
+
+    let saved = 0;
+    storesArr.forEach(store => {
+      const name  = buildNearbyStoreLabel(store);
+      const canon = canonicalStoreName(name);
+      if (!canon) return;
+      const lat = parseFloat(store.lat ?? store.latitude ?? 0);
+      const lng = parseFloat(store.lng ?? store.longitude ?? 0);
+      if (!lat || !lng) return;
+
+      const id       = generateStoreId(canon, lat, lng);
+      const existing = db.storeLocations[id];
+      db.storeLocations[id] = {
+        name:         name,
+        canonName:    canon,
+        lat,
+        lng,
+        category:     store.category || store.genre || null,
+        source:       'gps_fetch',
+        addedAt:      existing?.addedAt || Date.now(),
+        lastVerified: Date.now(),
+        ttlDays:      180
+      };
+      saved++;
+    });
+
+    if (saved > 0) {
+      saveLocalOnly();
+      try { spDbg('[GPS_STORE_SAVED]', { count: saved }); } catch (e) {}
+    }
+  }
+
+  function migrateHistoryCandidatesToStoreLocations() {
+    if (db.storeLocations?.__historyMigrated) return;
+
+    const candidates = collectHistoryStoreCandidatesForGps(50);
+    if (!candidates.length) return;
+
+    if (!db.storeLocations) db.storeLocations = {};
+
+    candidates.forEach(name => {
+      const canon = canonicalStoreName(name);
+      if (!canon) return;
+      const id = generateStoreId(canon + '_history', 0, 0);
+      if (db.storeLocations[id]) return;
+      db.storeLocations[id] = {
+        name:         canon,
+        canonName:    canon,
+        lat:          null,
+        lng:          null,
+        category:     null,
+        source:       'history',
+        addedAt:      Date.now(),
+        lastVerified: Date.now(),
+        ttlDays:      365
+      };
+    });
+
+    db.storeLocations.__historyMigrated = true;
+    saveLocalOnly();
+    try { spDbg('[GPS_HISTORY_MIGRATE]', { count: candidates.length }); } catch (e) {}
+  }
+  // ===== [v23.9.128] Store Knowledge Layer ここまで =====
+
   // ===== [v23.9.127] チェーン正規化辞書 =====
   const GPS_CHAIN_DICT = [
     { keys: ['ドンキ','ドンキ・ホーテ','ドン・キホーテ','ドンキホーテ'], canon: 'ドンキ' },
@@ -6933,6 +7029,23 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
 
   // ===== fetchNearbyStores (v23.9.117: 116の半径段階維持 + 学習スコアリング) =====
   async function fetchNearbyStores() {
+    // ===== [v23.9.128] Layer1: ローカルstoreLocations検索 =====
+    try {
+      if (curPos && db.storeLocations) {
+        const nearby = searchStoreLocationsNearby(curPos.lat, curPos.lng, 3.0);
+        if (nearby.length >= 3) {
+          try { spDbg('[GPS_LAYER1_HIT]', { count: nearby.length, stores: nearby.map(s => s.canonName) }); } catch (e) {}
+          window.historyStoreCandidates = collectHistoryStoreCandidatesForGps(40);
+          window.nearbyStoreNames       = nearby.map(s => s.canonName);
+          return window.nearbyStoreNames;
+        }
+        try { spDbg('[GPS_LAYER1_MISS]', { nearbyCount: nearby.length }); } catch (e) {}
+      }
+    } catch (e) {
+      try { spDbg('[GPS_LAYER1_ERROR]', { error: String(e) }); } catch (e2) {}
+    }
+    // ===== [v23.9.128] Layer1ここまで =====
+
     try {
       const proxyUrl = (window.SP_CONFIG && window.SP_CONFIG.yahooProxyExecUrl) ? window.SP_CONFIG.yahooProxyExecUrl.trim() : '';
 
@@ -7036,6 +7149,10 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
               spDbg('[GPS_RADIUS_EXPAND]', { from: radiusKm, to: radiusList[ri + 1], reason: 'request_error' });
             }
           }
+        }
+
+        if (lastStoresForScore.length > 0) {
+          saveStoresToStoreLocations(lastStoresForScore);  // [v23.9.128]
         }
 
         let merged = [];
@@ -7158,6 +7275,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         });
 
         const json = { ok: true, stores: dedupedStores, debug: lastGasDebug };
+
+        saveStoresToStoreLocations(json.stores || []);  // [v23.9.128]
 
         if (json && json._note) {
           spDbg('[GPS_GAS_NOTE]', { note: json._note, mode: 'area', area });
