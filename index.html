@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.125  BUILD_ID=2026-05-22_category-maker-fix-r1
+APP_VERSION=v23.9.127  BUILD_ID=2026-05-23_gps-learning-r1
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.125";
-  const BUILD_ID    = "2026-05-22_category-maker-fix-r1";
+  const APP_VERSION = "v23.9.127";
+  const BUILD_ID    = "2026-05-23_gps-learning-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -6714,11 +6714,35 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     return result;
   }
 
+  // ===== [v23.9.127] チェーン正規化辞書 =====
+  const GPS_CHAIN_DICT = [
+    { keys: ['ドンキ','ドンキ・ホーテ','ドン・キホーテ','ドンキホーテ'], canon: 'ドンキ' },
+    { keys: ['カワチ','カワチ薬品','カワチ薬局'], canon: 'カワチ' },
+    { keys: ['ヨークベニマル','ヨークベニマル '], canon: 'ヨークベニマル' },
+    { keys: ['カスミ','KASUMI'], canon: 'カスミ' },
+    { keys: ['タイヨー','タイヨー '], canon: 'タイヨー' },
+    { keys: ['ウエルシア','ウエルシア薬局','ウエルシア '], canon: 'ウエルシア' },
+    { keys: ['ジャパンミート','Japan Meat'], canon: 'ジャパンミート' },
+    { keys: ['ジョイフル本田','ジョイフル本田 '], canon: 'ジョイフル本田' },
+  ];
+
+  function resolveChainCanon(name) {
+    const s = String(name || '').trim();
+    for (const entry of GPS_CHAIN_DICT) {
+      for (const k of entry.keys) {
+        if (s.includes(k)) return entry.canon;
+      }
+    }
+    return null;
+  }
+  // ===== [v23.9.127] チェーン正規化辞書ここまで =====
+
   // 表示前の正規化（汎用・v23.9.117: 学習スコアの名寄せにも使用）
   function canonicalStoreName(name) {
     const s = normalizeStoreLabel(name);
     if (!s) return '';
-    return s;
+    const chain = resolveChainCanon(s);
+    return chain || s;
   }
 
   // ===== [gps-store-label-generic] ここまで =====
@@ -6830,7 +6854,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     return best;
   }
 
-  /** v23.9.117: 純粋スコア（距離30% + 業種30% + 履歴40%） */
+  /** v23.9.127: 純粋スコア（距離30% + 履歴40% + chain20% + 業種10%） */
   function scoreStoreCandidate(store, userLat, userLng, historyFreqMap) {
     const lat = Number(store && store.lat);
     const lng = Number(store && store.lng);
@@ -6845,9 +6869,14 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     const label = canonicalStoreName(buildNearbyStoreLabel(store)) || canonicalStoreName(String(store.name || ''));
     try { spDbg('[GPS_CATEGORY_MATCH]', { name: label, category: cat, matched: !!categoryScore }); } catch (e1) {}
     const historyScore = mergeHistoryStoreScore(label || String(store.name || ''), historyFreqMap);
-    const total = distScore * 0.3 + categoryScore * 0.3 + historyScore * 0.4;
-    try { spDbg('[GPS_SCORE]', { name: label, distScore, categoryScore, historyScore, total, distKm: Math.round(dKm * 1000) / 1000 }); } catch (e2) {}
-    return { label, distScore, categoryScore, historyScore, total, distKm: dKm };
+    const chainScore = resolveChainCanon(label) !== null ? 1.0 : 0.0;
+    const total = distScore * 0.3 + historyScore * 0.4 + chainScore * 0.2 + categoryScore * 0.1;
+    try {
+      spDbg('[GPS_SCORE]', {
+        name: label, distScore, categoryScore, historyScore, chainScore, total, distKm: Math.round(dKm * 1000) / 1000
+      });
+    } catch (e2) {}
+    return { label, distScore, categoryScore, historyScore, chainScore, total, distKm: dKm };
   }
 
   /** v23.9.117: スコア降順（同点は距離昇順）。全員0なら距離上位5件 */
@@ -6869,9 +6898,13 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     try {
       spDbg('[GPS_SORT_RESULT]', { ranked: ranked.slice(0, 25).map(x => ({ name: x.label, score: x.total })) });
       spDbg('[GPS_FINAL]', { finalCandidates: rankedNames.slice(0, 40) });
+      spDbg('[GPS_CHAIN_MATCH]', { matchCount: rows.filter(r => r.chainScore > 0).length });
+      spDbg('[GPS_SCORE_ROWS]', { rows: ranked.slice(0, 25).map(x => ({ name: x.label, dist: x.distScore, hist: x.historyScore, chain: x.chainScore, cat: x.categoryScore, total: x.total })) });
+      spDbg('[GPS_FINAL_STORES]', { finalCandidates: rankedNames.slice(0, 40) });
     } catch (e3) {}
     const categoryMatchCount = rows.filter(x => x.categoryScore > 0).length;
     const historyMatchCount = rows.filter(x => x.historyScore > 0).length;
+    const chainMatchCount = rows.filter(x => x.chainScore > 0).length;
     return {
       rankedNames,
       auditRows: ranked.slice(0, 20).map(x => ({
@@ -6879,11 +6912,23 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         distScore: x.distScore,
         categoryScore: x.categoryScore,
         historyScore: x.historyScore,
+        chainScore: x.chainScore || 0,
         total: x.total
       })),
       categoryMatchCount,
-      historyMatchCount
+      historyMatchCount,
+      chainMatchCount
     };
+  }
+
+  function buildGpsQueryKeywords(homeCity) {
+    const city = String(homeCity || '土浦市').trim() || '土浦市';
+    return [
+      city + ' 食品スーパー',
+      city + ' ドラッグストア',
+      city + ' ディスカウントストア',
+      city + ' ホームセンター',
+    ];
   }
 
   // ===== fetchNearbyStores (v23.9.117: 116の半径段階維持 + 学習スコアリング) =====
@@ -6902,6 +6947,9 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         const radiusList = buildGpsRadiusSequenceKm();
         const limit = 40;
         const histAll = collectHistoryStoreCandidatesForGps(40);
+        const homeCity = (db && db.config && db.config.homeCity) ? String(db.config.homeCity).trim() : '土浦市';
+        const GPS_QUERY_KEYWORDS = buildGpsQueryKeywords(homeCity);
+        try { spDbg('[GPS_HISTORY_CANDIDATES]', { candidates: histAll.slice(0, 15) }); } catch (e) {}
 
         spDbg('[GPS_SEARCH_START]', { lat: curPos.lat, lng: curPos.lng, radiusList, limit });
 
@@ -6917,6 +6965,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         for (let ri = 0; ri < radiusList.length; ri++) {
           const radiusKm = radiusList[ri];
           lastReqUrl = `${proxyUrl}?action=stores&lat=${curPos.lat}&lng=${curPos.lng}&radius_km=${radiusKm}&limit=${limit}`;
+          try { spDbg('[GPS_QUERY_ATTEMPTS]', { keywords: GPS_QUERY_KEYWORDS, radiusKm: radiusKm }); } catch (e) {}
           spDbg('[GPS_RADIUS_TRY]', { radiusKm, lat: curPos.lat, lng: curPos.lng });
 
           try {
@@ -6927,6 +6976,12 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
             const json = JSON.parse(rawText);
             lastJson = json;
             lastGasDebug = json.debug || null;
+            try {
+              spDbg('[GPS_RAW_RESULTS]', {
+                count: json.stores?.length || 0,
+                stores: (json.stores || []).slice(0, 10).map(s => s.name || s.storeName || s.label || '')
+              });
+            } catch (e) {}
 
             if (json && json._note) spDbg('[GPS_GAS_NOTE]', { note: json._note, radiusKm });
 
@@ -7051,20 +7106,58 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         return merged;
       }
 
-      // 優先順位2: 生活圏（area）
+      // 優先順位2: 生活圏（area）— v23.9.127: 複数クエリ種別
       const area = (db && db.config && db.config.homeCity) ? String(db.config.homeCity).trim() : '';
       if (area) {
         const radiusKm = 15;
         const limit = 40;
-        const requestUrl = `${proxyUrl}?action=stores&area=${encodeURIComponent(area)}&radius_km=${radiusKm}&limit=${limit}`;
+        const GPS_QUERY_KEYWORDS = buildGpsQueryKeywords(area);
+        try { spDbg('[GPS_QUERY_ATTEMPTS]', { keywords: GPS_QUERY_KEYWORDS, radiusKm: radiusKm }); } catch (e) {}
 
-        spDbg('[GPS] stores loaded', { mode: 'area', area, radiusKm, url: requestUrl });
-        if (isDebug()) console.log('[FetchStores] Area mode:', area, requestUrl);
+        const histAll = collectHistoryStoreCandidatesForGps(40);
+        try { spDbg('[GPS_HISTORY_CANDIDATES]', { candidates: histAll.slice(0, 15) }); } catch (e) {}
 
-        const res = await fetchWithTimeout(requestUrl, { cache: 'no-store' }, 15000);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        let mergedStores = [];
+        let lastJson = null;
+        let lastGasDebug = null;
+        let requestUrl = '';
 
-        const json = await res.json();
+        for (let qi = 0; qi < GPS_QUERY_KEYWORDS.length; qi++) {
+          const kw = GPS_QUERY_KEYWORDS[qi];
+          requestUrl = `${proxyUrl}?action=stores&area=${encodeURIComponent(kw)}&radius_km=${radiusKm}&limit=${limit}`;
+          spDbg('[GPS] stores loaded', { mode: 'area', area: kw, radiusKm, url: requestUrl });
+          if (isDebug()) console.log('[FetchStores] Area mode:', kw, requestUrl);
+
+          try {
+            const res = await fetchWithTimeout(requestUrl, { cache: 'no-store' }, 15000);
+            if (!res.ok) continue;
+            const json = await res.json();
+            lastJson = json;
+            lastGasDebug = json.debug || null;
+            try {
+              spDbg('[GPS_RAW_RESULTS]', {
+                count: json.stores?.length || 0,
+                stores: (json.stores || []).slice(0, 10).map(s => s.name || s.storeName || s.label || '')
+              });
+            } catch (e) {}
+            if (json && json.ok && Array.isArray(json.stores)) {
+              mergedStores = mergedStores.concat(json.stores);
+            }
+          } catch (areaErr) {
+            spDbg('[GPS_AREA_QUERY_ERR]', { keyword: kw, error: String(areaErr && areaErr.message) });
+          }
+        }
+
+        const seenStoreKey = new Set();
+        const dedupedStores = [];
+        mergedStores.forEach(s => {
+          const key = canonicalStoreName(buildNearbyStoreLabel(s)) || String(s.name || '');
+          if (!key || seenStoreKey.has(key)) return;
+          seenStoreKey.add(key);
+          dedupedStores.push(s);
+        });
+
+        const json = { ok: true, stores: dedupedStores, debug: lastGasDebug };
 
         if (json && json._note) {
           spDbg('[GPS_GAS_NOTE]', { note: json._note, mode: 'area', area });
