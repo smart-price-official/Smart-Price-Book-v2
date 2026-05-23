@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.128  BUILD_ID=2026-05-23_store-knowledge-layer-r1
+APP_VERSION=v23.9.129  BUILD_ID=2026-05-23_chip-order-r1
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.128";
-  const BUILD_ID    = "2026-05-23_store-knowledge-layer-r1";
+  const APP_VERSION = "v23.9.129";
+  const BUILD_ID    = "2026-05-23_chip-order-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -4257,6 +4257,25 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     renderStoreList();
   }
 
+  // ===== [v23.9.129] GPS chip display score =====
+  function buildStoreDisplayScore(storeName, nearbyRanks, historyFreqMap, distanceMap) {
+    const nearbyScore = (nearbyRanks[storeName] != null)
+      ? Math.max(0, 1 - nearbyRanks[storeName] / 20)
+      : 0;
+
+    const freqScore = mergeHistoryStoreScore(storeName, historyFreqMap);
+
+    let distanceBoost = 0;
+    const dist = distanceMap?.[storeName];
+    if (dist != null) {
+      if      (dist <= 150) distanceBoost = 0.25;
+      else if (dist <= 500) distanceBoost = 0.10;
+    }
+
+    return nearbyScore * 0.7 + freqScore * 0.3 + distanceBoost;
+  }
+  // ===== [v23.9.129] GPS chip display score ここまで =====
+
   function renderStoreList(manualPriority = []) {
     try { spDbg('[STORE_RENDER_START]', {}); } catch (_s0) {}
     try {
@@ -4307,6 +4326,48 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     else if (gpsBroad.length) mergedNearby = [...gpsBroad];
     else mergedNearby = [...histCand];
     mergedNearby = [...new Set(mergedNearby)].filter(Boolean);
+
+    // [v23.9.129] GPS ON時: buildStoreDisplayScoreでmergedNearbyをソート
+    if (isGpsOn && mergedNearby.length) {
+      try {
+        const hf = buildHistoryFreqMapForGps();
+        const nearbyRanks = {};
+        mergedNearby.forEach((s, i) => { nearbyRanks[canonicalStoreName(s)] = i; });
+
+        const distanceMap = {};
+        const scoreRows = window.__lastGpsStoreFetch?.gpsLearning117?.scoreRows
+                       || window.__gpsLearning117?.scoreRows
+                       || window.__gpsLearning117?.auditRows
+                       || [];
+        scoreRows.forEach(r => {
+          if (r.name && r.distKm != null) distanceMap[r.name] = r.distKm * 1000;
+        });
+
+        mergedNearby.sort((a, b) => {
+          const ca = canonicalStoreName(a);
+          const cb = canonicalStoreName(b);
+          return buildStoreDisplayScore(cb, nearbyRanks, hf, distanceMap)
+               - buildStoreDisplayScore(ca, nearbyRanks, hf, distanceMap);
+        });
+
+        try {
+          const chipRows = mergedNearby.slice(0, 20).map((s, i) => {
+            const cs = canonicalStoreName(s);
+            const nr = nearbyRanks[cs] ?? null;
+            const fs = mergeHistoryStoreScore(cs, hf);
+            const dist = distanceMap?.[cs] ?? null;
+            const db2 = dist != null ? (dist <= 150 ? 0.25 : dist <= 500 ? 0.10 : 0) : 0;
+            const score = buildStoreDisplayScore(cs, nearbyRanks, hf, distanceMap);
+            return { rank: i + 1, store: cs, nearbyScore: nr != null ? Math.max(0, 1 - nr / 20) : 0, freqScore: fs, distanceBoost: db2, finalScore: Math.round(score * 1000) / 1000, displayRank: i + 1 };
+          });
+          spDbg('[GPS_CHIP_SCORE_ROWS]', { rows: chipRows });
+        } catch (e) {}
+
+      } catch (e) {
+        try { spDbg('[GPS_CHIP_SCORE_ERROR]', { error: String(e) }); } catch (e2) {}
+      }
+    }
+
     // ✅ 候補を統合（未設定は先頭固定）。v23.9.117: GPSはスコア順（nearbyStoreNames）を維持し全体ソートはしない
     const storeNames = [];
     const seen = new Set();
@@ -4321,7 +4382,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     }
     pushUnique(manualPriority);
     pushUnique(customStores);
-    pushUnique(nearbyStores);
+    pushUnique(mergedNearby);
     for (const s of sortedFreq) {
       const t = canonicalStoreName(String(s || '').trim());
       if (!t || t === '未設定') continue;
