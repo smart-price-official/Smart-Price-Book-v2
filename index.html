@@ -4277,7 +4277,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
   // ===== [v23.9.129] GPS chip display score ここまで =====
 
   function renderStoreList(manualPriority = []) {
-    if (isDebug()) console.log("[RSL] called, nearbyStoreNames:", window.nearbyStoreNames?.length, window.nearbyStoreNames?.slice(0,3));
+    if (isDebug()) console.log("[RSL] called, nearbyStoreNames:", window.nearbyStoreNames?.length, window.nearbyStoreNames?.slice(0,3), new Error().stack.split("\n")[2]);
     try { spDbg('[STORE_RENDER_START]', {}); } catch (_s0) {}
     try {
     db = normalizeDb(db);
