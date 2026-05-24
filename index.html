@@ -20,8 +20,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.141";
-  const BUILD_ID    = "2026-05-24_p0-features-r1";
+  const APP_VERSION = "v23.9.142";
+  const BUILD_ID    = "2026-05-24_p0-fix-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -976,6 +976,12 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   <div id="formView" style="display:none;">
     <div class="card p-3 shadow-lg">
       <div id="curStoreIndicator" class="text-danger small fw-bold mb-2 text-center" style="opacity:0.8;"></div>
+      <!-- ✅ P0-4: 店舗ごと税設定UI（ストアタップ時に表示） -->
+      <div id="storeTaxModeUI" style="display:none;" class="d-flex justify-content-center align-items-center gap-2 mb-2">
+        <span class="text-secondary" style="font-size:0.78rem;">この店舗の税：</span>
+        <button class="btn btn-sm btn-outline-light py-0 px-2" style="font-size:0.78rem;" onclick="setStoreTaxMode('in')">税込</button>
+        <button class="btn btn-sm btn-outline-light py-0 px-2" style="font-size:0.78rem;" onclick="setStoreTaxMode('ex')">税別</button>
+      </div>
 
       <div class="text-center mb-2">
         <button id="storeJumpBtn" class="btn btn-sm btn-outline-secondary w-100" style="display:none;" onclick="jumpToStoreChips()">店名を変更（上に移動）</button>
@@ -1079,7 +1085,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   </div>
 
 
-  <button onclick="stopScanner()" class="btn btn-danger position-absolute top-0 end-0 m-3 fs-5 shadow-lg d-flex align-items-center gap-1 px-3 py-2" style="border-radius:2rem;">
+  <button onclick="stopScanner()" class="btn btn-danger position-absolute top-0 end-0 m-3 fs-5 shadow-lg d-flex align-items-center gap-1 px-3 py-2" style="border-radius:2rem; z-index:9999;">
     <span style="font-size:1.1rem;">✕</span><span style="font-size:0.85rem;letter-spacing:.03em;">閉じる</span>
   </button>
 </div>
@@ -1342,10 +1348,6 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
     
     <button id="syncBtn" class="btn btn-primary w-100 py-2 fw-bold mb-2" onclick="startMigration()">設定保存と同期</button>
     <button id="clearCacheBtn" class="btn btn-danger w-100 py-2 fw-bold mb-2" onclick="clearAllCache()">🔄 キャッシュクリア（表示崩れ修正）</button>
-    <button class="btn btn-sm btn-outline-danger w-100 py-2 fw-bold mb-2"
-      onclick="if(confirm('全店舗の税設定学習データをリセットします。よろしいですか？')){db.config.storeTaxModes={};saveLocalOnly();showToast('税設定をリセットしました',2000);}">
-      🗑 税設定リセット
-    </button>
     <button id="webBtn" class="btn btn-outline-secondary w-100 py-2 fw-bold mb-2" onclick="openWebModal()">ブラウザ版へ（URL表示）</button>
 
     <div id="debugBackupButtons" style="display:none;">
@@ -4486,6 +4488,9 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
             if (isDebug()) console.log('[StoreTaxMode] Auto-switch:', curStore, '→', storeTaxMode);
           }
         }
+        // ✅ P0-4: 手動税設定UIを表示
+        const taxUI = document.getElementById('storeTaxModeUI');
+        if (taxUI) taxUI.style.display = 'flex';
       };
       list.appendChild(span);
     });
@@ -7621,20 +7626,20 @@ function startScanner() {
         try { suppressQrcodeGuides(); } catch(e) {}
         if (isDebug()) displayScanbarDebugInfo();
       }, 300);
+      // ✅ P0-2: 30秒アイドルで自動クローズ（カメラ起動確認後にセット）
+      if (_scanIdleTimer) clearTimeout(_scanIdleTimer);
+      _scanIdleTimer = setTimeout(() => {
+        if (isScanning) {
+          stopScanner();
+          showToast('スキャンをタイムアウトしました（30秒）', 3000);
+        }
+      }, 30000);
     }).catch(err => {
       showToast(`カメラ起動失敗: ${err && (err.message || String(err))}`, 8000);
       isScanning = false;
       scanner = null;
       const _ca=document.getElementById('camera-area'); if(_ca){_ca.style.display='none';_ca.style.pointerEvents='none';}
     });
-    // ✅ P0-2: 30秒アイドルで自動クローズ
-    if (_scanIdleTimer) clearTimeout(_scanIdleTimer);
-    _scanIdleTimer = setTimeout(() => {
-      if (isScanning) {
-        stopScanner();
-        showToast('スキャンをタイムアウトしました（30秒）', 3000);
-      }
-    }, 30000);
   }
   window.startScanner = startScanner; // ← windowに登録
 
@@ -7986,6 +7991,20 @@ return true;
     const _ca=document.getElementById('camera-area'); if(_ca){_ca.style.display='none';_ca.style.pointerEvents='none';}
     try { const me = document.getElementById('manual-entry'); if(me) me.style.display='none'; } catch(e) {}
   }
+
+  // ✅ P0-4: 店舗ごと税設定を手動変更
+  function setStoreTaxMode(mode) {
+    if (!curStore || curStore === '未設定') return;
+    if (!db.config.storeTaxModes) db.config.storeTaxModes = {};
+    db.config.storeTaxModes[curStore] = mode;
+    saveLocalOnly();
+    const taxModeId = mode === 'in' ? 'taxIn' : 'taxEx';
+    const taxEl = document.getElementById(taxModeId);
+    if (taxEl) taxEl.checked = true;
+    showToast(`💳 ${curStore}：税${mode === 'in' ? '込' : '別'}に設定しました`, 2000);
+    if (isDebug()) console.log('[StoreTaxMode] Manual set:', curStore, '→', mode);
+  }
+  window.setStoreTaxMode = setStoreTaxMode;
 
 
   async function showHome() {
