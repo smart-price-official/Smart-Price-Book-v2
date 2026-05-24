@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.134  BUILD_ID=2026-05-24_display-store-name-r3
+APP_VERSION=v23.9.135  BUILD_ID=2026-05-24_refactor-display-store-r1
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.134";
-  const BUILD_ID    = "2026-05-24_display-store-name-r3";
+  const APP_VERSION = "v23.9.135";
+  const BUILD_ID    = "2026-05-24_refactor-display-store-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -4391,7 +4391,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         const key  = canonicalStoreName(String(s || '').trim());
         const disp = (useDisplayNames && displayByCanon[key])
           ? displayByCanon[key]
-          : ((useDisplayNames && displayNamesArr[i]) ? displayNamesArr[i] : displayStoreName(String(s || '').trim()));
+          : displayStoreName(String(s || '').trim());
         if (!key || key === '未設定') continue;
         if (seen.has(key)) continue;
         seen.add(key);
@@ -5236,7 +5236,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       row.innerHTML = `
         <div class="flex-grow-1">
           <span class="text-secondary small">${dateStr}</span><br>
-          <span class="text-white fw-bold">${h.store || '未設定'}</span>
+          <span class="text-white fw-bold">${displayStoreName(h.store) || '未設定'}</span>
         </div>
         <div class="text-end">
           <span class="fw-bold text-white">${h.price}円</span><br>
@@ -6934,6 +6934,18 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
   }
   // ===== [v23.9.132] displayStoreName ここまで =====
 
+  // ===== [v23.9.135] buildDisplayNameMap: Layer2共通関数 =====
+  function buildDisplayNameMap(stores) {
+    const map = {};
+    (stores || []).forEach(s => {
+      const canon = canonicalStoreName(buildNearbyStoreLabel(s));
+      const disp  = displayStoreName(buildNearbyStoreLabel(s));
+      if (canon && disp) map[canon] = disp;
+    });
+    return map;
+  }
+  // ===== [v23.9.135] buildDisplayNameMap ここまで =====
+
   // ===== [gps-store-label-generic] ここまで =====
 
   // v23.9.116: 購入履歴の店名頻度（GPS候補が空のときのチップ補助。保存先 curStore は自動変更しない）
@@ -7287,12 +7299,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         window.historyStoreCandidates = histAll;
         window.nearbyStoreNames = merged;
 
-        const displayNameMap = {};
-        (lastStoresForScore || []).forEach(s => {
-          const canon = canonicalStoreName(buildNearbyStoreLabel(s));
-          const disp  = displayStoreName(buildNearbyStoreLabel(s));
-          if (canon && disp) displayNameMap[canon] = disp;
-        });
+        const displayNameMap = buildDisplayNameMap(lastStoresForScore);
         window.nearbyStoreDisplayNames = merged.map(c => displayNameMap[c] || c);
         try {
           spDbg('[GPS_DISPLAY_NAME_MAP]', {
@@ -7419,12 +7426,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
           window.historyStoreCandidates = histAll;
           window.nearbyStoreNames = merged;
 
-          const displayNameMapArea = {};
-          (json.stores || []).forEach(s => {
-            const canon = canonicalStoreName(buildNearbyStoreLabel(s));
-            const disp  = displayStoreName(buildNearbyStoreLabel(s));
-            if (canon && disp) displayNameMapArea[canon] = disp;
-          });
+          const displayNameMapArea = buildDisplayNameMap(json.stores);
           window.nearbyStoreDisplayNames = merged.map(c => displayNameMapArea[c] || c);
           try {
             spDbg('[GPS_DISPLAY_NAME_MAP]', {
