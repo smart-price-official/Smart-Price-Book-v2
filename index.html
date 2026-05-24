@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.136  BUILD_ID=2026-05-24_revert-step2-r1
+APP_VERSION=v23.9.137  BUILD_ID=2026-05-24_chain-dict-audit-r1
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.136";
-  const BUILD_ID    = "2026-05-24_revert-step2-r1";
+  const APP_VERSION = "v23.9.137";
+  const BUILD_ID    = "2026-05-24_chain-dict-audit-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -6910,11 +6910,14 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     { keys: ['ジョイフル本田','ジョイフル本田 '], canon: 'ジョイフル本田' },
   ];
 
+  // [v23.9.137] 部分一致(includes)→完全一致(===)に変更。
+  // 「カワチ薬品 土浦南店」等の正式店舗名が「カワチ」に短縮されないようにする。
+  // 「カワチ薬品」単体（完全一致）は引き続きcanon化される。
   function resolveChainCanon(name) {
     const s = String(name || '').trim();
     for (const entry of GPS_CHAIN_DICT) {
       for (const k of entry.keys) {
-        if (s.includes(k)) return entry.canon;
+        if (s === k) return entry.canon;
       }
     }
     return null;
@@ -6939,9 +6942,12 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
   function buildDisplayNameMap(stores) {
     const map = {};
     (stores || []).forEach(s => {
-      const canon = canonicalStoreName(buildNearbyStoreLabel(s));
-      const disp  = displayStoreName(buildNearbyStoreLabel(s));
+      const originalName = s.name || s.displayName || s.storeName || '';
+      const label = buildNearbyStoreLabel(s);
+      const canon = canonicalStoreName(label);
+      const disp  = displayStoreName(label);
       if (canon && disp) map[canon] = disp;
+      if (isDebug()) console.log('[GPS_NAME_TRACE]', { originalName, label, canonical: canon, finalDisplayName: disp });
     });
     return map;
   }
@@ -7143,7 +7149,11 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
           try { spDbg('[GPS_LAYER1_HIT]', { count: nearby.length, stores: nearby.map(s => s.canonName) }); } catch (e) {}
           window.historyStoreCandidates = collectHistoryStoreCandidatesForGps(40);
           window.nearbyStoreNames       = nearby.map(s => s.canonName);
-          window.nearbyStoreDisplayNames = nearby.map(s => displayStoreName(s.name || s.canonName) || s.canonName);
+          window.nearbyStoreDisplayNames = nearby.map(s => {
+            const disp = displayStoreName(s.name || s.canonName) || s.canonName;
+            if (isDebug()) console.log('[GPS_NAME_TRACE_L1]', { originalName: s.name || '', canonName: s.canonName || '', finalDisplayName: disp });
+            return disp;
+          });
           return window.nearbyStoreNames;
         }
         try { spDbg('[GPS_LAYER1_MISS]', { nearbyCount: nearby.length }); } catch (e) {}
