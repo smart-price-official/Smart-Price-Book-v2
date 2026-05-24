@@ -4312,6 +4312,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     
     const customStores = db.config.customStores || [];
 
+    if (isDebug()) console.log("[RSL2] before gpsOrdered, nearbyStoreNames:", window.nearbyStoreNames?.length, window.nearbyStoreNames?.slice(0,3));
     const gpsOrdered = (Array.isArray(window.nearbyStoreNames) && window.nearbyStoreNames.length > 0)
       ? window.nearbyStoreNames.map(s => canonicalStoreName(s)).filter(Boolean)
       : [];
