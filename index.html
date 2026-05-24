@@ -20,8 +20,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.142";
-  const BUILD_ID    = "2026-05-24_p0-fix-r1";
+  const APP_VERSION = "v23.9.143";
+  const BUILD_ID    = "2026-05-24_p0-fix-r2";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -955,6 +955,12 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 </header>
 
 <div class="store-area"><div id="store-list" class="store-list"></div></div>
+<!-- ✅ P0-4: 店舗ごと税設定UI（store-listと同階層に配置してformView依存を解消） -->
+<div id="storeTaxModeUI" style="display:none;" class="d-flex justify-content-center align-items-center gap-2 px-3 py-1">
+  <span class="text-secondary" style="font-size:0.78rem;">この店舗の税：</span>
+  <button class="btn btn-sm btn-outline-light py-0 px-2" style="font-size:0.78rem;" onclick="setStoreTaxMode('in')">税込</button>
+  <button class="btn btn-sm btn-outline-light py-0 px-2" style="font-size:0.78rem;" onclick="setStoreTaxMode('ex')">税別</button>
+</div>
 
 <!-- GPS診断パネル (debug=1のみ表示) -->
 <div id="gps-debug-panel">
@@ -976,12 +982,6 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   <div id="formView" style="display:none;">
     <div class="card p-3 shadow-lg">
       <div id="curStoreIndicator" class="text-danger small fw-bold mb-2 text-center" style="opacity:0.8;"></div>
-      <!-- ✅ P0-4: 店舗ごと税設定UI（ストアタップ時に表示） -->
-      <div id="storeTaxModeUI" style="display:none;" class="d-flex justify-content-center align-items-center gap-2 mb-2">
-        <span class="text-secondary" style="font-size:0.78rem;">この店舗の税：</span>
-        <button class="btn btn-sm btn-outline-light py-0 px-2" style="font-size:0.78rem;" onclick="setStoreTaxMode('in')">税込</button>
-        <button class="btn btn-sm btn-outline-light py-0 px-2" style="font-size:0.78rem;" onclick="setStoreTaxMode('ex')">税別</button>
-      </div>
 
       <div class="text-center mb-2">
         <button id="storeJumpBtn" class="btn btn-sm btn-outline-secondary w-100" style="display:none;" onclick="jumpToStoreChips()">店名を変更（上に移動）</button>
