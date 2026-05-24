@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.135  BUILD_ID=2026-05-24_refactor-display-store-r1
+APP_VERSION=v23.9.136  BUILD_ID=2026-05-24_revert-step2-r1
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.135";
-  const BUILD_ID    = "2026-05-24_refactor-display-store-r1";
+  const APP_VERSION = "v23.9.136";
+  const BUILD_ID    = "2026-05-24_revert-step2-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -4391,7 +4391,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         const key  = canonicalStoreName(String(s || '').trim());
         const disp = (useDisplayNames && displayByCanon[key])
           ? displayByCanon[key]
-          : displayStoreName(String(s || '').trim());
+          : ((useDisplayNames && displayNamesArr[i]) ? displayNamesArr[i]
+          : displayStoreName(String(s || '').trim()));
         if (!key || key === '未設定') continue;
         if (seen.has(key)) continue;
         seen.add(key);
