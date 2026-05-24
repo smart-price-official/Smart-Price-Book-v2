@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.133  BUILD_ID=2026-05-24_display-store-name-r2
+APP_VERSION=v23.9.134  BUILD_ID=2026-05-24_display-store-name-r3
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.133";
-  const BUILD_ID    = "2026-05-24_display-store-name-r2";
+  const APP_VERSION = "v23.9.134";
+  const BUILD_ID    = "2026-05-24_display-store-name-r3";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -6903,7 +6903,6 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     { keys: ['ドンキ','ドンキ・ホーテ','ドン・キホーテ','ドンキホーテ'], canon: 'ドンキ' },
     { keys: ['カワチ','カワチ薬品','カワチ薬局'], canon: 'カワチ' },
     { keys: ['ヨークベニマル','ヨークベニマル '], canon: 'ヨークベニマル' },
-    { keys: ['カスミ','KASUMI'], canon: 'カスミ' },
     { keys: ['タイヨー','タイヨー '], canon: 'タイヨー' },
     { keys: ['ウエルシア','ウエルシア薬局','ウエルシア '], canon: 'ウエルシア' },
     { keys: ['ジャパンミート','Japan Meat'], canon: 'ジャパンミート' },
