@@ -4383,8 +4383,13 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       }
     }
     pushUnique(manualPriority);
-    pushUnique(customStores);
-    pushUnique(mergedNearby);
+    if (mergedNearby.length && Array.isArray(window.nearbyStoreNames) && window.nearbyStoreNames.length > 0) {
+      pushUnique(mergedNearby);
+      pushUnique(customStores);
+    } else {
+      pushUnique(customStores);
+      pushUnique(mergedNearby);
+    }
     for (const s of sortedFreq) {
       const t = canonicalStoreName(String(s || '').trim());
       if (!t || t === '未設定') continue;
