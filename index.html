@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.132  BUILD_ID=2026-05-24_display-store-name-r1
+APP_VERSION=v23.9.133  BUILD_ID=2026-05-24_display-store-name-r2
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.132";
-  const BUILD_ID    = "2026-05-24_display-store-name-r1";
+  const APP_VERSION = "v23.9.133";
+  const BUILD_ID    = "2026-05-24_display-store-name-r2";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -2777,6 +2777,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   
   // ✅ 近隣店舗候補（GPS/生活圏から取得）
   window.nearbyStoreNames = [];
+  window.nearbyStoreDisplayNames = [];   // [v23.9.133] 表示用正式名
   /** 生活圏 fetch の配列（renderStoreList の pushUnique 用。未定義だと ReferenceError で店舗帯全域が停止する）[Yui 2026-05-14 fix] */
   let nearbyStores = [];
 
@@ -4372,10 +4373,25 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     const storeNames = [];
     const storeKeys  = [];
     const seen = new Set();
-    function pushUnique(arr) {
-      for (const s of arr) {
+    const displayNamesArr = Array.isArray(window.nearbyStoreDisplayNames)
+      ? window.nearbyStoreDisplayNames : [];
+    const displayByCanon = {};
+    if (Array.isArray(window.nearbyStoreNames)) {
+      window.nearbyStoreNames.forEach((cn, idx) => {
+        const d = displayNamesArr[idx];
+        if (cn && d) {
+          const k = canonicalStoreName(cn);
+          if (k) displayByCanon[k] = d;
+        }
+      });
+    }
+    function pushUnique(arr, useDisplayNames) {
+      for (let i = 0; i < arr.length; i++) {
+        const s    = arr[i];
         const key  = canonicalStoreName(String(s || '').trim());
-        const disp = displayStoreName(String(s || '').trim());
+        const disp = (useDisplayNames && displayByCanon[key])
+          ? displayByCanon[key]
+          : ((useDisplayNames && displayNamesArr[i]) ? displayNamesArr[i] : displayStoreName(String(s || '').trim()));
         if (!key || key === '未設定') continue;
         if (seen.has(key)) continue;
         seen.add(key);
@@ -4383,13 +4399,13 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         storeKeys.push(key);
       }
     }
-    pushUnique(manualPriority);
+    pushUnique(manualPriority, false);
     if (mergedNearby.length && Array.isArray(window.nearbyStoreNames) && window.nearbyStoreNames.length > 0) {
-      pushUnique(mergedNearby);
-      pushUnique(customStores);
+      pushUnique(mergedNearby, true);
+      pushUnique(customStores, false);
     } else {
-      pushUnique(customStores);
-      pushUnique(mergedNearby);
+      pushUnique(customStores, false);
+      pushUnique(mergedNearby, true);
     }
     for (const s of sortedFreq) {
       const key  = canonicalStoreName(String(s || '').trim());
@@ -5885,6 +5901,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     } else {
       isGpsOn = false; curPos = null; lastGpsTime = "";
       window.nearbyStoreNames = [];
+      window.nearbyStoreDisplayNames = [];
       window.nearbyStoreShopping = [];
       window.nearbyStoreGpsBroad = [];
       window.historyStoreCandidates = [];
@@ -7114,6 +7131,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
           try { spDbg('[GPS_LAYER1_HIT]', { count: nearby.length, stores: nearby.map(s => s.canonName) }); } catch (e) {}
           window.historyStoreCandidates = collectHistoryStoreCandidatesForGps(40);
           window.nearbyStoreNames       = nearby.map(s => s.canonName);
+          window.nearbyStoreDisplayNames = nearby.map(s => displayStoreName(s.name || s.canonName) || s.canonName);
           return window.nearbyStoreNames;
         }
         try { spDbg('[GPS_LAYER1_MISS]', { nearbyCount: nearby.length }); } catch (e) {}
@@ -7270,6 +7288,19 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         window.historyStoreCandidates = histAll;
         window.nearbyStoreNames = merged;
 
+        const displayNameMap = {};
+        (lastStoresForScore || []).forEach(s => {
+          const canon = canonicalStoreName(buildNearbyStoreLabel(s));
+          const disp  = displayStoreName(buildNearbyStoreLabel(s));
+          if (canon && disp) displayNameMap[canon] = disp;
+        });
+        window.nearbyStoreDisplayNames = merged.map(c => displayNameMap[c] || c);
+        try {
+          spDbg('[GPS_DISPLAY_NAME_MAP]', {
+            map: Object.entries(displayNameMap).map(([c, d]) => ({ canonical: c, display: d })).slice(0, 10)
+          });
+        } catch (e) {}
+
         window.__gpsLearning117 = {
           queryAttempts: (lastGasDebug && lastGasDebug.queryAttempts) ? lastGasDebug.queryAttempts : [],
           queryAttemptDetails: (lastGasDebug && lastGasDebug.queryAttemptDetails) ? lastGasDebug.queryAttemptDetails : [],
@@ -7388,6 +7419,21 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
           window.nearbyStoreGpsBroad = allLabels;
           window.historyStoreCandidates = histAll;
           window.nearbyStoreNames = merged;
+
+          const displayNameMapArea = {};
+          (json.stores || []).forEach(s => {
+            const canon = canonicalStoreName(buildNearbyStoreLabel(s));
+            const disp  = displayStoreName(buildNearbyStoreLabel(s));
+            if (canon && disp) displayNameMapArea[canon] = disp;
+          });
+          window.nearbyStoreDisplayNames = merged.map(c => displayNameMapArea[c] || c);
+          try {
+            spDbg('[GPS_DISPLAY_NAME_MAP]', {
+              mode: 'area',
+              map: Object.entries(displayNameMapArea).map(([c, d]) => ({ canonical: c, display: d })).slice(0, 10)
+            });
+          } catch (e) {}
+
           window.__gpsLearning117 = {
             queryAttempts: (json.debug && json.debug.queryAttempts) ? json.debug.queryAttempts : [],
             queryAttemptDetails: (json.debug && json.debug.queryAttemptDetails) ? json.debug.queryAttemptDetails : [],
