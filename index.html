@@ -20,8 +20,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.140";
-  const BUILD_ID    = "2026-05-24_gps-range-setting-r1";
+  const APP_VERSION = "v23.9.141";
+  const BUILD_ID    = "2026-05-24_p0-features-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -1079,7 +1079,9 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   </div>
 
 
-  <button onclick="stopScanner()" class="btn btn-danger position-absolute top-0 end-0 m-4 fs-3 shadow-lg">×</button>
+  <button onclick="stopScanner()" class="btn btn-danger position-absolute top-0 end-0 m-3 fs-5 shadow-lg d-flex align-items-center gap-1 px-3 py-2" style="border-radius:2rem;">
+    <span style="font-size:1.1rem;">✕</span><span style="font-size:0.85rem;letter-spacing:.03em;">閉じる</span>
+  </button>
 </div>
 
 <div id="dialogModal" class="modal">
@@ -1340,6 +1342,10 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
     
     <button id="syncBtn" class="btn btn-primary w-100 py-2 fw-bold mb-2" onclick="startMigration()">設定保存と同期</button>
     <button id="clearCacheBtn" class="btn btn-danger w-100 py-2 fw-bold mb-2" onclick="clearAllCache()">🔄 キャッシュクリア（表示崩れ修正）</button>
+    <button class="btn btn-sm btn-outline-danger w-100 py-2 fw-bold mb-2"
+      onclick="if(confirm('全店舗の税設定学習データをリセットします。よろしいですか？')){db.config.storeTaxModes={};saveLocalOnly();showToast('税設定をリセットしました',2000);}">
+      🗑 税設定リセット
+    </button>
     <button id="webBtn" class="btn btn-outline-secondary w-100 py-2 fw-bold mb-2" onclick="openWebModal()">ブラウザ版へ（URL表示）</button>
 
     <div id="debugBackupButtons" style="display:none;">
@@ -2761,6 +2767,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   let janCoolDown = new Map(); // ✅ P0: 同じJANを0.8〜1.2秒以内に再検出したら無視（クールダウン）
   let tempImgData = null; // {type:'key', key} or {type:'url', url}
   let scanner = null, editingHistIdx = null, isScanning = false;
+  let _scanIdleTimer = null;  // ✅ P0-2: スキャンアイドル自動クローズタイマー
   let deferredPrompt = null; // ✅ PWAインストールプロンプト
 
   // ✅ ここは必ず let（const にすると "Assignment to constant variable" の原因になる）
@@ -4475,10 +4482,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
           const taxEl = document.getElementById(taxModeId);
           if (taxEl) {
             taxEl.checked = true;
-            if (isDebug()) {
-              console.log('[StoreTaxMode] Auto-switch:', curStore, '→', storeTaxMode);
-              showToast(`税${storeTaxMode === "in" ? "込" : "別"}に自動切替`, 2000);
-            }
+            showToast(`💳 ${curStore}：税${storeTaxMode === "in" ? "込" : "別"}に自動切替`, 1800);
+            if (isDebug()) console.log('[StoreTaxMode] Auto-switch:', curStore, '→', storeTaxMode);
           }
         }
       };
@@ -7622,6 +7627,14 @@ function startScanner() {
       scanner = null;
       const _ca=document.getElementById('camera-area'); if(_ca){_ca.style.display='none';_ca.style.pointerEvents='none';}
     });
+    // ✅ P0-2: 30秒アイドルで自動クローズ
+    if (_scanIdleTimer) clearTimeout(_scanIdleTimer);
+    _scanIdleTimer = setTimeout(() => {
+      if (isScanning) {
+        stopScanner();
+        showToast('スキャンをタイムアウトしました（30秒）', 3000);
+      }
+    }, 30000);
   }
   window.startScanner = startScanner; // ← windowに登録
 
@@ -7956,6 +7969,7 @@ return true;
   }
 
   async function stopScanner() {
+    if (_scanIdleTimer) { clearTimeout(_scanIdleTimer); _scanIdleTimer = null; }
     isScanning = false;
     if (scanner) {
       try { await scanner.stop(); } catch(e) {}
@@ -8369,7 +8383,7 @@ function spVisibleTrace(tag, payload, cls) {
     cleaned = cleaned.replace(/業務用/g, '');
     cleaned = cleaned.replace(/税込/g, '');
     cleaned = cleaned.replace(/セット/g, '');
-    cleaned = cleaned.replace(/\d+\s*本/g, '');
+    cleaned = cleaned.replace(/\s+\d+\s*本\s*$/g, '');  // 文末の「24本」のみ除去
     cleaned = cleaned.replace(/セット販売/g, '');
     cleaned = cleaned.replace(/送料無料/g, '');
     cleaned = cleaned.replace(/箱買い/g, '');
@@ -8416,9 +8430,9 @@ function spVisibleTrace(tag, payload, cls) {
     s = s.split('｜')[0];
     // ノイズ単語を完全削除
     const NOISE_WORDS = [
-      '送料無料', '買い置き', '冷凍食品', '冷凍麺', '濃厚', '辛口',
-      '赤', '花椒', 'セール', '激安', 'まとめ買い',
-      'ケース販売', 'ケース'
+      '送料無料', '買い置き', 'セール', '激安', 'まとめ買い',
+      'ケース販売'
+      // 「冷凍麺」「濃厚」「辛口」「赤」「花椒」「ケース」は商品名構成要素として除去しない
     ];
     for (const w of NOISE_WORDS) {
       s = s.split(w).join('');
