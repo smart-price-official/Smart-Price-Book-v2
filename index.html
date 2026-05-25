@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.144  BUILD_ID=2026-05-25_p0-fix-r3
+APP_VERSION=v23.9.145  BUILD_ID=2026-05-25_p0-fix-r4
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.144";
-  const BUILD_ID    = "2026-05-25_p0-fix-r3";
+  const APP_VERSION = "v23.9.145";
+  const BUILD_ID    = "2026-05-25_p0-fix-r4";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -958,9 +958,10 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 <!-- ✅ P0-4: 店舗ごと税設定UI（store-listと同階層に配置してformView依存を解消） -->
 <div id="storeTaxModeUI" style="display:none;" class="justify-content-center align-items-center gap-2 px-3 py-1">
   <span class="text-secondary" style="font-size:0.78rem;">この店舗の税：</span>
-  <button class="btn btn-sm btn-outline-light py-0 px-2" style="font-size:0.78rem;" onclick="setStoreTaxMode('in')">税込</button>
-  <button class="btn btn-sm btn-outline-light py-0 px-2" style="font-size:0.78rem;" onclick="setStoreTaxMode('ex')">税別</button>
+  <span style="padding:6px 14px;border:1px solid #444;border-radius:20px;font-size:0.85rem;background:#2c2c2c;color:#ccc;white-space:nowrap;cursor:pointer;" onclick="setStoreTaxMode('in')">税込</span>
+  <span style="padding:6px 14px;border:1px solid #444;border-radius:20px;font-size:0.85rem;background:#2c2c2c;color:#ccc;white-space:nowrap;cursor:pointer;" onclick="setStoreTaxMode('ex')">税別</span>
 </div>
+<div id="storeTaxChangeLink" style="display:none;text-align:center;padding:2px 0;"><span style="font-size:0.75rem;color:#888;text-decoration:underline;cursor:pointer;" onclick="document.getElementById('storeTaxModeUI').style.display='flex';this.parentElement.style.display='none';">税設定を変更</span></div>
 
 <!-- GPS診断パネル (debug=1のみ表示) -->
 <div id="gps-debug-panel">
@@ -4488,9 +4489,16 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
             if (isDebug()) console.log('[StoreTaxMode] Auto-switch:', curStore, '→', storeTaxMode);
           }
         }
-        // ✅ P0-4: 手動税設定UIを表示
+        // ✅ P0-4: 手動税設定UI 表示制御（設定済みは非表示・変更リンク表示）
         const taxUI = document.getElementById('storeTaxModeUI');
-        if (taxUI) taxUI.style.display = 'flex';
+        const taxChangeLink = document.getElementById('storeTaxChangeLink');
+        if (storeTaxMode) {
+          if (taxUI) taxUI.style.display = 'none';
+          if (taxChangeLink) taxChangeLink.style.display = 'inline';
+        } else {
+          if (taxUI) taxUI.style.display = 'flex';
+          if (taxChangeLink) taxChangeLink.style.display = 'none';
+        }
       };
       list.appendChild(span);
     });
