@@ -20,8 +20,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.151";
-  const BUILD_ID    = "2026-05-25_shopping-report-r1";
+  const APP_VERSION = "v23.9.152";
+  const BUILD_ID    = "2026-05-25_shopping-report-r2";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -1253,7 +1253,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
         </div>
         <div id="operatorPassMsg" class="small text-secondary mb-2"></div>
         <div id="operatorPanelBody" style="display:none;">
-          <!-- v23.9.151: 買い物レポート -->
+          <!-- v23.9.152: 買い物レポート（1アクション化） -->
           <div class="mb-3" style="border:1px solid rgba(100,200,100,0.4); border-radius:8px; padding:12px; background:rgba(0,80,0,0.15);">
             <div class="small fw-bold mb-2" style="color:#6fe06f;">📊 買い物レポート</div>
             <div class="d-flex gap-1 mb-2">
@@ -1261,8 +1261,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
               <button type="button" class="btn btn-sm btn-success flex-fill" id="srpBtn-yesterday" onclick="spSetReportPeriod('yesterday')">昨日</button>
               <button type="button" class="btn btn-sm btn-outline-success flex-fill" id="srpBtn-week" onclick="spSetReportPeriod('week')">直近7日</button>
             </div>
-            <button type="button" class="btn btn-success w-100 mb-2" onclick="spMakeShoppingReport()">📊 買い物レポート作成</button>
-            <button type="button" class="btn btn-outline-info w-100" onclick="spShareShoppingReport()">📤 共有</button>
+            <button type="button" class="btn btn-success w-100" onclick="spShareShoppingReportAll()">📤 買い物レポートを共有</button>
           </div>
           <!-- v23.9.120: 人間向けログ導線（全ログ統合・最上部） -->
           <button type="button" class="btn btn-outline-info w-100 py-3 fw-bold mb-3" style="font-size:1rem;" onclick="copyAllLogsForYui()">📋 全ログをコピー</button>
@@ -14862,9 +14861,42 @@ function spShareShoppingReport() {
   }
 }
 
+// v23.9.152: 1アクション統合関数
+function spShareShoppingReportAll() {
+  var rep = '';
+  try {
+    rep = generateShoppingReport(_spReportPeriod);
+    _spReportText = rep;
+    try { spDbg('[SHOPPING_REPORT_SHARE_ALL]', { period: _spReportPeriod, length: rep.length }); } catch (_sr1) {}
+  } catch (e) {
+    showToast('レポート作成失敗: ' + e.message, 3000);
+    return;
+  }
+  if (navigator.share) {
+    navigator.share({ title: 'SmartPrice 買い物レポート', text: rep }).then(function() {
+      showToast('共有しました', 2000);
+    }).catch(function(err) {
+      if (!err || err.name !== 'AbortError') {
+        navigator.clipboard.writeText(rep).then(function() {
+          showToast('クリップボードにコピーしました', 2000);
+        }).catch(function() {
+          showToast('共有・コピー失敗', 3000);
+        });
+      }
+    });
+  } else {
+    navigator.clipboard.writeText(rep).then(function() {
+      showToast('クリップボードにコピーしました', 2000);
+    }).catch(function() {
+      showToast('コピー失敗', 3000);
+    });
+  }
+}
+
 window.generateShoppingReport = generateShoppingReport;
 window.spMakeShoppingReport = spMakeShoppingReport;
 window.spShareShoppingReport = spShareShoppingReport;
+window.spShareShoppingReportAll = spShareShoppingReportAll;
 window.spSetReportPeriod = spSetReportPeriod;
 
 </script>
