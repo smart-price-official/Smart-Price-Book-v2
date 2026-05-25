@@ -20,8 +20,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.156";
-  const BUILD_ID    = "2026-05-25_ui-fix-r1";
+  const APP_VERSION = "v23.9.157";
+  const BUILD_ID    = "2026-05-25_color-theme-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -930,6 +930,63 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   width: 100%;
 }
 #img-diag-copy-btn:active { background: #2a2a5a; }
+/* === COLOR THEME SYSTEM (v23.9.157) === */
+:root {
+  --sp-bg: #f5f5f5;
+  --sp-surface: #ffffff;
+  --sp-text: #212529;
+  --sp-text-muted: #6c757d;
+  --sp-accent: #0d6efd;
+  --sp-border: #dee2e6;
+  --sp-modal-bg: #ffffff;
+  --sp-modal-hd: #f8f9fa;
+}
+body[data-theme="dark"] {
+  --sp-bg: #121212; --sp-surface: #1e1e1e; --sp-text: #e0e0e0;
+  --sp-text-muted: #9e9e9e; --sp-accent: #90caf9; --sp-border: #333333;
+  --sp-modal-bg: #1e1e1e; --sp-modal-hd: #2a2a2a;
+}
+body[data-theme="dark"] .modal-content { background-color: var(--sp-modal-bg) !important; color: var(--sp-text) !important; }
+body[data-theme="dark"] .modal-header { background-color: var(--sp-modal-hd) !important; border-color: var(--sp-border) !important; }
+body[data-theme="dark"] .list-group-item { background-color: var(--sp-surface); color: var(--sp-text); border-color: var(--sp-border); }
+body[data-theme="dark"] .card { background-color: var(--sp-surface); border-color: var(--sp-border); }
+body[data-theme="dark"] .form-control { background-color: var(--sp-surface); color: var(--sp-text); border-color: var(--sp-border); }
+body[data-theme="dark"] .input-group-text { background-color: var(--sp-modal-hd); color: var(--sp-text); border-color: var(--sp-border); }
+body[data-theme="warm"] {
+  --sp-bg: #fdf6ec; --sp-surface: #fff8f0; --sp-text: #3e2723;
+  --sp-text-muted: #795548; --sp-accent: #e65100; --sp-border: #ffcc80;
+  --sp-modal-bg: #fff8f0; --sp-modal-hd: #fdebd0;
+}
+body[data-theme="warm"] .modal-content { background-color: var(--sp-modal-bg) !important; color: var(--sp-text) !important; }
+body[data-theme="warm"] .modal-header { background-color: var(--sp-modal-hd) !important; border-color: var(--sp-border) !important; }
+body[data-theme="cool"] {
+  --sp-bg: #e8f4fd; --sp-surface: #f0f9ff; --sp-text: #0d2137;
+  --sp-text-muted: #546e7a; --sp-accent: #0288d1; --sp-border: #b3d9f5;
+  --sp-modal-bg: #f0f9ff; --sp-modal-hd: #e1f0fa;
+}
+body[data-theme="cool"] .modal-content { background-color: var(--sp-modal-bg) !important; color: var(--sp-text) !important; }
+body[data-theme="cool"] .modal-header { background-color: var(--sp-modal-hd) !important; border-color: var(--sp-border) !important; }
+body[data-theme="sakura"] {
+  --sp-bg: #fff0f5; --sp-surface: #fff5f8; --sp-text: #880e4f;
+  --sp-text-muted: #c2185b; --sp-accent: #e91e63; --sp-border: #f8bbd0;
+  --sp-modal-bg: #fff5f8; --sp-modal-hd: #fce4ec;
+}
+body[data-theme="sakura"] .modal-content { background-color: var(--sp-modal-bg) !important; color: var(--sp-text) !important; }
+body[data-theme="sakura"] .modal-header { background-color: var(--sp-modal-hd) !important; border-color: var(--sp-border) !important; }
+body[data-theme="forest"] {
+  --sp-bg: #f1f8f1; --sp-surface: #f5fbf5; --sp-text: #1b5e20;
+  --sp-text-muted: #388e3c; --sp-accent: #2e7d32; --sp-border: #a5d6a7;
+  --sp-modal-bg: #f5fbf5; --sp-modal-hd: #e8f5e9;
+}
+body[data-theme="forest"] .modal-content { background-color: var(--sp-modal-bg) !important; color: var(--sp-text) !important; }
+body[data-theme="forest"] .modal-header { background-color: var(--sp-modal-hd) !important; border-color: var(--sp-border) !important; }
+body[data-theme="sepia"] {
+  --sp-bg: #f4ede0; --sp-surface: #faf4e8; --sp-text: #3e2a0f;
+  --sp-text-muted: #7a5c3a; --sp-accent: #8b5e2c; --sp-border: #d4b896;
+  --sp-modal-bg: #faf4e8; --sp-modal-hd: #ecdfc8;
+}
+body[data-theme="sepia"] .modal-content { background-color: var(--sp-modal-bg) !important; color: var(--sp-text) !important; }
+body[data-theme="sepia"] .modal-header { background-color: var(--sp-modal-hd) !important; border-color: var(--sp-border) !important; }
 </style>
 
 <script>
@@ -1116,6 +1173,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
           <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelFamily">② 家族共有</button>
           <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelSupport">③ 運営者へ質問／不具合報告</button>
           <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelTaxSettings" onclick="renderStoreTaxSettingsPanel()">④ 店舗の税設定</button>
+          <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelTheme" onclick="renderThemePanel()">⑤ 🎨 テーマ設定</button>
 </div>
       </div>
 
@@ -1336,6 +1394,14 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
           <button type="button" class="btn btn-primary sp-back-btn" data-back=""
                   onclick="try{saveLocalOnly();}catch(e){} showToast('✅ 税設定を保存しました', 2000);">保存して戻る</button>
           <button type="button" class="btn btn-outline-secondary sp-back-btn" data-back="">戻る</button>
+        </div>
+      </div>
+
+      <!-- v23.9.157: テーマ設定パネル -->
+      <div id="panelTheme" class="sp-panel mt-3" style="display:none;">
+        <div id="themeList"></div>
+        <div class="mt-3 d-grid">
+          <button type="button" class="btn btn-outline-secondary sp-back-btn" data-back="Main">戻る</button>
         </div>
       </div>
 
@@ -2950,6 +3016,13 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
     } catch (e) {
       try { spDbg('[BOOT_STEP_ERROR]', { step: 'normalizeDb', message: String(e && e.message), stack: String(e && e.stack) }); } catch (_) {}
     }
+
+    // v23.9.157: カラーテーマ適用
+    try {
+      if (db && db.config && db.config.colorTheme && db.config.colorTheme !== 'default') {
+        if (typeof applyColorTheme === 'function') applyColorTheme(db.config.colorTheme);
+      }
+    } catch (e) {}
 
     try {
       await migrateLegacyImagesToIdb();
@@ -8050,6 +8123,60 @@ return true;
   }
   window.renderStoreTaxSettingsPanel = renderStoreTaxSettingsPanel;
 
+  // v23.9.157: カラーテーマ
+  function applyColorTheme(theme) {
+    try {
+      if (!theme || theme === 'default') {
+        document.body.removeAttribute('data-theme');
+      } else {
+        document.body.setAttribute('data-theme', theme);
+      }
+    } catch(e) {}
+  }
+  window.applyColorTheme = applyColorTheme;
+
+  function spSaveColorTheme(theme) {
+    try {
+      if (db && db.config) {
+        db.config.colorTheme = theme || 'default';
+        if (typeof saveLocalOnly === 'function') saveLocalOnly();
+      }
+      applyColorTheme(theme);
+      if (typeof showToast === 'function') showToast('✅ テーマを変更しました', 1500);
+      renderThemePanel();
+    } catch(e) {}
+  }
+  window.spSaveColorTheme = spSaveColorTheme;
+
+  function renderThemePanel() {
+    try {
+      var el = document.getElementById('themeList');
+      if (!el) return;
+      var current = (db && db.config && db.config.colorTheme) ? db.config.colorTheme : 'default';
+      var themes = [
+        { id: 'default', label: '🌤 標準（デフォルト）', desc: '明るい白ベース' },
+        { id: 'dark',    label: '🌙 ダーク',           desc: '目に優しい暗色背景' },
+        { id: 'warm',    label: '🍊 ウォーム',          desc: '暖かみのあるオレンジ系' },
+        { id: 'cool',    label: '💧 クール',            desc: '爽やかな水色系' },
+        { id: 'sakura',  label: '🌸 さくら',            desc: '柔らかいピンク系' },
+        { id: 'forest',  label: '🌿 フォレスト',        desc: '落ち着いた緑系' },
+        { id: 'sepia',   label: '📜 セピア',            desc: 'ヴィンテージな茶色系' }
+      ];
+      var html = '';
+      for (var i = 0; i < themes.length; i++) {
+        var t = themes[i];
+        var active = (t.id === current) ? ' btn-primary' : ' btn-outline-secondary';
+        var check = (t.id === current) ? ' ✓' : '';
+        html += '<div class="mb-2">';
+        html += '<button type="button" class="btn' + active + ' w-100 text-start" onclick="spSaveColorTheme(\'' + t.id + '\')">';
+        html += t.label + check + '<br><small class="opacity-75">' + t.desc + '</small>';
+        html += '</button></div>';
+      }
+      el.innerHTML = html;
+    } catch(e) {}
+  }
+  window.renderThemePanel = renderThemePanel;
+
   // SP-250525-016: 表示用税込換算
   function calcDisplayPrice(h) {
     var p = Number(h && h.price);
@@ -11132,8 +11259,8 @@ function spVisibleTrace(tag, payload, cls) {
   const state = { isOpen: false, currentPanel: 'Main', history: [], initialized: false };
   let modal = null, panels = {}, titleEl = null;
   
-  const PANELS = { Main: 'settingsMainMenu', Referral: 'panelReferral', Family: 'panelFamily', Support: 'panelSupport', Operator: 'panelOperator', TaxSettings: 'panelTaxSettings' };
-  const TITLES = { Main: '設定', Referral: '友人紹介', Family: '家族共有', Support: '運営者へ質問', Operator: '管理メニュー', TaxSettings: '店舗の税設定' };
+  const PANELS = { Main: 'settingsMainMenu', Referral: 'panelReferral', Family: 'panelFamily', Support: 'panelSupport', Operator: 'panelOperator', TaxSettings: 'panelTaxSettings', Theme: 'panelTheme' };
+  const TITLES = { Main: '設定', Referral: '友人紹介', Family: '家族共有', Support: '運営者へ質問', Operator: '管理メニュー', TaxSettings: '店舗の税設定', Theme: 'テーマ設定' };
   
   function init() {
     if (state.initialized) return;
