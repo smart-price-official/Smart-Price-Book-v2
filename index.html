@@ -20,8 +20,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.150";
-  const BUILD_ID    = "2026-05-25_tax-calc-impl-r1";
+  const APP_VERSION = "v23.9.151";
+  const BUILD_ID    = "2026-05-25_shopping-report-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -1253,6 +1253,17 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
         </div>
         <div id="operatorPassMsg" class="small text-secondary mb-2"></div>
         <div id="operatorPanelBody" style="display:none;">
+          <!-- v23.9.151: 買い物レポート -->
+          <div class="mb-3" style="border:1px solid rgba(100,200,100,0.4); border-radius:8px; padding:12px; background:rgba(0,80,0,0.15);">
+            <div class="small fw-bold mb-2" style="color:#6fe06f;">📊 買い物レポート</div>
+            <div class="d-flex gap-1 mb-2">
+              <button type="button" class="btn btn-sm btn-outline-success flex-fill" id="srpBtn-today" onclick="spSetReportPeriod('today')">今日</button>
+              <button type="button" class="btn btn-sm btn-success flex-fill" id="srpBtn-yesterday" onclick="spSetReportPeriod('yesterday')">昨日</button>
+              <button type="button" class="btn btn-sm btn-outline-success flex-fill" id="srpBtn-week" onclick="spSetReportPeriod('week')">直近7日</button>
+            </div>
+            <button type="button" class="btn btn-success w-100 mb-2" onclick="spMakeShoppingReport()">📊 買い物レポート作成</button>
+            <button type="button" class="btn btn-outline-info w-100" onclick="spShareShoppingReport()">📤 共有</button>
+          </div>
           <!-- v23.9.120: 人間向けログ導線（全ログ統合・最上部） -->
           <button type="button" class="btn btn-outline-info w-100 py-3 fw-bold mb-3" style="font-size:1rem;" onclick="copyAllLogsForYui()">📋 全ログをコピー</button>
           <!-- v23.9.109: Yuiへ検証データ送信（主導線） -->
@@ -1427,14 +1438,15 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
       <button class="btn btn-outline-info w-100 mb-2" style="font-size:0.9rem;" onclick="showProductDebugPreview()">👁️ 画面表示</button>
     </div>
     
-    <button class="btn btn-outline-secondary w-100 mt-3" onclick="closeDebugHub()">閉じる</button>
+    <button class="btn btn-outline-success w-100 mb-2 mt-3" style="font-size:0.9rem;" onclick="(function(){var p=document.getElementById('sp-dbg-panel');p.style.display=p.style.display==='flex'?'none':'flex';})()">🔍 DBGパネル開閉</button>
+    <button class="btn btn-outline-secondary w-100 mt-1" onclick="closeDebugHub()">閉じる</button>
   </div>
 </div>
 
-<!-- v23.9.108: debug=1専用ボタン（画面下部固定） -->
+<!-- v23.9.151: debug=1専用ボタン（画面下部固定・DBGと統合） -->
 <div id="debugHubButton" style="display:none; position:fixed; bottom:20px; right:20px; z-index:9999;">
-  <button class="btn btn-primary" onclick="openDebugHub()" style="border-radius:50%; width:60px; height:60px; font-size:24px; box-shadow:0 4px 12px rgba(74,74,255,0.5); border:2px solid #aaf;">
-    🔬
+  <button class="btn btn-primary" onclick="openDebugHub()" style="border-radius:8px; padding:8px 16px; font-size:15px; font-weight:bold; box-shadow:0 4px 12px rgba(74,74,255,0.5); border:2px solid #aaf;">
+    🔬 検証
   </button>
 </div>
 
@@ -2882,12 +2894,14 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
     } catch(e) {
       if (isDebug()) console.warn('[DOMContentLoaded] version update error:', e);
     }
-    // DBGボタン表示制御（debug=1時のみ表示）
+    // DBGボタン表示制御（v23.9.151: sp-dbg-toggleを非表示化・検証ハブに統合・即時表示）
     try {
-      const dbgToggle = document.getElementById('sp-dbg-toggle');
-      const dbgPanel = document.getElementById('sp-dbg-panel');
-      if (dbgToggle) dbgToggle.style.display = isDebug() ? '' : 'none';
+      var dbgToggle = document.getElementById('sp-dbg-toggle');
+      var dbgPanel = document.getElementById('sp-dbg-panel');
+      if (dbgToggle) dbgToggle.style.display = 'none'; // 常に非表示（検証ハブに統合）
       if (dbgPanel) dbgPanel.style.display = 'none';
+      var debugHubBtnDcl = document.getElementById('debugHubButton');
+      if (debugHubBtnDcl) debugHubBtnDcl.style.display = isDebug() ? 'block' : 'none';
     } catch (e) {
       if (isDebug()) console.warn('[DOMContentLoaded] DBG button control error:', e);
     }
@@ -14689,6 +14703,169 @@ async function copyAllLogsForYui() {
   }
 }
 window.copyAllLogsForYui = copyAllLogsForYui;
+
+// === v23.9.151: 買い物レポート機能 ===
+
+var _spReportPeriod = 'yesterday';
+var _spReportText = '';
+
+function spSetReportPeriod(period) {
+  _spReportPeriod = period;
+  var ids = ['today', 'yesterday', 'week'];
+  for (var i = 0; i < ids.length; i++) {
+    var rpBtn = document.getElementById('srpBtn-' + ids[i]);
+    if (!rpBtn) continue;
+    if (ids[i] === period) {
+      rpBtn.className = 'btn btn-sm btn-success flex-fill';
+    } else {
+      rpBtn.className = 'btn btn-sm btn-outline-success flex-fill';
+    }
+  }
+}
+
+function spGetJstDateStr(ts) {
+  var jstOff = 9 * 60 * 60 * 1000;
+  return new Date(Number(ts) + jstOff).toISOString().slice(0, 10);
+}
+
+function spGetTodayJst() {
+  var jstOff = 9 * 60 * 60 * 1000;
+  return new Date(Date.now() + jstOff).toISOString().slice(0, 10);
+}
+
+function spGetYesterdayJst() {
+  var jstOff = 9 * 60 * 60 * 1000;
+  return new Date(Date.now() + jstOff - 86400000).toISOString().slice(0, 10);
+}
+
+function spIsInPeriod(ts, period) {
+  var jstOff = 9 * 60 * 60 * 1000;
+  var dateStr = spGetJstDateStr(ts);
+  if (period === 'today') return dateStr === spGetTodayJst();
+  if (period === 'yesterday') return dateStr === spGetYesterdayJst();
+  if (period === 'week') {
+    var daysAgo7 = new Date(Date.now() + jstOff - 7 * 86400000).toISOString().slice(0, 10);
+    return dateStr >= daysAgo7;
+  }
+  return false;
+}
+
+function generateShoppingReport(period) {
+  var jstOff = 9 * 60 * 60 * 1000;
+  var today = spGetTodayJst();
+  var dateLabel = '';
+  if (period === 'today') {
+    dateLabel = today;
+  } else if (period === 'yesterday') {
+    dateLabel = spGetYesterdayJst();
+  } else if (period === 'week') {
+    var weekStart = new Date(Date.now() + jstOff - 6 * 86400000).toISOString().slice(0, 10);
+    dateLabel = weekStart + ' ~ ' + today;
+  }
+
+  var entries = [];
+  var products = (window.db && window.db.products) ? window.db.products : {};
+  var jans = Object.keys(products);
+  for (var i = 0; i < jans.length; i++) {
+    var jan = jans[i];
+    var prod = products[jan];
+    if (!prod || !Array.isArray(prod.history)) continue;
+    for (var j = 0; j < prod.history.length; j++) {
+      var h = prod.history[j];
+      if (!h || !h.ts) continue;
+      if (!spIsInPeriod(h.ts, period)) continue;
+      entries.push({
+        jan: jan,
+        name: prod.name || '不明',
+        store: h.store || '不明',
+        price: calcDisplayPrice(h),
+        category: prod.category || '不明',
+        ts: h.ts
+      });
+    }
+  }
+
+  entries.sort(function(a, b) { return Number(b.ts) - Number(a.ts); });
+
+  var totalPrice = 0;
+  var storesMap = {};
+  for (var k = 0; k < entries.length; k++) {
+    totalPrice += Number(entries[k].price) || 0;
+    storesMap[entries[k].store] = 1;
+  }
+  var storeCount = Object.keys(storesMap).length;
+
+  var report = '';
+  report += '【SmartPrice 買い物レポート】' + dateLabel + '\n\n';
+
+  if (entries.length === 0) {
+    report += '（該当期間の購入データなし）\n\n';
+  } else {
+    for (var m = 0; m < entries.length; m++) {
+      var ent = entries[m];
+      var dtObj = new Date(Number(ent.ts) + jstOff);
+      var hh = ('0' + dtObj.getUTCHours()).slice(-2);
+      var mn = ('0' + dtObj.getUTCMinutes()).slice(-2);
+      report += '■ 購入商品\n';
+      report += 'JAN: ' + ent.jan + '\n';
+      report += '商品名: ' + ent.name + '\n';
+      report += '店舗: ' + ent.store + '\n';
+      report += '価格: ' + ent.price + '円\n';
+      report += 'カテゴリ: ' + ent.category + '\n';
+      report += '日時: ' + hh + ':' + mn + '\n\n';
+    }
+  }
+
+  report += '■ サマリー\n';
+  report += '登録件数: ' + entries.length + '件\n';
+  report += '店舗数: ' + storeCount + '店舗\n';
+  report += '合計金額（税込）: ' + totalPrice + '円\n';
+
+  return report;
+}
+
+function spMakeShoppingReport() {
+  try {
+    var rep = generateShoppingReport(_spReportPeriod);
+    _spReportText = rep;
+    showToast('レポート作成完了（共有ボタンで送信）', 2500);
+    try { spDbg('[SHOPPING_REPORT_GENERATED]', { period: _spReportPeriod, length: rep.length }); } catch (_sr0) {}
+  } catch (e) {
+    showToast('レポート作成失敗: ' + e.message, 3000);
+  }
+}
+
+function spShareShoppingReport() {
+  if (!_spReportText) {
+    showToast('先に「買い物レポート作成」を押してください', 2500);
+    return;
+  }
+  var rep = _spReportText;
+  if (navigator.share) {
+    navigator.share({ title: 'SmartPrice 買い物レポート', text: rep }).then(function() {
+      showToast('共有しました', 2000);
+    }).catch(function(err) {
+      if (!err || err.name !== 'AbortError') {
+        navigator.clipboard.writeText(rep).then(function() {
+          showToast('クリップボードにコピーしました', 2000);
+        }).catch(function() {
+          showToast('共有・コピー失敗', 3000);
+        });
+      }
+    });
+  } else {
+    navigator.clipboard.writeText(rep).then(function() {
+      showToast('クリップボードにコピーしました', 2000);
+    }).catch(function() {
+      showToast('コピー失敗', 3000);
+    });
+  }
+}
+
+window.generateShoppingReport = generateShoppingReport;
+window.spMakeShoppingReport = spMakeShoppingReport;
+window.spShareShoppingReport = spShareShoppingReport;
+window.spSetReportPeriod = spSetReportPeriod;
 
 </script>
 
