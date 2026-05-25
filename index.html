@@ -20,8 +20,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.153";
-  const BUILD_ID    = "2026-05-25_product-quality-r1";
+  const APP_VERSION = "v23.9.154";
+  const BUILD_ID    = "2026-05-25_ui-cleanup-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -1265,24 +1265,13 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
           </div>
           <!-- v23.9.120: 人間向けログ導線（全ログ統合・最上部） -->
           <button type="button" class="btn btn-outline-info w-100 py-3 fw-bold mb-3" style="font-size:1rem;" onclick="copyAllLogsForYui()">📋 全ログをコピー</button>
-          <!-- v23.9.109: Yuiへ検証データ送信（主導線） -->
+          <!-- v23.9.154: 検証データ（全体検証・端末比較） -->
           <div class="mb-3" style="border:2px solid #4a4aff; border-radius:8px; padding:12px; background:rgba(74,74,255,0.1);">
-            <button class="btn btn-primary w-100 py-3 fw-bold mb-2" style="font-size:1.1rem;display:none;" onclick="copyProductDebugForYuiMain()">
-              🔬 Yuiへ検証データをコピー
-            </button>
-            <button class="btn btn-info w-100 py-2" style="display:none;" onclick="shareProductDebugForYui()">
-              📤 検証データを共有
-            </button>
-            <div class="small text-secondary mt-2 text-center" style="opacity:.8;">
-              商品をスキャン後、このボタンでデータをコピーしてYuiへ送信
-            </div>
-            <div class="mt-3 pt-2" style="border-top:1px solid rgba(74,74,255,0.35);">
-              <div class="small text-secondary mb-2 text-center" style="opacity:.85;">全体検証（端末・DB横断）</div>
-              <button type="button" class="btn btn-outline-warning w-100 py-2 fw-bold mb-2" onclick="copyFullAuditForYui()">📦 全体検証データをコピー</button>
-              <button type="button" onclick="copyDeviceCompareData()" class="btn btn-outline-info btn-sm w-100 mb-1">🧪 端末比較診断データをコピー</button>
-              <button type="button" class="btn btn-outline-warning w-100 py-2 mb-2" onclick="shareFullAuditForYui()">📤 全体検証データを共有</button>
-              <button type="button" class="btn btn-outline-secondary w-100 py-2" onclick="showFullAuditPreview()">👁 全体検証データを表示</button>
-            </div>
+            <div class="small text-secondary mb-2 text-center" style="opacity:.85;">全体検証（端末・DB横断）</div>
+            <button type="button" class="btn btn-outline-warning w-100 py-2 fw-bold mb-2" onclick="copyFullAuditForYui()">📦 全体検証データをコピー</button>
+            <button type="button" onclick="copyDeviceCompareData()" class="btn btn-outline-info btn-sm w-100 mb-1">🧪 端末比較診断データをコピー</button>
+            <button type="button" class="btn btn-outline-warning w-100 py-2 mb-2" onclick="shareFullAuditForYui()">📤 全体検証データを共有</button>
+            <button type="button" class="btn btn-outline-secondary w-100 py-2" onclick="showFullAuditPreview()">👁 全体検証データを表示</button>
           </div>
 
           <!-- Firebase URL -->
@@ -1297,21 +1286,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
             <button class="btn btn-success w-100" onclick="testFirebaseConnection()">🔌 接続テスト</button>
           </div>
 
-          <!-- 購入履歴表示 -->
-          <details class="mb-2">
-            <summary class="small text-secondary" style="cursor:pointer;">📊 購入履歴を表示</summary>
-            <div class="mt-2">
-              <div id="purchase-history-list" class="small"></div>
-              <button class="btn btn-primary w-100 py-2 fw-bold mt-2" onclick="loadPurchaseHistory()">履歴を読み込む</button>
-            </div>
-          </details>
-          
-          <!-- 統計情報 -->
-          <details class="mb-2">
-            <summary class="small text-secondary" style="cursor:pointer;">📈 統計情報</summary>
-            <div class="mt-2" id="stats-info"></div>
-            <button class="btn btn-info w-100 py-2 fw-bold mt-2" onclick="loadStats()">統計を計算</button>
-          </details>
+          <!-- v23.9.154: 購入履歴・統計は買い物レポートで代替 -->
           
           <!-- v23.9.109: 検証データ取得（詳細メニュー） -->
           <details class="mb-2">
@@ -1367,11 +1342,6 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
     <button id="clearCacheBtn" class="btn btn-danger w-100 py-2 fw-bold mb-2" onclick="clearAllCache()">🔄 キャッシュクリア（表示崩れ修正）</button>
     <button id="webBtn" class="btn btn-outline-secondary w-100 py-2 fw-bold mb-2" onclick="openWebModal()">ブラウザ版へ（URL表示）</button>
 
-    <div id="debugBackupButtons" style="display:none;">
-      <button class="btn btn-success w-100 py-2 fw-bold mb-2" onclick="exportBackup()">バックアップ出力</button>
-      <button class="btn btn-info w-100 py-2 fw-bold mb-2" onclick="importBackup()">バックアップ読み込み</button>
-      <button class="btn btn-outline-light w-100 py-2 fw-bold mb-2" onclick="copyHistoryData()">📋 データコピー（JSON）</button>
-    </div>
     <button class="btn btn-link text-secondary w-100" data-action="close-settings">閉じる</button>
   </div>
 </div>
@@ -1412,8 +1382,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
     <div class="small text-secondary mb-3 text-center" style="opacity:.8;">Yui検証用データ取得</div>
     
     <div id="debugHubContent">
-      <!-- v23.9.109: 主導線 -->
-      <button class="btn btn-primary w-100 py-3 mb-2 fw-bold" style="font-size:1.1rem;display:none;" onclick="copyProductDebugForYuiMain()">🔬 Yuiへ検証データをコピー</button>
+      <!-- v23.9.154: 主導線 -->
       <button class="btn btn-info w-100 mb-3" onclick="shareProductDebugForYui()">📤 検証データを共有</button>
       <div class="mb-3 pb-2" style="border-bottom:1px solid rgba(74,74,255,0.35);">
         <div class="small text-secondary mb-2 text-center" style="opacity:.85;">全体検証（端末・DB横断）</div>
@@ -14965,7 +14934,6 @@ window.spSetReportPeriod = spSetReportPeriod;
 </script>
 
 <!-- SP DEBUG PANEL v2 -->
-<button id="sp-dbg-toggle" onclick="(function(){var p=document.getElementById('sp-dbg-panel');p.style.display=p.style.display==='flex'?'none':'flex';})()">🔍DBG</button>
 <div id="sp-dbg-panel">
   <div id="sp-dbg-log"><div class="ok">== SP Debug Log ==</div></div>
   <div id="sp-dbg-bar">
