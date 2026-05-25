@@ -20,8 +20,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.152";
-  const BUILD_ID    = "2026-05-25_shopping-report-r2";
+  const APP_VERSION = "v23.9.153";
+  const BUILD_ID    = "2026-05-25_product-quality-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -1963,7 +1963,6 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   const FOOD_TAX_CATEGORIES = ['食品', '飲料', '菓子', '冷凍食品', '調味料'];
 
   const INFER_RULES = [
-    { keywords: ['お茶', 'コーヒー', '炭酸', 'ラテ', 'ジュース', 'コーラ', 'ミルク', '水', 'スポーツドリンク', 'ほうじ茶', '紅茶', 'カフェ', 'ミルクティー'], category: '飲料' },
     { keywords: ['チョコ', 'グミ', 'ポテトチップス', 'クッキー', 'せんべい', '飴', 'ガム', 'スナック', 'ポッキー', 'じゃがりこ', 'トッポ', 'きのこの山', 'ガルボ', 'キャラメルコーン', 'ロアンヌ', '柿の種', 'サッポロポテト', 'ドリトス', 'エアリアル', 'ビスケット'], category: '菓子' },
     { keywords: ['洗剤', '柔軟剤', '掃除', 'トイレ', 'ゴミ袋', '食器用'], category: '日用品' },
     { keywords: ['シャンプー', '歯磨き', 'ボディソープ', 'マスク', '生理', 'ナプキン', '綿棒'], category: '衛生用品' },
@@ -1972,8 +1971,29 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
     { keywords: ['しょうゆ', '醤油', '味噌', 'ソース', 'だし', 'みりん', '酢', 'ドレッシング', 'ラー油', 'マヨネーズ', 'ケチャップ', 'ポン酢', '油', 'ごま油'], category: '調味料' },
     { keywords: ['ビール', 'チューハイ', 'ワイン', '焼酎', '日本酒', '酎ハイ', 'ハイボール'], category: '酒' },
     { keywords: ['ペット', '犬', '猫', 'キャット', 'ドッグ', 'フード', 'えさ'], category: 'ペット用品' },
-    { keywords: ['ジャム', 'ママレード', 'ブルーベリー', 'チーズ', 'ヨーグルト', 'ベーコン', '豆腐', '納豆', '惣菜', 'レトルト', 'カレー', 'そば', 'うどん', 'パスタ', 'スプレッド', '瓶'], category: '食品' }
+    { keywords: ['ジャム', 'ママレード', 'ブルーベリー', 'チーズ', 'ヨーグルト', 'ベーコン', '豆腐', '納豆', '惣菜', 'レトルト', 'カレー', 'そば', 'うどん', 'パスタ', 'スプレッド', '瓶'], category: '食品' },
+    { keywords: ['お茶', 'コーヒー', '炭酸', 'ラテ', 'ジュース', 'コーラ', 'ミルク', '水', 'スポーツドリンク', 'ほうじ茶', '紅茶', 'カフェ', 'ミルクティー'], category: '飲料' }
   ];
+
+  // v23.9.153: 強制カテゴリ辞書（INFER_RULESより高優先度）
+  const FORCED_CATEGORY_MAP = [
+    { keywords: ['ペンネ', 'スパゲッティ', 'ワンタン', 'ラーメン', '米', 'ご飯', 'パスタ', 'うどん', 'そば'], category: '食品' },
+    { keywords: ['めんつゆ', 'つゆ', 'しょうゆ', '醤油', 'みそ', '味噌', 'だし', 'ソース', 'ドレッシング', 'たれ'], category: '調味料' },
+    { keywords: ['風呂釜', '洗浄剤', 'クリーナー', '洗たく槽', '洗濯槽', 'ポンプ', '掃除', '洗剤'], category: '日用品' },
+    { keywords: ['黒酢ドリンク', 'ドリンク', 'ジュース', '茶', 'コーヒー', '炭酸', 'ペットボトル', '缶飲料'], category: '飲料' }
+  ];
+
+  function forcedCategoryLookup(name) {
+    var n = String(name || '');
+    if (!n) return '';
+    for (var _fi = 0; _fi < FORCED_CATEGORY_MAP.length; _fi++) {
+      var _fr = FORCED_CATEGORY_MAP[_fi];
+      for (var _fj = 0; _fj < _fr.keywords.length; _fj++) {
+        if (n.includes(_fr.keywords[_fj])) return _fr.category;
+      }
+    }
+    return '';
+  }
 
   function normalizeCategory(input) {
     if (!input) return 'その他';
@@ -1996,6 +2016,16 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
       }
     }
     return 'その他';
+  }
+
+  // v23.9.153: 商品名フォールバック表示（名前がJANと同一 or 空の場合）
+  function spGetDisplayName(name, jan) {
+    var n = String(name || '').trim();
+    var j = String(jan || '').trim();
+    if (!n || n === j) {
+      return '商品名不明（' + j + '）';
+    }
+    return n;
   }
 
   function pruneCategoryTreeToParents(rawTree) {
@@ -4708,7 +4738,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         <div class="d-flex align-items-center">
           <img id="${imgId}" src="${imgSrc}" class="prod-thumb" referrerpolicy="no-referrer" onerror="this.src=placeholderImg();this.onerror=null;">
           <div class="flex-grow-1 overflow-hidden">
-            <div class="fw-bold text-white small text-truncate">${it.name || ''}</div>
+            <div class="fw-bold text-white small text-truncate">${spGetDisplayName(it.name, it.code)}</div>
             <div class="text-secondary" style="font-size:0.6rem;">${last.store || '未設定'}</div>
             ${statsHtml}
           </div>
@@ -5270,15 +5300,18 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
 
       const t = histTs(h);
       const dateStr = t ? new Date(t).toLocaleString() : "(不明)";
-      row.innerHTML = `
-        <div class="flex-grow-1">
-          <span class="text-secondary small">${dateStr}</span><br>
-          <span class="text-white fw-bold">${displayStoreName(h.store) || '未設定'}</span>
-        </div>
-        <div class="text-end">
-          <span class="fw-bold text-white">${calcDisplayPrice(h)}円</span><br>
-          <span class="text-info small">タップで編集</span>
-        </div>`;
+      var _hName = h.name || ((db.products && db.products[curBarcode]) ? db.products[curBarcode].name : '');
+      var _hJan = h.jan || curBarcode || '';
+      row.innerHTML =
+        '<div class="flex-grow-1">' +
+          '<span class="text-secondary small">' + dateStr + '</span><br>' +
+          '<span class="text-white small text-truncate d-block">' + spGetDisplayName(_hName, _hJan) + '</span>' +
+          '<span class="text-white fw-bold">' + (displayStoreName(h.store) || '未設定') + '</span>' +
+        '</div>' +
+        '<div class="text-end">' +
+          '<span class="fw-bold text-white">' + calcDisplayPrice(h) + '円</span><br>' +
+          '<span class="text-info small">タップで編集</span>' +
+        '</div>';
       div.appendChild(row);
     });
   }
@@ -5407,7 +5440,11 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         } catch (_ai) {}
       }
       let categoryInferLogged = false;
-      if (!catResolved) {
+      // v23.9.153: 強制辞書を最優先
+      var forcedCatSv = forcedCategoryLookup(safeName);
+      if (forcedCatSv) {
+        catResolved = forcedCatSv;
+      } else if (!catResolved) {
         catResolved = inferCategoryFromProduct(safeName, safeMaker, jan);
         categoryInferLogged = true;
         console.log('[CATEGORY_INFERRED]', { jan, category: catResolved });
@@ -8515,8 +8552,12 @@ function spVisibleTrace(tag, payload, cls) {
     // ノイズ単語を完全削除
     const NOISE_WORDS = [
       '送料無料', '買い置き', 'セール', '激安', 'まとめ買い',
-      'ケース販売'
+      'ケース販売',
+      '特価', '爆買', 'あすつく', 'ポスト投函',
+      '冷蔵同梱', '注文可能', 'ポイント', '対象',
+      '5/22限定', '限定P', '限定ポイント', '期間限定セール'
       // 「冷凍麺」「濃厚」「辛口」「赤」「花椒」「ケース」は商品名構成要素として除去しない
+      // 「限定」単体は除去しない（商品名構成要素の可能性あり）
     ];
     for (const w of NOISE_WORDS) {
       s = s.split(w).join('');
@@ -9635,8 +9676,15 @@ function spVisibleTrace(tag, payload, cls) {
         try { spDbg('[PRODUCT_NAME_CLEANED]', { source: sourceUsed, name: finalInfo.name, maker: finalInfo.maker, jan }); } catch (_pnc) {}
 
         {
-          let catOut = candidateCategory ? normalizeCategory(candidateCategory) : '';
-          if (!catOut) catOut = normalizeCategory(inferCategoryFromProduct(finalInfo.name, finalInfo.maker, jan));
+          // v23.9.153: 強制辞書 > YahooCategory > inferCategoryFromProduct
+          var forcedCatLkp = forcedCategoryLookup(finalInfo.name);
+          let catOut = '';
+          if (forcedCatLkp) {
+            catOut = forcedCatLkp;
+          } else {
+            catOut = candidateCategory ? normalizeCategory(candidateCategory) : '';
+            if (!catOut) catOut = normalizeCategory(inferCategoryFromProduct(finalInfo.name, finalInfo.maker, jan));
+          }
           finalInfo.category = catOut;
         }
 
@@ -9886,6 +9934,21 @@ function spVisibleTrace(tag, payload, cls) {
           } // end if(!finalInfo.name) - STEP1/STEP2
           showToast(`商品情報が見つかりませんでした\nJAN: ${jan}\n商品名・メーカーを手入力してください`, 8000);
           try { spDbg('[LOOKUP_TOAST_FALLBACK]', { reason: 'no_product_data', jan: jan }); } catch (_ltf) {}
+          // v23.9.153: 商品名未解決をローカルに記録
+          try {
+            if (!db.unresolvedProducts) db.unresolvedProducts = {};
+            var _urExisting = db.unresolvedProducts[jan];
+            db.unresolvedProducts[jan] = {
+              jan: jan,
+              firstSeenAt: (_urExisting && _urExisting.firstSeenAt) ? _urExisting.firstSeenAt : Date.now(),
+              lastSeenAt: Date.now(),
+              source: 'barcode_lookup_failed',
+              store: curStore,
+              status: 'unresolved'
+            };
+            saveLocalOnly();
+            try { spDbg('[UNRESOLVED_PRODUCT_SAVED]', { jan: jan, store: curStore }); } catch (_urDbg) {}
+          } catch (_urErr) {}
         }
 
         {
