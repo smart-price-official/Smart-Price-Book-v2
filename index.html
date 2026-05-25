@@ -20,8 +20,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.154";
-  const BUILD_ID    = "2026-05-25_ui-cleanup-r1";
+  const APP_VERSION = "v23.9.155";
+  const BUILD_ID    = "2026-05-25_tech-debt-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -1183,7 +1183,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
           <label class="form-check-label small text-secondary" for="family-hide-purchases">購入商品を隠す（家族共有用／準備中）</label>
         </div>
         <div class="d-grid gap-2">
-          <button type="button" class="btn btn-secondary" id="familySaveBtn">保存</button>
+          <button type="button" class="btn btn-secondary" id="familySaveBtn" onclick="spSaveFamilyCode()">保存</button>
         <div class="mt-3">
           <div class="small text-secondary mb-1">家族共有コード（任意）</div>
           <div class="d-flex gap-2 mb-2">
@@ -2596,23 +2596,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
     }
   }
 
-  /**
-   * P1: URLから招待コードを読み取り
-   * @returns {string|null} invite code (例: "XXXX") または null
-   */
-  function parseInviteCode() {
-    try {
-      const params = new URL(location.href).searchParams;
-      // 'ref' パラメータ優先（紹介リンクで生成）、互換のため'invite'も読む
-      const invite = params.get('ref') || params.get('invite');
-      if (invite && invite.trim().length > 0) {
-        return invite.trim();
-      }
-    } catch(e) {
-      if (isDebug()) console.warn('[InviteCode] Failed to parse:', e);
-    }
-    return null;
-  }
+  // v23.9.155: parseInviteCode旧版削除（Firebase解決版IIFEに統合済み L12427）
 
   /**
    * P0: JANキャッシュを取得（LocalStorage）
@@ -12033,15 +12017,39 @@ function checkReferralQualification(referredUserId) {
 
 function updateReferralStatus() {
   if (!db || !db.config || !db.config.referredBy) return;
-  
-  const myId = db.config.personalId;
-  const qualified = checkReferralQualification(myId);
-  
+
+  var myId = db.config.personalId;
+  var inviterId = db.config.referredBy;
+  var qualified = checkReferralQualification(myId);
+
   if (qualified && !db.config.referralQualified) {
     db.config.referralQualified = true;
     db.config.referralQualifiedDate = Date.now();
     if (typeof saveLocalOnly === 'function') saveLocalOnly();
   }
+
+  // Firebase referrals/{inviterId}/{myId} に自分の利用状況を書き込む
+  try {
+    var _fns = window._fbFns || {};
+    var _ref = _fns.ref;
+    var _set = _fns.set;
+    if (window.firebaseDb && _ref && _set && inviterId && myId) {
+      var _prods = db.products ? Object.values(db.products).filter(function(p) { return p.userId === myId; }) : [];
+      var _storeSet = {};
+      _prods.forEach(function(p) { if (p.store) _storeSet[p.store] = 1; });
+      var _storeCount = Object.keys(_storeSet).length;
+      var _writeData = {
+        products: _prods.length,
+        stores: _storeCount,
+        status: qualified ? 'qualified' : 'in_progress',
+        updatedAt: Date.now()
+      };
+      if (qualified) {
+        _writeData.qualifiedAt = db.config.referralQualifiedDate || Date.now();
+      }
+      _set(_ref(window.firebaseDb, 'referrals/' + inviterId + '/' + myId), _writeData);
+    }
+  } catch(e) {}
 }
 
 window.checkReferralQualification = checkReferralQualification;
