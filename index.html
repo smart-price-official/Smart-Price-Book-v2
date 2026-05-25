@@ -1,4 +1,4 @@
-﻿﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <!--APP: Smart Price
 AUTHOR: Claude
 POLICY: UI_FREEZE / 単一HTML / VERSION SSOT
@@ -20,8 +20,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.149";
-  const BUILD_ID    = "2026-05-25_tax-ui-fix-r1";
+  const APP_VERSION = "v23.9.150";
+  const BUILD_ID    = "2026-05-25_tax-calc-impl-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -1948,6 +1948,8 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   };
 
   const PARENT_CATEGORY_LIST = ['食品', '飲料', '菓子', '酒', '日用品', '衛生用品', '医薬品', '冷凍食品', '調味料', 'ペット用品', 'その他'];
+  // SP-250525-016: 軽減税率（8%）適用カテゴリ
+  const FOOD_TAX_CATEGORIES = ['食品', '飲料', '菓子', '冷凍食品', '調味料'];
 
   const INFER_RULES = [
     { keywords: ['お茶', 'コーヒー', '炭酸', 'ラテ', 'ジュース', 'コーラ', 'ミルク', '水', 'スポーツドリンク', 'ほうじ茶', '紅茶', 'カフェ', 'ミルクティー'], category: '飲料' },
@@ -4677,12 +4679,12 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       }
 
       // ✅ 統計計算（平均・最安・前回）
-      const allPrices = hlist.map(h => Number(h.price)).filter(p => !isNaN(p) && p > 0);
+      const allPrices = hlist.map(h => Number(calcDisplayPrice(h))).filter(p => !isNaN(p) && p > 0);
       const avgP = allPrices.length ? Math.round(allPrices.reduce((a,b)=>a+b,0)/allPrices.length) : null;
       const minP = allPrices.length ? Math.min(...allPrices) : null;
-      const lastPN = Number(last && last.price);
+      const lastPN = Number(last && calcDisplayPrice(last));
       const lastP = Number.isFinite(lastPN) ? lastPN : null;
-      const lastPriceMain = Number.isFinite(lastPN) ? String(last.price) : '—';
+      const lastPriceMain = Number.isFinite(lastPN) ? String(Math.floor(lastPN)) : '—';
       const statsHtml = (allPrices.length >= 2) ? `
         <div class="d-flex gap-2 mt-1" style="font-size:0.6rem; color:#aaa;">
           <span>平均 <b style="color:#fff;">${avgP}円</b></span>
@@ -5169,7 +5171,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     const box = document.getElementById('statsBox');
     if (!box) return;
     if (!Array.isArray(history) || history.length === 0) { box.innerHTML = "過去データなし"; return; }
-    const pArr = history.map(h => Number(h.price || 0)).filter(v => v > 0);
+    const pArr = history.map(h => Number(calcDisplayPrice(h) || 0)).filter(v => v > 0);
     if (!pArr.length) { box.innerHTML = "過去データなし"; return; }
     const avg = Math.floor(pArr.reduce((a,b)=>a+b,0)/pArr.length);
     const low = Math.min(...pArr);
@@ -5184,7 +5186,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
   function groupPriceLogsByShop(history) {
     const map = {};
     (Array.isArray(history) ? history : []).forEach(h => {
-      const price = Number(h && h.price || 0);
+      const price = Number(h && calcDisplayPrice(h) || 0);
       if (!price || price <= 0) return;
       const key = [h && h.store || "", h && h.branch || ""].filter(Boolean).join(" / ") || "不明店舗";
       if (!map[key]) map[key] = [];
@@ -5197,10 +5199,10 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     const result = [];
     Object.keys(grouped || {}).forEach(shop => {
       const arr = (grouped[shop] || [])
-        .filter(x => Number(x && x.price || 0) > 0)
+        .filter(x => Number(x && calcDisplayPrice(x) || 0) > 0)
         .sort((a, b) => Number(b && (b.created_at || b.ts || 0) || 0) - Number(a && (a.created_at || a.ts || 0) || 0));
       if (!arr.length) return;
-      const prices = arr.map(x => Number(x.price));
+      const prices = arr.map(x => Number(calcDisplayPrice(x)));
       const latest = prices[0];
       const min = Math.min(...prices);
       const avg = Math.round(prices.reduce((a, b) => a + b, 0) / prices.length);
@@ -5261,7 +5263,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
           <span class="text-white fw-bold">${displayStoreName(h.store) || '未設定'}</span>
         </div>
         <div class="text-end">
-          <span class="fw-bold text-white">${h.price}円</span><br>
+          <span class="fw-bold text-white">${calcDisplayPrice(h)}円</span><br>
           <span class="text-info small">タップで編集</span>
         </div>`;
       div.appendChild(row);
@@ -5277,7 +5279,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
 
     document.getElementById('inputPrice').value = h.price;
     document.getElementById('inputDisc').value = 0;
-    document.getElementById('taxIn').checked = true;
+    var editTaxMode = h.taxModeAtInput || 'in';
+    document.getElementById(editTaxMode === 'in' ? 'taxIn' : 'taxEx').checked = true;
 
     curStore = h.store || "未設定";
     const ind = document.getElementById('curStoreIndicator');
@@ -5504,7 +5507,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         const disc = Number(document.getElementById('inputDisc').value || 0);
         let finalP = Math.floor(val * (1 - disc/100));
         const isTaxEx = document.getElementById('taxEx').checked;
-        if (isTaxEx) finalP = Math.floor(finalP * 1.08);
+        var taxRateAtInput = FOOD_TAX_CATEGORIES.indexOf(safeCategory) >= 0 ? 0.08 : 0.10;
         spDbg('[EDIT_TAX_RECALC]', {
           mode: isTaxEx ? 'ex' : 'in',
           input: val,
@@ -5513,13 +5516,15 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         });
         p.history[editingHistIdx].price = finalP;
         p.history[editingHistIdx].store = curStore;
+        p.history[editingHistIdx].taxModeAtInput = isTaxEx ? 'ex' : 'in';
+        p.history[editingHistIdx].taxRateAtInput = taxRateAtInput;
         showToast("変更を反映しました", 2000);
         if (isDebug()) console.log("[SaveData] History updated:", editingHistIdx);
       } else {
         const disc = Number(document.getElementById('inputDisc').value || 0);
         let finalP = Math.floor(val * (1 - disc/100));
         const isTaxEx = document.getElementById('taxEx').checked;
-        if(isTaxEx) finalP = Math.floor(finalP * 1.08);
+        var taxRateAtInput = FOOD_TAX_CATEGORIES.indexOf(safeCategory) >= 0 ? 0.08 : 0.10;
         db.config.lastTax = isTaxEx ? "ex" : "in";
         
         // ✅ ストアの税別/税込既定値を保存
@@ -5534,6 +5539,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
           price: finalP,
           store: curStore,
           ts: Date.now(),
+          taxModeAtInput: isTaxEx ? 'ex' : 'in',
+          taxRateAtInput: taxRateAtInput,
           appVersion: window.APP_VERSION || '',
           buildId: window.BUILD_ID || '',
           savedAtVersion: window.FULL_VERSION || ''
@@ -8039,6 +8046,18 @@ return true;
   }
   window.renderStoreTaxSettingsPanel = renderStoreTaxSettingsPanel;
 
+  // SP-250525-016: 表示用税込換算
+  function calcDisplayPrice(h) {
+    var p = Number(h && h.price);
+    if (!Number.isFinite(p) || p <= 0) return p;
+    var mode = h.taxModeAtInput;
+    var rate = h.taxRateAtInput;
+    if (mode === 'ex' && Number.isFinite(rate) && rate > 0) {
+      return Math.floor(p * (1 + rate));
+    }
+    return p;
+  }
+  window.calcDisplayPrice = calcDisplayPrice;
 
   async function showHome() {
     try{ clearToasts(); }catch(e){}
@@ -13939,7 +13958,7 @@ function buildFullAuditSnapshot() {
         snap.storeHistoryCounts[st] = (snap.storeHistoryCounts[st] || 0) + 1;
         if (isYesterdayJst(h)) {
           yesterdayFound++;
-          const pr = Number(h.price);
+          const pr = Number(calcDisplayPrice(h));
           const pv = Number.isFinite(pr) ? pr : 0;
           snap.yesterdayTotalPrice += pv;
           snap.yesterdayEntries.push({ jan: jan, store: st, price: h.price, ts: h.ts, date: h.date });
