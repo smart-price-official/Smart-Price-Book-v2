@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <!--APP: Smart Price
 AUTHOR: Claude
 POLICY: UI_FREEZE / 単一HTML / VERSION SSOT
@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.146  BUILD_ID=2026-05-25_tax-settings-ui-r1
+APP_VERSION=v23.9.147  BUILD_ID=2026-05-25_p0-fix-r4
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.146";
-  const BUILD_ID    = "2026-05-25_tax-settings-ui-r1";
+  const APP_VERSION = "v23.9.147";
+  const BUILD_ID    = "2026-05-25_revert-tax-ui-r1";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -956,6 +956,12 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 
 <div class="store-area"><div id="store-list" class="store-list"></div></div>
 <!-- ✅ P0-4: 店舗ごと税設定UI（store-listと同階層に配置してformView依存を解消） -->
+<div id="storeTaxModeUI" style="display:none;" class="justify-content-center align-items-center gap-2 px-3 py-1">
+  <span class="text-secondary" style="font-size:0.78rem;">この店舗の税：</span>
+  <span style="padding:6px 14px;border:1px solid #444;border-radius:20px;font-size:0.85rem;background:#2c2c2c;color:#ccc;white-space:nowrap;cursor:pointer;" onclick="setStoreTaxMode('in')">税込</span>
+  <span style="padding:6px 14px;border:1px solid #444;border-radius:20px;font-size:0.85rem;background:#2c2c2c;color:#ccc;white-space:nowrap;cursor:pointer;" onclick="setStoreTaxMode('ex')">税別</span>
+</div>
+<div id="storeTaxChangeLink" style="display:none;text-align:center;padding:2px 0;"><span style="font-size:0.75rem;color:#888;text-decoration:underline;cursor:pointer;" onclick="document.getElementById('storeTaxModeUI').style.display='flex';this.parentElement.style.display='none';">税設定を変更</span></div>
 
 <!-- GPS診断パネル (debug=1のみ表示) -->
 <div id="gps-debug-panel">
@@ -1114,7 +1120,6 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
           <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelReferral">① 友人紹介</button>
           <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelFamily">② 家族共有</button>
           <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelSupport">③ 運営者へ質問／不具合報告</button>
-          <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelTaxSettings" onclick="renderStoreTaxSettingsPanel()">④ 店舗の税設定</button>
 </div>
       </div>
 
@@ -1342,14 +1347,6 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
         </div>
     </div>
     
-      <div id="panelTaxSettings" class="sp-panel mt-3" style="display:none;">
-        <div class="small text-secondary mb-3" style="opacity:.9;">店舗ごとに税込/税別の既定値を設定します。買い物時にストアを選ぶと自動で切り替わります。</div>
-        <div id="taxSettingsList"></div>
-        <div class="mt-3 d-grid">
-          <button type="button" class="btn btn-outline-secondary sp-back-btn" data-back="">戻る</button>
-        </div>
-      </div>
-
     <button id="syncBtn" class="btn btn-primary w-100 py-2 fw-bold mb-2" onclick="startMigration()">設定保存と同期</button>
     <button id="clearCacheBtn" class="btn btn-danger w-100 py-2 fw-bold mb-2" onclick="clearAllCache()">🔄 キャッシュクリア（表示崩れ修正）</button>
     <button id="webBtn" class="btn btn-outline-secondary w-100 py-2 fw-bold mb-2" onclick="openWebModal()">ブラウザ版へ（URL表示）</button>
@@ -4492,7 +4489,16 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
             if (isDebug()) console.log('[StoreTaxMode] Auto-switch:', curStore, '→', storeTaxMode);
           }
         }
-
+        // ✅ P0-4: 手動税設定UI 表示制御（設定済みは非表示・変更リンク表示）
+        const taxUI = document.getElementById('storeTaxModeUI');
+        const taxChangeLink = document.getElementById('storeTaxChangeLink');
+        if (storeTaxMode) {
+          if (taxUI) taxUI.style.display = 'none';
+          if (taxChangeLink) taxChangeLink.style.display = 'inline';
+        } else {
+          if (taxUI) taxUI.style.display = 'flex';
+          if (taxChangeLink) taxChangeLink.style.display = 'none';
+        }
       };
       list.appendChild(span);
     });
@@ -7994,47 +8000,19 @@ return true;
     try { const me = document.getElementById('manual-entry'); if(me) me.style.display='none'; } catch(e) {}
   }
 
-  // ✅ P0-4: 店舗ごと税設定を手動変更（設定画面からも呼べるよう store 引数対応）
-  function setStoreTaxMode(mode, storeName) {
-    const target = storeName || curStore;
-    if (!target || target === '未設定') return;
+  // ✅ P0-4: 店舗ごと税設定を手動変更
+  function setStoreTaxMode(mode) {
+    if (!curStore || curStore === '未設定') return;
     if (!db.config.storeTaxModes) db.config.storeTaxModes = {};
-    db.config.storeTaxModes[target] = mode;
+    db.config.storeTaxModes[curStore] = mode;
     saveLocalOnly();
-    if (!storeName) {
-      const taxModeId = mode === 'in' ? 'taxIn' : 'taxEx';
-      const taxEl = document.getElementById(taxModeId);
-      if (taxEl) taxEl.checked = true;
-    }
-    showToast(💳 ：税に設定しました, 2000);
-    if (isDebug()) console.log('[StoreTaxMode] Manual set:', target, '→', mode);
-    try { renderStoreTaxSettingsPanel(); } catch(_) {}
+    const taxModeId = mode === 'in' ? 'taxIn' : 'taxEx';
+    const taxEl = document.getElementById(taxModeId);
+    if (taxEl) taxEl.checked = true;
+    showToast(`💳 ${curStore}：税${mode === 'in' ? '込' : '別'}に設定しました`, 2000);
+    if (isDebug()) console.log('[StoreTaxMode] Manual set:', curStore, '→', mode);
   }
   window.setStoreTaxMode = setStoreTaxMode;
-
-  function renderStoreTaxSettingsPanel() {
-    const container = document.getElementById('taxSettingsList');
-    if (!container) return;
-    const modes = (db && db.config && db.config.storeTaxModes) ? db.config.storeTaxModes : {};
-    const stores = Object.keys(modes);
-    if (stores.length === 0) {
-      container.innerHTML = '<div class="small text-secondary text-center py-3">店舗を選択すると自動で追加されます</div>';
-      return;
-    }
-    container.innerHTML = stores.map(function(s) {
-      const m = modes[s];
-      const inSt = m === 'in' ? 'background:#555;color:#fff;' : 'background:#2c2c2c;color:#888;';
-      const exSt = m === 'ex' ? 'background:#555;color:#fff;' : 'background:#2c2c2c;color:#888;';
-      const esc = s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-      return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #2a2a2a;">'
-        + '<span style="font-size:0.85rem;color:#ccc;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:8px;">' + s + '</span>'
-        + '<div style="display:flex;gap:6px;flex-shrink:0;">'
-        + '<span style="padding:5px 12px;border:1px solid #444;border-radius:16px;font-size:0.8rem;cursor:pointer;' + inSt + '" onclick="setStoreTaxMode(\'in\',\'' + esc + '\')">税込</span>'
-        + '<span style="padding:5px 12px;border:1px solid #444;border-radius:16px;font-size:0.8rem;cursor:pointer;' + exSt + '" onclick="setStoreTaxMode(\'ex\',\'' + esc + '\')">税別</span>'
-        + '</div></div>';
-    }).join('');
-  }
-  window.renderStoreTaxSettingsPanel = renderStoreTaxSettingsPanel;
 
 
   async function showHome() {
@@ -11080,8 +11058,8 @@ function spVisibleTrace(tag, payload, cls) {
   const state = { isOpen: false, currentPanel: 'Main', history: [], initialized: false };
   let modal = null, panels = {}, titleEl = null;
   
-  const PANELS = { Main: 'settingsMainMenu', Referral: 'panelReferral', Family: 'panelFamily', Support: 'panelSupport', Operator: 'panelOperator', TaxSettings: 'panelTaxSettings' };
-  const TITLES = { Main: '設定', Referral: '友人紹介', Family: '家族共有', Support: '運営者へ質問', Operator: '管理メニュー', TaxSettings: '店舗の税設定' };
+  const PANELS = { Main: 'settingsMainMenu', Referral: 'panelReferral', Family: 'panelFamily', Support: 'panelSupport', Operator: 'panelOperator' };
+  const TITLES = { Main: '設定', Referral: '友人紹介', Family: '家族共有', Support: '運営者へ質問', Operator: '管理メニュー' };
   
   function init() {
     if (state.initialized) return;
