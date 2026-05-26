@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.159  BUILD_ID=2026-05-26_theme-step1-var化
+APP_VERSION=v23.9.161  BUILD_ID=2026-05-26_theme-step3-var化
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.160";
-  const BUILD_ID    = "2026-05-26_theme-step2-var化";
+  const APP_VERSION = "v23.9.161";
+  const BUILD_ID    = "2026-05-26_theme-step3-var化";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -236,7 +236,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
     .v-badge { background: var(--sp-accent); color: white; font-size: 0.7rem; padding: 2px 8px; border-radius: 10px; margin-left: 10px; font-weight: bold; }
     .store-area { background: var(--sp-card); padding: 10px; border-bottom: 1px solid var(--sp-border); min-height: 55px; }
     .store-list { display: flex; overflow-x: auto; gap: 8px; padding: 5px 0; -webkit-overflow-scrolling: touch; }
-    .store-tag { padding: 6px 14px; border: 1px solid var(--sp-border); border-radius: 20px; white-space: nowrap; font-size: 0.85rem; background: #2c2c2c; color: var(--sp-text-muted); }
+    .store-tag { padding: 6px 14px; border: 1px solid var(--sp-border); border-radius: 20px; white-space: nowrap; font-size: 0.85rem; background: var(--sp-card-alt); color: var(--sp-text-muted); }
     .store-tag.active { background: var(--sp-primary); color: white; border-color: var(--sp-primary); }
     .store-tag.gps-btn { border: 1px solid var(--sp-accent); color: var(--sp-accent); }
     .store-tag.gps-btn.on { background: var(--sp-accent); color: white; }
@@ -246,22 +246,22 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 
     .card { background-color: var(--sp-card); border: 1px solid var(--sp-border); margin-bottom: 10px; border-radius: 12px; overflow: hidden; }
     .price-card { padding: 12px; border-left: 4px solid var(--sp-border); cursor: pointer; }
-    .price-card.cheap { border-left-color: var(--sp-accent); background: linear-gradient(90deg, #2a1a1a 0%, #1e1e1e 100%); }
+    .price-card.cheap { border-left-color: var(--sp-accent); background: linear-gradient(90deg, color-mix(in srgb, var(--sp-danger) 20%, var(--sp-card)) 0%, var(--sp-card) 100%); }
     .prod-thumb { width: 68px; height: 68px; object-fit: contain; background: #fff; border-radius: 8px; margin-right: 12px; }
 
-    .price-main { font-size: 1.25rem; font-weight: bold; color: #fff; line-height: 1; }
+    .price-main { font-size: 1.25rem; font-weight: bold; color: var(--sp-text); line-height: 1; }
     .stats-strip { display: flex; flex-direction: column; background: var(--sp-card-alt); padding: 10px; border-radius: 8px; margin-bottom: 15px; font-size: 0.75rem; border: 1px solid var(--sp-border); }
     .stats-row { display: flex; justify-content: space-around; width: 100%; }
-    .stat-item { text-align: center; flex: 1; color: #aaa; }
-    .stat-val { display: block; font-weight: bold; color: #fff; font-size: 0.9rem; }
+    .stat-item { text-align: center; flex: 1; color: var(--sp-text-muted); }
+    .stat-val { display: block; font-weight: bold; color: var(--sp-text); font-size: 0.9rem; }
 
     .sp-store-price-box { display:flex; flex-direction:column; background:var(--sp-card-alt); padding:10px; border-radius:8px; margin-bottom:15px; font-size:0.75rem; border:1px solid var(--sp-border); }
-    .sp-store-price-title { font-weight:700; color:#fff; margin-bottom:6px; }
+    .sp-store-price-title { font-weight:700; color:var(--sp-text); margin-bottom:6px; }
     .sp-store-price-row { padding:6px 0; border-top:1px solid var(--sp-border); }
     .sp-store-price-row:first-of-type { border-top:none; }
-    .sp-store-price-shop { font-weight:600; color:#fff; }
-    .sp-store-price-meta { font-size:12px; color:#aaa; }
-    .sp-store-price-empty { display:flex; flex-direction:column; background:var(--sp-card-alt); padding:10px; border-radius:8px; margin-bottom:15px; font-size:12px; color:#777; border:1px solid var(--sp-border); }
+    .sp-store-price-shop { font-weight:600; color:var(--sp-text); }
+    .sp-store-price-meta { font-size:12px; color:var(--sp-text-muted); }
+    .sp-store-price-empty { display:flex; flex-direction:column; background:var(--sp-card-alt); padding:10px; border-radius:8px; margin-bottom:15px; font-size:12px; color:var(--sp-text-muted); border:1px solid var(--sp-border); }
 
     .history-row { font-size: 0.8rem; padding: 10px 0; border-top: 1px solid var(--sp-border); display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
     
@@ -408,7 +408,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
     .city-chip:active { background: var(--sp-primary); color: white; }
 
     .url-box { font-size: 0.9rem; padding: 12px; border-radius: 12px; }
-    .hint { font-size: 0.75rem; color: #aaa; line-height: 1.4; }
+    .hint { font-size: 0.75rem; color: var(--sp-text-muted); line-height: 1.4; }
 
     /* ✅ デバッグパネル - 閉じるボタン付き、ドラッグ可能 */
     #debug-panel {
@@ -805,7 +805,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 }
 #sp-dbg-bar button {
   font: 10px monospace; padding: 2px 8px; border: 1px solid var(--sp-border);
-  background: var(--sp-card-alt); color: #fff; border-radius: 3px; cursor: pointer;
+  background: var(--sp-card-alt); color: var(--sp-text); border-radius: 3px; cursor: pointer;
 }
 #sp-dbg-toggle {
   position: fixed; bottom: 0; right: 60px;
@@ -934,6 +934,8 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 :root {
   /* --sp-card-alt は :root で派生定義（各テーマ未指定時のフォールバック）*/
   --sp-card-alt: color-mix(in srgb, var(--sp-card) 92%, white);
+  /* Step3: accent glow 派生（rgba(255,82,82,…) の var化用） */
+  --sp-accent-glow: color-mix(in srgb, var(--sp-accent) 30%, transparent);
 }
 :root,
 body[data-theme="standard"] {
@@ -1099,8 +1101,8 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 <div class="container p-3">
   <div id="mainView">
     <div class="row g-2 mb-4">
-      <div class="col-7"><button id="scanBtnTop" class="btn btn-danger w-100 py-3 rounded-4 shadow" onclick="startScanner()"><i class="bi bi-upc-scan fs-1"></i><br>スキャン</button></div>
-      <div class="col-5"><button class="btn btn-dark w-100 py-3 rounded-4 border-secondary shadow" onclick="window.openBarcodeManual && window.openBarcodeManual()"><i class="bi bi-keyboard fs-1"></i><br>手入力</button></div>
+      <div class="col-7"><button id="scanBtnTop" class="btn sp-btn-primary w-100 py-3 rounded-4 shadow" onclick="startScanner()"><i class="bi bi-upc-scan fs-1"></i><br>スキャン</button></div>
+      <div class="col-5"><button class="btn sp-btn-secondary w-100 py-3 rounded-4 shadow" onclick="window.openBarcodeManual && window.openBarcodeManual()"><i class="bi bi-keyboard fs-1"></i><br>手入力</button></div>
     </div>
     <div id="historyList"></div>
   </div>
@@ -1126,9 +1128,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
           <div class="flex-grow-1">
             <div class="d-flex align-items-center mb-2 gap-1">
               <input type="text" id="inputName" class="form-control bg-dark text-white border-secondary" placeholder="商品名（内容量）" style="flex:1;">
-              <button id="aiNameBtn" onclick="aiRefineName()" title="AIで商品名を整える"
-                style="flex-shrink:0; width:36px; height:36px; border-radius:8px; border:1px solid #555; background:#1a1a2e; color:#a78bfa; font-size:16px; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:all 0.2s;"
-                onmouseenter="this.style.background='#2d2d4e'" onmouseleave="this.style.background='#1a1a2e'">✨</button>
+              <button id="aiNameBtn" onclick="aiRefineName()" title="AIで商品名を整える" class="sp-ai-btn">✨</button>
             </div>
             <select id="inputCategory" class="form-control bg-dark text-white border-secondary mb-2" style="font-size:0.85rem; padding:4px;"></select>
             <!-- ✅ サブカテゴリ復活（最小UI） -->
@@ -1137,7 +1137,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
           </div>
         </div>
 
-        <div id="priceSection" class="mb-3 p-3 border rounded border-danger" style="background:#1a1a1a; border-width: 1px !important; box-sizing: border-box; max-width: 100%; overflow: hidden; padding: 12px !important;">
+        <div id="priceSection" class="mb-3 p-3 border rounded border-danger sp-bg-card" style="border-width: 1px !important; box-sizing: border-box; max-width: 100%; overflow: hidden; padding: 12px !important;">
           <div id="calcOptionArea" class="d-flex align-items-center mb-2">
             <div class="btn-group btn-group-sm w-100 me-2">
               <input type="radio" class="btn-check" name="taxMode" id="taxEx" value="ex" checked>
@@ -1493,7 +1493,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 <!-- 生活圏設定モーダル -->
 <!-- [image-picker] 画像候補ピッカーモーダル -->
 <div id="imagePickerModal" class="modal" style="z-index:99500;">
-  <div class="modal-content" style="max-width:380px; width:95%; max-height:85vh; overflow-y:auto; background:#1a1a1a; border-radius:16px; padding:16px;">
+  <div class="modal-content sp-bg-card" style="max-width:380px; width:95%; max-height:85vh; overflow-y:auto; border-radius:16px; padding:16px;">
     <h5 class="text-white mb-3 text-center" style="font-size:1rem;">📷 画像を選ぶ</h5>
     <div id="imagePickerGrid" style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px; min-height:80px;">
       <div class="text-secondary text-center py-4" style="grid-column:1/-1;">読み込み中…</div>
@@ -1660,7 +1660,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   text-align: center;
   background: var(--sp-card-alt);
   border: 2px solid var(--sp-border);
-  color: #fff;
+  color: var(--sp-text);
   border-radius: 8px;
   transition: all 0.2s;
 }
@@ -1668,7 +1668,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   border-color: var(--sp-accent);
   outline: none;
   background: var(--sp-card-alt);
-  box-shadow: 0 0 10px rgba(255,82,82,0.3);
+  box-shadow: 0 0 10px var(--sp-accent-glow);
 }
 .barcode-digit.filled {
   background: var(--sp-card-alt);
@@ -1695,7 +1695,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   font-weight: bold;
   background: var(--sp-card-alt);
   border: 2px solid var(--sp-border);
-  color: #fff;
+  color: var(--sp-text);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s;
@@ -1704,6 +1704,24 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   background: var(--sp-accent);
   transform: scale(0.95);
 }
+
+/* === Step3: テーマ対応ユーティリティ === */
+.sp-btn-primary { background: var(--sp-button-bg) !important; color: var(--sp-button-text) !important; border-color: var(--sp-primary) !important; }
+.sp-btn-secondary { background: var(--sp-card-alt) !important; color: var(--sp-text) !important; border: 1px solid var(--sp-border) !important; }
+.sp-ai-btn { background: var(--sp-card); color: #a78bfa; border: 1px solid var(--sp-border); flex-shrink: 0; width: 36px; height: 36px; border-radius: 8px; font-size: 16px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; }
+.sp-ai-btn:hover { background: var(--sp-card-alt); }
+.sp-bg-card { background: var(--sp-card) !important; }
+.sp-hint-box { background: var(--sp-card); padding: 10px; border-radius: 8px; border: 1px solid var(--sp-border); }
+.sp-text-accent { color: var(--sp-accent) !important; }
+.sp-text-normal { color: var(--sp-text) !important; }
+.sp-text-price { color: var(--sp-text) !important; }
+.sp-text-min-price { color: var(--sp-danger) !important; }
+.sp-text-muted-sp { font-size: 0.6rem; color: var(--sp-text-muted); }
+.sp-tax-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--sp-border); }
+.sp-tax-store-name { font-size: 0.85rem; color: var(--sp-text-muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 8px; }
+.sp-tax-btn { padding: 5px 12px; border-radius: 16px; font-size: 0.8rem; cursor: pointer; border: 1px solid var(--sp-border); background: var(--sp-card-alt); color: var(--sp-text-muted); }
+.sp-tax-selected-in { background: #4a90d9 !important; color: #fff !important; border-color: #4a90d9 !important; }
+.sp-tax-selected-ex { background: #e07b54 !important; color: #fff !important; border-color: #e07b54 !important; }
 
 </style>
 
@@ -1729,8 +1747,8 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
       <button class="btn btn-danger flex-grow-1" onclick="openUrlFromBox('webUrlDebug')">開く</button>
     </div>
 
-    <div class="hint mb-3" style="background:#1a1a1a; padding:10px; border-radius:8px; border:1px solid #333;">
-      <b style="color:#ff5252;">📱 アプリとして使う（PWA）</b><br>
+    <div class="hint mb-3 sp-hint-box">
+      <b class="sp-text-accent">📱 アプリとして使う（PWA）</b><br>
       <span style="font-size:0.7rem; color:#aaa;">
       <b>Android（Chrome/Edge）：</b> ブラウザで開く → メニュー（⋮）→「ホーム画面に追加」<br>
       <b>iOS（Safari）：</b> ブラウザで開く → 共有ボタン（□↑）→「ホーム画面に追加」<br>
@@ -4829,16 +4847,16 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       const lastP = Number.isFinite(lastPN) ? lastPN : null;
       const lastPriceMain = Number.isFinite(lastPN) ? String(Math.floor(lastPN)) : '—';
       const statsHtml = (allPrices.length >= 2) ? `
-        <div class="d-flex gap-2 mt-1" style="font-size:0.6rem; color:#aaa;">
-          <span>平均 <b style="color:#fff;">${avgP}円</b></span>
-          <span>最安 <b style="color:#e74c3c;">${minP}円</b></span>
-          <span>前回 <b style="color:#fff;">${lastP}円</b></span>
+        <div class="d-flex gap-2 mt-1 sp-text-muted-sp">
+          <span>平均 <b class="sp-text-normal">${avgP}円</b></span>
+          <span>最安 <b class="sp-text-min-price">${minP}円</b></span>
+          <span>前回 <b class="sp-text-normal">${lastP}円</b></span>
         </div>` : '';
       div.innerHTML = `
         <div class="d-flex align-items-center">
           <img id="${imgId}" src="${imgSrc}" class="prod-thumb" referrerpolicy="no-referrer" onerror="this.src=placeholderImg();this.onerror=null;">
           <div class="flex-grow-1 overflow-hidden">
-            <div class="fw-bold text-white small text-truncate">${spGetDisplayName(it.name, it.code)}</div>
+            <div class="fw-bold sp-text-normal small text-truncate">${spGetDisplayName(it.name, it.code)}</div>
             <div class="text-secondary" style="font-size:0.6rem;">${last.store || '未設定'}</div>
             ${statsHtml}
           </div>
@@ -5405,11 +5423,11 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       row.innerHTML =
         '<div class="flex-grow-1">' +
           '<span class="text-secondary small">' + dateStr + '</span><br>' +
-          '<span class="text-white small text-truncate d-block">' + spGetDisplayName(_hName, _hJan) + '</span>' +
-          '<span class="text-white fw-bold">' + (displayStoreName(h.store) || '未設定') + '</span>' +
+          '<span class="sp-text-normal small text-truncate d-block">' + spGetDisplayName(_hName, _hJan) + '</span>' +
+          '<span class="sp-text-normal fw-bold">' + (displayStoreName(h.store) || '未設定') + '</span>' +
         '</div>' +
         '<div class="text-end">' +
-          '<span class="fw-bold text-white">' + calcDisplayPrice(h) + '円</span><br>' +
+          '<span class="fw-bold sp-text-normal">' + calcDisplayPrice(h) + '円</span><br>' +
           '<span class="text-info small">タップで編集</span>' +
         '</div>';
       div.appendChild(row);
@@ -8183,14 +8201,14 @@ return true;
     }
     container.innerHTML = stores.map(function(s) {
       var m = modes[s];
-      var inSt = m === 'in' ? 'background:#4a90d9;color:#fff;' : 'background:#2c2c2c;color:#888;';
-      var exSt = m === 'ex' ? 'background:#e07b54;color:#fff;' : 'background:#2c2c2c;color:#888;';
+      var inCls = m === 'in' ? 'sp-tax-selected-in' : '';
+      var exCls = m === 'ex' ? 'sp-tax-selected-ex' : '';
       var esc = s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #2a2a2a;">'
-        + '<span style="font-size:0.85rem;color:#ccc;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:8px;">' + s + '</span>'
+      return '<div class="sp-tax-row">'
+        + '<span class="sp-tax-store-name">' + s + '</span>'
         + '<div style="display:flex;gap:6px;flex-shrink:0;">'
-        + '<span style="padding:5px 12px;border:1px solid #444;border-radius:16px;font-size:0.8rem;cursor:pointer;' + inSt + '" data-store="' + esc + '" data-mode="in" onclick="setStoreTaxMode(this.getAttribute(\'data-mode\'),this.getAttribute(\'data-store\'))">税込</span>'
-        + '<span style="padding:5px 12px;border:1px solid #444;border-radius:16px;font-size:0.8rem;cursor:pointer;' + exSt + '" data-store="' + esc + '" data-mode="ex" onclick="setStoreTaxMode(this.getAttribute(\'data-mode\'),this.getAttribute(\'data-store\'))">税別</span>'
+        + '<span class="sp-tax-btn ' + inCls + '" data-store="' + esc + '" data-mode="in" onclick="setStoreTaxMode(this.getAttribute(\'data-mode\'),this.getAttribute(\'data-store\'))">税込</span>'
+        + '<span class="sp-tax-btn ' + exCls + '" data-store="' + esc + '" data-mode="ex" onclick="setStoreTaxMode(this.getAttribute(\'data-mode\'),this.getAttribute(\'data-store\'))">税別</span>'
         + '</div></div>';
     }).join('');
   }
