@@ -1,0 +1,14 @@
+Smart Price / v23.9.118 単体HTML の入手先
+
+■ ファイル名（このフォルダ内）
+  Cursor_SmartPrice_v23.9.118_index.html
+
+■ GitHub からブラウザで保存（公式リポジトリ・コミット 8a13536 固定）
+  ページを開いたあと 「…」メニューや Ctrl+S で保存してください。
+  https://github.com/smart-price-official/Smart-Price-Book-v2/raw/8a13536/index.html
+
+■ 別形式（開発者向け raw）
+  https://raw.githubusercontent.com/smart-price-official/Smart-Price-Book-v2/8a13536/index.html
+
+■ 記録
+  APP_VERSION=v23.9.118 / BUILD_ID=2026-05-06_search-pipeline-diagnostics-r1 / commit=8a13536
