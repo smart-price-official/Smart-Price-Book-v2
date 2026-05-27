@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.161  BUILD_ID=2026-05-26_theme-step3-var化
+APP_VERSION=v23.9.163  BUILD_ID=2026-05-27_theme-worldview-final
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.161";
-  const BUILD_ID    = "2026-05-26_theme-step3-var化";
+  const APP_VERSION = "v23.9.163";
+  const BUILD_ID    = "2026-05-27_theme-worldview-final";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -236,12 +236,13 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
     .v-badge { background: var(--sp-accent); color: white; font-size: 0.7rem; padding: 2px 8px; border-radius: 10px; margin-left: 10px; font-weight: bold; }
     .store-area { background: var(--sp-card); padding: 10px; border-bottom: 1px solid var(--sp-border); min-height: 55px; }
     .store-list { display: flex; overflow-x: auto; gap: 8px; padding: 5px 0; -webkit-overflow-scrolling: touch; }
-    .store-tag { padding: 6px 14px; border: 1px solid var(--sp-border); border-radius: 20px; white-space: nowrap; font-size: 0.85rem; background: var(--sp-card-alt); color: var(--sp-text-muted); }
+    .store-tag { padding: 6px 14px; border: 1px solid var(--sp-border); border-radius: 20px; white-space: nowrap; font-size: 0.85rem; background: color-mix(in srgb, var(--sp-card) 90%, var(--sp-bg)); color: var(--sp-text-muted); }
     .store-tag.active { background: var(--sp-primary); color: white; border-color: var(--sp-primary); }
-    .store-tag.gps-btn { border: 1px solid var(--sp-accent); color: var(--sp-accent); }
-    .store-tag.gps-btn.on { background: var(--sp-accent); color: white; }
-    .store-tag.add-store { border: 1px dashed var(--sp-border); color: #ddd; background: var(--sp-card-alt); }
-    .store-tag.add-store:active { background: var(--sp-card-alt); }
+    .store-tag.gps-btn { background: color-mix(in srgb, var(--sp-bg) 80%, var(--sp-border)); border: 1px solid var(--sp-primary); color: var(--sp-primary); opacity: 1; }
+    .store-tag.gps-btn.on { background: var(--sp-primary); color: var(--sp-button-text); border-color: var(--sp-primary); opacity: 1; }
+    .store-tag.unset { background: var(--sp-button-bg); color: var(--sp-button-text); border: 1px solid var(--sp-primary); font-weight: bold; }
+    .store-tag.add-store { background: var(--sp-primary); color: var(--sp-button-text); border: 1px dashed var(--sp-primary); }
+    .store-tag.add-store:active { background: var(--sp-button-bg); opacity: 0.85; }
     .gps-status { font-size: 0.6rem; margin-left: 4px; opacity: 0.9; }
 
     .card { background-color: var(--sp-card); border: 1px solid var(--sp-border); margin-bottom: 10px; border-radius: 12px; overflow: hidden; }
@@ -531,7 +532,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 #settingsModal .sp-menu-btn{
   border:0 !important;
   background: rgba(45,108,223,0.95) !important;
-  color:#fff !important;
+  color:var(--sp-button-text) !important;
   font-weight:800 !important;
   padding:14px 12px !important;
   border-radius:14px !important;
@@ -539,7 +540,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 #settingsModal .sp-back-btn{
   border:0 !important;
   background: rgba(255,255,255,0.16) !important;
-  color:#fff !important;
+  color:var(--sp-text) !important;
   font-weight:700 !important;
   padding:12px 12px !important;
   border-radius:14px !important;
@@ -555,7 +556,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 #settingsModal #webBtn{
   border:0 !important;
   background: rgba(255,255,255,0.12) !important;
-  color:#fff !important;
+  color:var(--sp-text) !important;
   border-radius:14px !important;
 }
 
@@ -930,134 +931,131 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   width: 100%;
 }
 #img-diag-copy-btn:active { background: #2a2a5a; }
-/* === COLOR THEME SYSTEM (v23.9.158 - Step1 GO / 16 vars / 17 themes) === */
+/* === COLOR THEME SYSTEM (v23.9.163 - World-View Final / 14 vars / 17 themes) === */
 :root {
-  /* --sp-card-alt は :root で派生定義（各テーマ未指定時のフォールバック）*/
   --sp-card-alt: color-mix(in srgb, var(--sp-card) 92%, white);
-  /* Step3: accent glow 派生（rgba(255,82,82,…) の var化用） */
   --sp-accent-glow: color-mix(in srgb, var(--sp-accent) 30%, transparent);
 }
 :root,
 body[data-theme="standard"] {
-  --sp-bg:#121212; --sp-card:#1e1e1e; --sp-card-alt:#262626;
-  --sp-text:#e0e0e0; --sp-text-muted:#cfcfcf; --sp-border:#333333;
+  --sp-bg:#0f0f12; --sp-card:#1c1c20; --sp-card-alt:#26262c;
+  --sp-text:#ececf0; --sp-text-muted:#a0a0a8; --sp-border:#2a2a30;
   --sp-header-bg:#D50000; --sp-primary:#D50000; --sp-accent:#ff5252;
   --sp-success:#00c853; --sp-warning:#ffeb3b; --sp-danger:#ff1744;
-  --sp-shadow:rgba(0,0,0,.5); --sp-button-bg:#D50000; --sp-button-text:#ffffff;
+  --sp-shadow:rgba(213,0,0,.22); --sp-button-bg:#D50000; --sp-button-text:#ffffff;
   --sp-danger-form:#dc3545;
 }
 body[data-theme="youth-pink"] {
-  --sp-bg:#fff5fa; --sp-card:#ffffff;
-  --sp-text:#5a2e44; --sp-text-muted:#b07d95; --sp-border:#f3d9e6;
-  --sp-header-bg:#ff5fa2; --sp-primary:#ff5fa2; --sp-accent:#ffd23f;
-  --sp-success:#37b86b; --sp-warning:#f4a900; --sp-danger:#e23d6d;
-  --sp-shadow:rgba(214,58,130,.15); --sp-button-bg:#ff5fa2; --sp-button-text:#ffffff;
+  --sp-bg:#ffd6e7; --sp-card:#ffe8f2;
+  --sp-text:#4a1030; --sp-text-muted:#b86080; --sp-border:#f0b0cc;
+  --sp-header-bg:#e91e8c; --sp-primary:#e91e8c; --sp-accent:#ffd23f;
+  --sp-success:#2fae62; --sp-warning:#f4a000; --sp-danger:#de2e60;
+  --sp-shadow:rgba(233,30,140,.22); --sp-button-bg:#e91e8c; --sp-button-text:#ffffff;
 }
 body[data-theme="dusty-rose"] {
-  --sp-bg:#f7f1ea; --sp-card:#ffffff;
-  --sp-text:#4a3b33; --sp-text-muted:#9a8a7e; --sp-border:#e7d7c6;
-  --sp-header-bg:#92606f; --sp-primary:#c08497; --sp-accent:#c97b5a;
-  --sp-success:#5a8a64; --sp-warning:#c08a3f; --sp-danger:#b85a5a;
-  --sp-shadow:rgba(74,59,51,.12); --sp-button-bg:#c08497; --sp-button-text:#ffffff;
+  --sp-bg:#e8cfc0; --sp-card:#f2ddd3;
+  --sp-text:#3d1f18; --sp-text-muted:#9a6a60; --sp-border:#d4a898;
+  --sp-header-bg:#8a5462; --sp-primary:#b87082; --sp-accent:#c97b5a;
+  --sp-success:#588460; --sp-warning:#b8843a; --sp-danger:#ad5454;
+  --sp-shadow:rgba(138,84,98,.22); --sp-button-bg:#b87082; --sp-button-text:#ffffff;
 }
 body[data-theme="sage-modern"] {
-  --sp-bg:#f5f3ea; --sp-card:#ffffff;
-  --sp-text:#3f4135; --sp-text-muted:#8a8a76; --sp-border:#e2e0d2;
-  --sp-header-bg:#647155; --sp-primary:#8a9a7b; --sp-accent:#c2a44d;
-  --sp-success:#5b8a52; --sp-warning:#c2a44d; --sp-danger:#b06a4a;
-  --sp-shadow:rgba(63,65,53,.12); --sp-button-bg:#8a9a7b; --sp-button-text:#ffffff;
+  --sp-bg:#ccd8b8; --sp-card:#dce8c8;
+  --sp-text:#1e2a14; --sp-text-muted:#587050; --sp-border:#aac090;
+  --sp-header-bg:#586846; --sp-primary:#819570; --sp-accent:#c2a44d;
+  --sp-success:#57854f; --sp-warning:#c2a44d; --sp-danger:#a86342;
+  --sp-shadow:rgba(88,104,70,.22); --sp-button-bg:#819570; --sp-button-text:#ffffff;
 }
 body[data-theme="navy-elegant"] {
-  --sp-bg:#f4f5f7; --sp-card:#ffffff;
-  --sp-text:#1e2733; --sp-text-muted:#6c7585; --sp-border:#dde1e8;
-  --sp-header-bg:#243a5e; --sp-primary:#243a5e; --sp-accent:#8a93a6;
-  --sp-success:#2f7a55; --sp-warning:#bb8a2e; --sp-danger:#b23a48;
-  --sp-shadow:rgba(30,39,51,.14); --sp-button-bg:#243a5e; --sp-button-text:#ffffff;
+  --sp-bg:#ccd4e0; --sp-card:#dce4f0;
+  --sp-text:#0a1628; --sp-text-muted:#405070; --sp-border:#a8b8cc;
+  --sp-header-bg:#1d3258; --sp-primary:#1d3258; --sp-accent:#8893a8;
+  --sp-success:#2a724f; --sp-warning:#b58428; --sp-danger:#a8333f;
+  --sp-shadow:rgba(29,50,88,.24); --sp-button-bg:#1d3258; --sp-button-text:#ffffff;
 }
 body[data-theme="access-green"] {
-  --sp-bg:#f3efe6; --sp-card:#ffffff;
-  --sp-text:#1c1c18; --sp-text-muted:#5a574e; --sp-border:#c9c2b2;
-  --sp-header-bg:#123c27; --sp-primary:#1f5c3d; --sp-accent:#b08d57;
-  --sp-success:#1f7a44; --sp-warning:#b5680a; --sp-danger:#b01818;
-  --sp-shadow:rgba(28,28,24,.18); --sp-button-bg:#1f5c3d; --sp-button-text:#ffffff;
+  --sp-bg:#c8e0c0; --sp-card:#dcefd8;
+  --sp-text:#061a0a; --sp-text-muted:#2a5030; --sp-border:#90c080;
+  --sp-header-bg:#0c3a25; --sp-primary:#0c3a25; --sp-accent:#b08d57;
+  --sp-success:#157038; --sp-warning:#a86208; --sp-danger:#9c1414;
+  --sp-shadow:rgba(12,58,37,.28); --sp-button-bg:#0c3a25; --sp-button-text:#ffffff;
 }
 body[data-theme="gold-luxury"] {
-  --sp-bg:#0e0e0e; --sp-card:#1a1a1a;
-  --sp-text:#f3e9c6; --sp-text-muted:#9c8f6a; --sp-border:#3a3320;
-  --sp-header-bg:#000000; --sp-primary:#c9a227; --sp-accent:#8e1b1b;
-  --sp-success:#9ab153; --sp-warning:#c9a227; --sp-danger:#c0392b;
-  --sp-shadow:rgba(0,0,0,.5); --sp-button-bg:#c9a227; --sp-button-text:#1a160c;
+  --sp-bg:#0a0905; --sp-card:#1c1810;
+  --sp-text:#f3e9c6; --sp-text-muted:#9c8f6a; --sp-border:#3a2f1c;
+  --sp-header-bg:#000000; --sp-primary:#c9a227; --sp-accent:#d4af37;
+  --sp-success:#9ab153; --sp-warning:#c9a227; --sp-danger:#b8392b;
+  --sp-shadow:rgba(201,162,39,.20); --sp-button-bg:#c9a227; --sp-button-text:#1a160c;
 }
 body[data-theme="soft-blue"] {
-  --sp-bg:#f7fafc; --sp-card:#ffffff;
-  --sp-text:#233142; --sp-text-muted:#6a7d90; --sp-border:#dbe5ee;
-  --sp-header-bg:#4f7cac; --sp-primary:#4f7cac; --sp-accent:#5aa9e6;
-  --sp-success:#2f8a6a; --sp-warning:#d99a2b; --sp-danger:#cf4a5a;
-  --sp-shadow:rgba(35,49,66,.10); --sp-button-bg:#4f7cac; --sp-button-text:#ffffff;
+  --sp-bg:#b8d0e8; --sp-card:#cce0f5;
+  --sp-text:#0a1828; --sp-text-muted:#3a5878; --sp-border:#90b8d8;
+  --sp-header-bg:#3a6a9c; --sp-primary:#4f7cac; --sp-accent:#5aa9e6;
+  --sp-success:#287f60; --sp-warning:#cd8a23; --sp-danger:#c2434f;
+  --sp-shadow:rgba(79,124,172,.22); --sp-button-bg:#4f7cac; --sp-button-text:#ffffff;
 }
 body[data-theme="lavender-calm"] {
-  --sp-bg:#faf7fc; --sp-card:#ffffff;
-  --sp-text:#43344d; --sp-text-muted:#8b7d95; --sp-border:#e6dcee;
-  --sp-header-bg:#6a548d; --sp-primary:#8f79b7; --sp-accent:#b39ddb;
-  --sp-success:#5f9a72; --sp-warning:#c0973f; --sp-danger:#b75c7a;
-  --sp-shadow:rgba(67,52,77,.12); --sp-button-bg:#8f79b7; --sp-button-text:#ffffff;
+  --sp-bg:#d0c0e0; --sp-card:#e0d0f0;
+  --sp-text:#280e38; --sp-text-muted:#6a4888; --sp-border:#b8a0d0;
+  --sp-header-bg:#5a407a; --sp-primary:#8266b0; --sp-accent:#b39ddb;
+  --sp-success:#538a66; --sp-warning:#b8893a; --sp-danger:#ad546f;
+  --sp-shadow:rgba(90,64,122,.22); --sp-button-bg:#8266b0; --sp-button-text:#ffffff;
 }
 body[data-theme="ocean-pro"] {
-  --sp-bg:#f5fbfb; --sp-card:#ffffff;
-  --sp-text:#102a2c; --sp-text-muted:#5a787a; --sp-border:#d2e6e7;
-  --sp-header-bg:#003f4d; --sp-primary:#005f73; --sp-accent:#2ec4b6;
-  --sp-success:#1f9287; --sp-warning:#c98a2b; --sp-danger:#c0453f;
-  --sp-shadow:rgba(16,42,44,.12); --sp-button-bg:#005f73; --sp-button-text:#ffffff;
+  --sp-bg:#b0d8d5; --sp-card:#c8eae8;
+  --sp-text:#041820; --sp-text-muted:#305a60; --sp-border:#88c0bc;
+  --sp-header-bg:#003540; --sp-primary:#005f73; --sp-accent:#2ec4b6;
+  --sp-success:#18867c; --sp-warning:#c08023; --sp-danger:#b8443a;
+  --sp-shadow:rgba(0,95,115,.24); --sp-button-bg:#005f73; --sp-button-text:#ffffff;
 }
 body[data-theme="warm-home"] {
-  --sp-bg:#fff8f1; --sp-card:#ffffff;
-  --sp-text:#4a3f35; --sp-text-muted:#9a8775; --sp-border:#f0e2d2;
-  --sp-header-bg:#b85a42; --sp-primary:#e07a5f; --sp-accent:#f4a261;
-  --sp-success:#6a9a55; --sp-warning:#e0962f; --sp-danger:#d05a47;
-  --sp-shadow:rgba(74,63,53,.12); --sp-button-bg:#e07a5f; --sp-button-text:#ffffff;
+  --sp-bg:#f0d0a0; --sp-card:#f8e0b8;
+  --sp-text:#2a1508; --sp-text-muted:#805030; --sp-border:#e0b078;
+  --sp-header-bg:#a64a32; --sp-primary:#de6a4e; --sp-accent:#f4a261;
+  --sp-success:#5f8a48; --sp-warning:#d28823; --sp-danger:#c34e3c;
+  --sp-shadow:rgba(166,74,50,.22); --sp-button-bg:#de6a4e; --sp-button-text:#ffffff;
 }
 body[data-theme="midnight-neon"] {
-  --sp-bg:#0d1117; --sp-card:#161b22;
-  --sp-text:#e6edf3; --sp-text-muted:#7d8590; --sp-border:#30363d;
-  --sp-header-bg:#010409; --sp-primary:#00d4ff; --sp-accent:#7c3aed;
+  --sp-bg:#080b14; --sp-card:#131a26;
+  --sp-text:#e6edf3; --sp-text-muted:#7d8590; --sp-border:#2a3242;
+  --sp-header-bg:#02050c; --sp-primary:#00d4ff; --sp-accent:#7c3aed;
   --sp-success:#3fb950; --sp-warning:#d29922; --sp-danger:#f85149;
-  --sp-shadow:rgba(0,0,0,.6); --sp-button-bg:#00d4ff; --sp-button-text:#06121a;
+  --sp-shadow:rgba(0,212,255,.20); --sp-button-bg:#00d4ff; --sp-button-text:#06121a;
 }
 body[data-theme="sakura-premium"] {
-  --sp-bg:#fff7fa; --sp-card:#ffffff;
-  --sp-text:#563646; --sp-text-muted:#9a7d8a; --sp-border:#f3dde6;
-  --sp-header-bg:#a94c74; --sp-primary:#d86f9a; --sp-accent:#e08ca8;
-  --sp-success:#5f9a72; --sp-warning:#c5933f; --sp-danger:#c25a73;
-  --sp-shadow:rgba(86,54,70,.12); --sp-button-bg:#d86f9a; --sp-button-text:#ffffff;
+  --sp-bg:#f0d0e0; --sp-card:#f8e0ec;
+  --sp-text:#300a20; --sp-text-muted:#884060; --sp-border:#e0a8c0;
+  --sp-header-bg:#993f64; --sp-primary:#d86f9a; --sp-accent:#e08ca8;
+  --sp-success:#56906a; --sp-warning:#c0883a; --sp-danger:#b8526b;
+  --sp-shadow:rgba(153,63,100,.22); --sp-button-bg:#d86f9a; --sp-button-text:#ffffff;
 }
 body[data-theme="cyber-magenta"] {
-  --sp-bg:#0a0a12; --sp-card:#13131f;
-  --sp-text:#eaeaff; --sp-text-muted:#7d7da0; --sp-border:#2a2a3c;
-  --sp-header-bg:#05050a; --sp-primary:#ff2bd6; --sp-accent:#15e0ff;
+  --sp-bg:#06060d; --sp-card:#10101c;
+  --sp-text:#eaeaff; --sp-text-muted:#7d7da0; --sp-border:#28283a;
+  --sp-header-bg:#02020a; --sp-primary:#ff2bd6; --sp-accent:#15e0ff;
   --sp-success:#3fe07a; --sp-warning:#ffcf3a; --sp-danger:#ff4d6d;
-  --sp-shadow:rgba(0,0,0,.6); --sp-button-bg:#ff2bd6; --sp-button-text:#0a0a12;
+  --sp-shadow:rgba(255,43,214,.20); --sp-button-bg:#ff2bd6; --sp-button-text:#0a0a12;
 }
 body[data-theme="holo-pop"] {
-  --sp-bg:#f4f6ff; --sp-card:#ffffff;
-  --sp-text:#1a1f3d; --sp-text-muted:#8a90b5; --sp-border:#dde3ff;
-  --sp-header-bg:#2563ff; --sp-primary:#2563ff; --sp-accent:#ff2e9a;
+  --sp-bg:#b8c8f8; --sp-card:#ccd8ff;
+  --sp-text:#080e28; --sp-text-muted:#384888; --sp-border:#98b0f0;
+  --sp-header-bg:#1e58f0; --sp-primary:#2563ff; --sp-accent:#ff2e9a;
   --sp-success:#06c29a; --sp-warning:#ff9f1c; --sp-danger:#ff2e6e;
-  --sp-shadow:rgba(26,31,61,.12); --sp-button-bg:#2563ff; --sp-button-text:#ffffff;
+  --sp-shadow:rgba(37,99,255,.22); --sp-button-bg:#2563ff; --sp-button-text:#ffffff;
 }
-/* 女性向け省電力ダーク（暗地=OLED省電力 / 黒じゃない） */
 body[data-theme="dark-plum"] {
-  --sp-bg:#1a0e16; --sp-card:#2a1622;
+  --sp-bg:#14080f; --sp-card:#261420;
   --sp-text:#f2e4ec; --sp-text-muted:#a98ca0; --sp-border:#3d2433;
-  --sp-header-bg:#3a1a2e; --sp-primary:#d86f9a; --sp-accent:#e8b04b;
+  --sp-header-bg:#2a0f1f; --sp-primary:#d86f9a; --sp-accent:#e8b04b;
   --sp-success:#5fae8a; --sp-warning:#e8b04b; --sp-danger:#e0607f;
-  --sp-shadow:rgba(0,0,0,.5); --sp-button-bg:#d86f9a; --sp-button-text:#1a0e16;
+  --sp-shadow:rgba(216,111,154,.22); --sp-button-bg:#d86f9a; --sp-button-text:#1a0e16;
 }
 body[data-theme="dark-mauve"] {
-  --sp-bg:#171320; --sp-card:#241d30;
-  --sp-text:#ece6f2; --sp-text-muted:#9b8fa8; --sp-border:#352b44;
-  --sp-header-bg:#2e2440; --sp-primary:#c9a0d6; --sp-accent:#f4b8c8;
+  --sp-bg:#12101a; --sp-card:#1f1928;
+  --sp-text:#ece6f2; --sp-text-muted:#9b8fa8; --sp-border:#2f2640;
+  --sp-header-bg:#241c34; --sp-primary:#c9a0d6; --sp-accent:#f4b8c8;
   --sp-success:#7bb89a; --sp-warning:#e6c06a; --sp-danger:#dd7a96;
-  --sp-shadow:rgba(0,0,0,.5); --sp-button-bg:#c9a0d6; --sp-button-text:#171320;
+  --sp-shadow:rgba(201,160,214,.20); --sp-button-bg:#c9a0d6; --sp-button-text:#171320;
 }
 /* === MODAL BASE (2-F: card地統一 / Bootstrap.modalデフォルトを上書き) === */
 .modal-content { background:var(--sp-card); color:var(--sp-text); }
@@ -1082,7 +1080,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 
 <body>
 <header class="header d-flex justify-content-between align-items-center">
-   <h5 class="m-0 fw-bold text-white"><i class="bi bi-cart4"></i> Smart Price <span class="v-badge" id="versionBadge">…</span></h5>
+   <h5 class="m-0 fw-bold sp-text-normal"><i class="bi bi-cart4"></i> Smart Price <span class="v-badge" id="versionBadge">…</span></h5>
   <button class="btn btn-sm btn-outline-light" id="settingsBtn" onclick="window.openSettings && window.openSettings()"><i class="bi bi-gear-fill"></i></button>
 </header>
 
@@ -1120,20 +1118,20 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
           <div style="position:relative; width:90px; height:90px; margin-right:12px;">
             <img id="previewImg" style="width:100%; height:100%; object-fit:contain; background:white; border-radius:10px;" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'100\' height=\'100\'%3E%3Crect width=\'100\' height=\'100\' fill=\'%23333\'/%3E%3Ctext x=\'50\' y=\'52\' text-anchor=\'middle\' fill=\'%23888\' font-size=\'11\' font-family=\'sans-serif\'%3ENo Image%3C/text%3E%3C/svg%3E';this.onerror=null;">
             <div class="position-absolute bottom-0 start-0 w-100 d-flex justify-content-between px-1 pb-1">
-              <button class="btn btn-dark btn-sm p-1 opacity-75" onclick="document.getElementById('imgInput').click()"><i class="bi bi-folder2-open"></i></button>
-              <button class="btn btn-dark btn-sm p-1 opacity-75" onclick="searchImageWeb()"><i class="bi bi-search"></i></button>
+              <button class="btn sp-btn-secondary btn-sm p-1 opacity-75" onclick="document.getElementById('imgInput').click()"><i class="bi bi-folder2-open"></i></button>
+              <button class="btn sp-btn-secondary btn-sm p-1 opacity-75" onclick="searchImageWeb()"><i class="bi bi-search"></i></button>
             </div>
             <input type="file" id="imgInput" accept="image/*" style="display:none;" onchange="handleImage(this)">
           </div>
           <div class="flex-grow-1">
             <div class="d-flex align-items-center mb-2 gap-1">
-              <input type="text" id="inputName" class="form-control bg-dark text-white border-secondary" placeholder="商品名（内容量）" style="flex:1;">
+              <input type="text" id="inputName" class="form-control sp-bg-card sp-border-muted" placeholder="商品名（内容量）" style="flex:1;">
               <button id="aiNameBtn" onclick="aiRefineName()" title="AIで商品名を整える" class="sp-ai-btn">✨</button>
             </div>
-            <select id="inputCategory" class="form-control bg-dark text-white border-secondary mb-2" style="font-size:0.85rem; padding:4px;"></select>
+            <select id="inputCategory" class="form-control sp-bg-card sp-border-muted mb-2" style="font-size:0.85rem; padding:4px;"></select>
             <!-- ✅ サブカテゴリ復活（最小UI） -->
-            <select id="inputSubCategory" class="form-control bg-dark text-white border-secondary mb-2" style="font-size:0.85rem; padding:4px; display:none;"></select>
-            <input type="text" id="inputMaker" class="form-control bg-dark text-white border-secondary py-1" style="font-size:0.85rem;" placeholder="メーカー名">
+            <select id="inputSubCategory" class="form-control sp-bg-card sp-border-muted mb-2" style="font-size:0.85rem; padding:4px; display:none;"></select>
+            <input type="text" id="inputMaker" class="form-control sp-bg-card sp-border-muted py-1" style="font-size:0.85rem;" placeholder="メーカー名">
           </div>
         </div>
 
@@ -1146,8 +1144,8 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
               <label class="btn btn-outline-danger" for="taxIn">税込</label>
             </div>
             <div class="input-group input-group-sm w-50">
-              <input type="number" id="inputDisc" class="form-control bg-dark text-white border-secondary" placeholder="0">
-              <span class="input-group-text bg-dark text-secondary border-secondary">%引</span>
+              <input type="number" id="inputDisc" class="form-control sp-bg-card sp-border-muted" placeholder="0">
+              <span class="input-group-text sp-bg-card sp-border-muted">%引</span>
             </div>
           </div>
           <input type="number" id="inputPrice" class="form-control text-end fw-bold text-danger border-0 bg-transparent fs-1" placeholder="0">
@@ -1164,7 +1162,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
         <div class="d-flex gap-2 mb-3">
           <button id="delHistBtn" class="btn btn-outline-secondary py-3 fw-bold flex-grow-0 px-3 shadow" style="display:none;" onclick="confirmDeleteHist()">削除</button>
           <button id="delProductBtn" class="btn btn-outline-danger py-3 fw-bold flex-grow-0 px-3 shadow" style="display:none;" onclick="confirmDeleteProduct()" title="この商品を完全削除">🗑</button>
-          <button id="saveBtn" class="btn btn-danger py-3 fw-bold fs-5 shadow flex-grow-1" onclick="saveData()">保存</button>
+          <button id="saveBtn" class="btn sp-btn-primary py-3 fw-bold fs-5 shadow flex-grow-1" onclick="saveData()">保存</button>
         </div>
       </div>
 
@@ -1211,7 +1209,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   </div>
 
 
-  <button onclick="stopScanner()" class="btn btn-danger position-absolute top-0 end-0 m-3 fs-5 shadow-lg d-flex align-items-center gap-1 px-3 py-2" style="border-radius:2rem; z-index:9999;">
+  <button onclick="stopScanner()" class="btn sp-btn-primary position-absolute top-0 end-0 m-3 fs-5 shadow-lg d-flex align-items-center gap-1 px-3 py-2" style="border-radius:2rem; z-index:9999;">
     <span style="font-size:1.1rem;">✕</span><span style="font-size:0.85rem;letter-spacing:.03em;">閉じる</span>
   </button>
 </div>
@@ -1219,22 +1217,22 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 <div id="dialogModal" class="modal">
   <div class="modal-content text-center">
     <h6 id="dialogTitle" class="text-secondary mb-3">Smart Price</h6>
-    <p id="dialogMsg" class="text-white mb-4"></p>
-    <div id="dialogInputArea" style="display:none;"><input type="text" id="dialogInput" class="form-control bg-dark text-white mb-3"></div>
+    <p id="dialogMsg" class="sp-text-normal mb-4"></p>
+    <div id="dialogInputArea" style="display:none;"><input type="text" id="dialogInput" class="form-control sp-bg-card mb-3"></div>
     <div class="d-flex gap-2">
-      <button id="dialogCancel" class="btn btn-dark flex-grow-1" style="display:none;">やめる</button>
-      <button id="dialogOk" class="btn btn-danger flex-grow-1">OK</button>
+      <button id="dialogCancel" class="btn sp-btn-secondary flex-grow-1" style="display:none;">やめる</button>
+      <button id="dialogOk" class="btn sp-btn-primary flex-grow-1">OK</button>
     </div>
   </div>
 </div>
 
 <div id="settingsModal" class="modal">
   <div class="modal-content">
-    <h5 class="text-white mb-4 text-center" id="settingsTitle" onclick="handleSettingsTitleClick()" style="cursor: pointer;">設定</h5>
+    <h5 class="sp-text-normal mb-4 text-center" id="settingsTitle" onclick="handleSettingsTitleClick()" style="cursor: pointer;">設定</h5>
 
     <div class="mb-3" id="settingsCitySection">
       <label class="small text-secondary">生活圏（市）</label>
-      <button type="button" id="homeCityBtn" class="btn btn-dark w-100 py-2 fw-bold mb-1" onclick="openHomeCityModal()">
+      <button type="button" id="homeCityBtn" class="btn sp-btn-secondary w-100 py-2 fw-bold mb-1" onclick="openHomeCityModal()">
         生活圏を設定
       </button>
       <div id="city-history-chips" class="city-chips"></div>
@@ -1256,7 +1254,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
         <div class="mb-3">
           <div class="small text-secondary mb-1">あなたのハンドルネーム <span class="text-warning">※友人に表示される名前</span></div>
           <div class="d-flex gap-2">
-            <input id="ref-handle-input" class="form-control bg-dark text-white border-secondary" placeholder="例: たろう、Taro123" maxlength="20">
+            <input id="ref-handle-input" class="form-control sp-bg-card sp-border-muted" placeholder="例: たろう、Taro123" maxlength="20">
             <button class="btn btn-outline-light" onclick="saveHandle()">保存</button>
           </div>
           <div class="small text-secondary mt-1" style="opacity:.7;">※本名・メールアドレスは使わないでください</div>
@@ -1269,11 +1267,11 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 
         <!-- 紹介リンク（表示のみ・コピーは一括ボタンから） -->
         <div class="small text-secondary mb-1">紹介リンク（内部用・自動生成）</div>
-        <textarea id="ref-link" class="form-control bg-dark text-secondary border-secondary url-box mb-3" rows="2" readonly style="font-size:0.7rem;opacity:0.7;"></textarea>
+        <textarea id="ref-link" class="form-control sp-bg-card sp-border-muted url-box mb-3" rows="2" readonly style="font-size:0.7rem;opacity:0.7;"></textarea>
 
         <!-- 一括アクションボタン -->
         <div class="d-grid gap-2 mb-3">
-          <button class="btn btn-danger py-2" onclick="spShareReferral()">
+          <button class="btn sp-btn-primary py-2" onclick="spShareReferral()">
             📤 紹介文＋リンクを共有する
           </button>
           <button class="btn btn-outline-light" onclick="spCopyReferral()">
@@ -1295,18 +1293,18 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
         </div>
 
       <div id="panelFamily" class="sp-panel mt-3" style="display:none;">
-        <div class="small text-secondary mb-2" style="opacity:.9;">個人ID：<span class="text-white fw-bold" id="sp-personal-id-panelFamily"></span></div>
+        <div class="small text-secondary mb-2" style="opacity:.9;">個人ID：<span class="sp-text-normal fw-bold" id="sp-personal-id-panelFamily"></span></div>
 
         <div class="small text-secondary mb-2">
           同じ購入データを別の端末でも使いたいときは、ここで「共有ID」を使います（準備中のため、まずは画面だけ整えています）。
         </div>
         <label class="small text-secondary">共有ID（相手のIDを貼り付け）</label>
-        <input id="family-share-id" class="form-control bg-dark text-white border-secondary mb-2" placeholder="例：AB12CD（半角）">
+        <input id="family-share-id" class="form-control sp-bg-card sp-border-muted mb-2" placeholder="例：AB12CD（半角）">
         <div class="small text-secondary mb-1">あなたの個人ID（このIDを送って共有できます）</div>
         <div class="d-flex gap-2 mb-2">
-          <input id="family-my-id" class="form-control bg-dark text-white border-secondary" readonly>
-          <button class="btn btn-dark" onclick="spCopy('family-my-id')">コピー</button>
-          <button class="btn btn-danger" onclick="spShareFamilyId()">共有</button>
+          <input id="family-my-id" class="form-control sp-bg-card sp-border-muted" readonly>
+          <button class="btn sp-btn-secondary" onclick="spCopy('family-my-id')">コピー</button>
+          <button class="btn sp-btn-primary" onclick="spShareFamilyId()">共有</button>
         </div>
 
         <div class="form-check mb-2">
@@ -1318,7 +1316,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
         <div class="mt-3">
           <div class="small text-secondary mb-1">家族共有コード（任意）</div>
           <div class="d-flex gap-2 mb-2">
-            <input id="family-code-input" class="form-control bg-dark text-white border-secondary" placeholder="例：FAMILY-001">
+            <input id="family-code-input" class="form-control sp-bg-card sp-border-muted" placeholder="例：FAMILY-001">
             <button class="btn btn-primary" onclick="spSaveFamilyCode()">保存</button>
           </div>
           <div id="family-code-status" class="small text-secondary"></div>
@@ -1332,33 +1330,33 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
       </div>
 
       <div id="panelSupport" class="sp-panel mt-3" style="display:none;">
-        <div class="small text-secondary mb-2" style="opacity:.9;">個人ID：<span class="text-white fw-bold" id="sp-personal-id-panelSupport"></span></div>
+        <div class="small text-secondary mb-2" style="opacity:.9;">個人ID：<span class="sp-text-normal fw-bold" id="sp-personal-id-panelSupport"></span></div>
 
         <div class="mt-2">
         <label class="small text-secondary">症状（何が起きたか）</label>
-        <textarea id="support-symptom" class="form-control bg-dark text-white border-secondary mb-2" rows="3" placeholder="例：バーコード読み込み後、商品名が違う…"></textarea>
+        <textarea id="support-symptom" class="form-control sp-bg-card sp-border-muted mb-2" rows="3" placeholder="例：バーコード読み込み後、商品名が違う…"></textarea>
 
         <div class="row g-2">
           <div class="col-6">
             <label class="small text-secondary">機種</label>
-            <input id="support-device" class="form-control bg-dark text-white border-secondary mb-2" placeholder="例：Pixel 9">
+            <input id="support-device" class="form-control sp-bg-card sp-border-muted mb-2" placeholder="例：Pixel 9">
           </div>
           <div class="col-6">
             <label class="small text-secondary">OS</label>
-            <input id="support-os" class="form-control bg-dark text-white border-secondary mb-2" placeholder="例：Android 15">
+            <input id="support-os" class="form-control sp-bg-card sp-border-muted mb-2" placeholder="例：Android 15">
           </div>
         </div>
 
         <label class="small text-secondary">ブラウザ</label>
-        <input id="support-browser" class="form-control bg-dark text-white border-secondary mb-2" placeholder="例：Chrome / Edge">
+        <input id="support-browser" class="form-control sp-bg-card sp-border-muted mb-2" placeholder="例：Chrome / Edge">
 
         <label class="small text-secondary">スクリーンショット（任意）</label>
-        <input id="support-screens" type="file" accept="image/*" multiple class="form-control bg-dark text-white border-secondary mb-2">
+        <input id="support-screens" type="file" accept="image/*" multiple class="form-control sp-bg-card sp-border-muted mb-2">
         <div id="support-preview" class="d-flex flex-wrap gap-2 mb-2"></div>
 
         <div class="d-flex gap-2 mb-2">
-          <button class="btn btn-dark flex-grow-1" onclick="spCopySupport()">内容コピー</button>
-          <button class="btn btn-danger flex-grow-1" onclick="spShareSupport()">共有</button>
+          <button class="btn sp-btn-secondary flex-grow-1" onclick="spCopySupport()">内容コピー</button>
+          <button class="btn sp-btn-primary flex-grow-1" onclick="spShareSupport()">共有</button>
         </div>
         <div class="d-flex gap-2 mb-2">
           <button class="btn btn-warning w-100" onclick="spSaveSupport()">保存</button>
@@ -1375,11 +1373,11 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
       </div>
 
       <div id="panelOperator" class="sp-panel mt-3" style="display:none;">
-        <div class="small text-secondary mb-2" style="opacity:.9;">個人ID：<span class="text-white fw-bold" id="sp-personal-id-panelOperator"></span></div>
+        <div class="small text-secondary mb-2" style="opacity:.9;">個人ID：<span class="sp-text-normal fw-bold" id="sp-personal-id-panelOperator"></span></div>
 
         <div class="small text-secondary mb-2">管理メニューはパスワードが必要です。</div>
         <div class="d-flex gap-2 mb-2">
-          <input id="operatorPass" type="password" class="form-control bg-dark text-white border-secondary" placeholder="パスワード">
+          <input id="operatorPass" type="password" class="form-control sp-bg-card sp-border-muted" placeholder="パスワード">
           <button type="button" class="btn btn-secondary" id="operatorUnlockBtn" onclick="unlockOperator()">開く</button>
         </div>
         <div id="operatorPassMsg" class="small text-secondary mb-2"></div>
@@ -1411,8 +1409,8 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
             <div id="firebase-status" class="mb-2"></div>
             <div class="small text-secondary mb-1">Firebase URL</div>
             <div class="d-flex gap-2 mb-2">
-              <input type="text" id="fb-url-input" class="form-control bg-dark text-white border-secondary" readonly value="https://smartpricedb-default-rtdb.firebaseio.com">
-              <button class="btn btn-dark" onclick="spCopy('fb-url-input')">コピー</button>
+              <input type="text" id="fb-url-input" class="form-control sp-bg-card sp-border-muted" readonly value="https://smartpricedb-default-rtdb.firebaseio.com">
+              <button class="btn sp-btn-secondary" onclick="spCopy('fb-url-input')">コピー</button>
             </div>
             <button class="btn btn-success w-100" onclick="testFirebaseConnection()">🔌 接続テスト</button>
           </div>
@@ -1445,7 +1443,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
             <div class="small text-secondary mb-2">スマホのsp_user_idを入力してPCのDBを統合します</div>
             <div class="d-flex gap-2 mb-1">
               <input id="sharedUserIdInput" type="text"
-                     class="form-control form-control-sm bg-dark text-white border-secondary"
+                     class="form-control form-control-sm sp-bg-card sp-border-muted"
                      placeholder="例: Ul3e7w3-3tlb">
               <button type="button" class="btn btn-warning btn-sm"
                       onclick="applySharedUserId()">統合</button>
@@ -1479,7 +1477,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
       </div>
 
     <button id="syncBtn" class="btn btn-primary w-100 py-2 fw-bold mb-2" onclick="startMigration()">設定保存と同期</button>
-    <button id="clearCacheBtn" class="btn btn-danger w-100 py-2 fw-bold mb-2" onclick="clearAllCache()">🔄 キャッシュクリア（表示崩れ修正）</button>
+    <button id="clearCacheBtn" class="btn sp-btn-primary w-100 py-2 fw-bold mb-2" onclick="clearAllCache()">🔄 キャッシュクリア（表示崩れ修正）</button>
     <button id="webBtn" class="btn btn-outline-secondary w-100 py-2 fw-bold mb-2" onclick="openWebModal()">ブラウザ版へ（URL表示）</button>
 
     <button class="btn btn-link text-secondary w-100" data-action="close-settings">閉じる</button>
@@ -1494,7 +1492,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 <!-- [image-picker] 画像候補ピッカーモーダル -->
 <div id="imagePickerModal" class="modal" style="z-index:99500;">
   <div class="modal-content sp-bg-card" style="max-width:380px; width:95%; max-height:85vh; overflow-y:auto; border-radius:16px; padding:16px;">
-    <h5 class="text-white mb-3 text-center" style="font-size:1rem;">📷 画像を選ぶ</h5>
+    <h5 class="sp-text-normal mb-3 text-center" style="font-size:1rem;">📷 画像を選ぶ</h5>
     <div id="imagePickerGrid" style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px; min-height:80px;">
       <div class="text-secondary text-center py-4" style="grid-column:1/-1;">読み込み中…</div>
     </div>
@@ -1518,7 +1516,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 <!-- v23.9.109: 検証ハブモーダル（debug=1専用） -->
 <div id="debugHubModal" class="modal" style="z-index:99600; display:none;">
   <div class="modal-content" style="max-width:400px; width:95%; max-height:90vh; overflow-y:auto; background:#0a0a1a; border:2px solid #4a4aff; border-radius:16px; padding:20px;">
-    <h5 class="text-white mb-3 text-center" style="font-size:1.1rem; font-weight:bold; color:#aaf;">🔬 検証ハブ</h5>
+    <h5 class="sp-text-normal mb-3 text-center" style="font-size:1.1rem; font-weight:bold; color:#aaf;">🔬 検証ハブ</h5>
     <div class="small text-secondary mb-3 text-center" style="opacity:.8;">Yui検証用データ取得</div>
     
     <div id="debugHubContent">
@@ -1561,7 +1559,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 <!-- v23.9.109: 検証データプレビューモーダル -->
 <div id="debugPreviewModal" class="modal" style="z-index:99700; display:none;">
   <div class="modal-content" style="max-width:500px; width:95%; max-height:90vh; overflow-y:auto; background:#0a0a1a; border:2px solid #4a4aff; border-radius:16px; padding:20px;">
-    <h5 class="text-white mb-3 text-center" style="font-size:1.1rem; font-weight:bold; color:#aaf;">👁️ 検証データ</h5>
+    <h5 class="sp-text-normal mb-3 text-center" style="font-size:1.1rem; font-weight:bold; color:#aaf;">👁️ 検証データ</h5>
     <div class="small text-secondary mb-3 text-center" style="opacity:.8;">長押しで全選択してコピーできます</div>
     
     <textarea id="debugPreviewTextarea" readonly style="width:100%; min-height:400px; max-height:60vh; font-family:monospace; font-size:0.85rem; background:#1a1a2e; color:#e0e0e0; border:1px solid #4a4aff; border-radius:8px; padding:12px; resize:vertical;"></textarea>
@@ -1575,17 +1573,17 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 
 <div id="homeCityModal" class="modal">
   <div class="modal-content">
-    <h5 class="text-white mb-3 text-center">生活圏の設定</h5>
+    <h5 class="sp-text-normal mb-3 text-center">生活圏の設定</h5>
     
     <div class="mb-3">
       <label class="small text-secondary">生活圏（市）</label>
-      <input type="text" id="home-city-modal-input" class="form-control bg-dark text-white border-secondary mb-1" placeholder="例：土浦市、水戸市、東京都荒川区">
+      <input type="text" id="home-city-modal-input" class="form-control sp-bg-card sp-border-muted mb-1" placeholder="例：土浦市、水戸市、東京都荒川区">
       <div class="small text-secondary mb-2" style="opacity:.9;">複数の場合は「、」で区切ってください</div>
     </div>
     
     <div class="mb-3">
       <label class="small text-secondary">GPS店舗検索範囲</label>
-      <select id="gps-range-select" class="form-select bg-dark text-white border-secondary">
+      <select id="gps-range-select" class="form-select sp-bg-card sp-border-muted">
         <option value="0.1" selected>📍 100m（徒歩圏内）</option>
         <option value="0.5">🚶 500m（近所）</option>
         <option value="1">🚗 1km（車で数分）</option>
@@ -1603,7 +1601,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 <!-- バーコード手入力モーダル -->
 <div id="barcodeManualModal" class="modal">
   <div class="modal-content">
-    <h5 class="text-white mb-4 text-center">バーコード手入力</h5>
+    <h5 class="sp-text-normal mb-4 text-center">バーコード手入力</h5>
     
     <div class="btn-group w-100 mb-3" role="group">
       <button type="button" class="btn btn-outline-secondary btn-barcode-type" data-digits="8">JAN-8</button>
@@ -1638,7 +1636,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
     </div>
     
     <div class="d-grid gap-2">
-      <button class="btn btn-danger py-3 fw-bold" onclick="searchByManualBarcode()">🔍 商品を検索</button>
+      <button class="btn sp-btn-primary py-3 fw-bold" onclick="searchByManualBarcode()">🔍 商品を検索</button>
       <button class="btn btn-outline-secondary" onclick="closeBarcodeManual()">閉じる</button>
     </div>
   </div>
@@ -1707,10 +1705,11 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 
 /* === Step3: テーマ対応ユーティリティ === */
 .sp-btn-primary { background: var(--sp-button-bg) !important; color: var(--sp-button-text) !important; border-color: var(--sp-primary) !important; }
-.sp-btn-secondary { background: var(--sp-card-alt) !important; color: var(--sp-text) !important; border: 1px solid var(--sp-border) !important; }
+.sp-btn-secondary { background: var(--sp-card) !important; color: var(--sp-text) !important; border: 1px solid var(--sp-border) !important; }
 .sp-ai-btn { background: var(--sp-card); color: #a78bfa; border: 1px solid var(--sp-border); flex-shrink: 0; width: 36px; height: 36px; border-radius: 8px; font-size: 16px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; }
 .sp-ai-btn:hover { background: var(--sp-card-alt); }
-.sp-bg-card { background: var(--sp-card) !important; }
+.sp-bg-card { background: var(--sp-card) !important; color: var(--sp-text) !important; }
+.sp-border-muted { border-color: var(--sp-border) !important; }
 .sp-hint-box { background: var(--sp-card); padding: 10px; border-radius: 8px; border: 1px solid var(--sp-border); }
 .sp-text-accent { color: var(--sp-accent) !important; }
 .sp-text-normal { color: var(--sp-text) !important; }
@@ -1727,24 +1726,24 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 
 <div id="webModal" class="modal">
   <div class="modal-content">
-    <h5 class="text-white mb-3 text-center">ブラウザ版（URL）</h5>
+    <h5 class="sp-text-normal mb-3 text-center">ブラウザ版（URL）</h5>
     <div class="hint mb-3">
       ・PWA（ホーム追加）だとアドレスが見えないので、ここでURLをコピーしてChrome/Edgeで開けます。<br>
       ・更新確認は <b>まずブラウザで</b> 開くのが安全です。
     </div>
 
     <label class="small text-secondary">通常URL（コピーして開く）</label>
-    <textarea id="webUrlNormal" class="form-control bg-dark text-white border-secondary url-box mb-2" rows="2" readonly></textarea>
+    <textarea id="webUrlNormal" class="form-control sp-bg-card sp-border-muted url-box mb-2" rows="2" readonly></textarea>
     <div class="d-flex gap-2 mb-3">
-      <button class="btn btn-dark flex-grow-1" onclick="copyUrl('webUrlNormal')">コピー</button>
-      <button class="btn btn-danger flex-grow-1" onclick="openUrlFromBox('webUrlNormal')">開く</button>
+      <button class="btn sp-btn-secondary flex-grow-1" onclick="copyUrl('webUrlNormal')">コピー</button>
+      <button class="btn sp-btn-primary flex-grow-1" onclick="openUrlFromBox('webUrlNormal')">開く</button>
     </div>
 
     <label class="small text-secondary">デバッグURL（&debug=1）</label>
-    <textarea id="webUrlDebug" class="form-control bg-dark text-white border-secondary url-box mb-2" rows="2" readonly></textarea>
+    <textarea id="webUrlDebug" class="form-control sp-bg-card sp-border-muted url-box mb-2" rows="2" readonly></textarea>
     <div class="d-flex gap-2 mb-3">
-      <button class="btn btn-dark flex-grow-1" onclick="copyUrl('webUrlDebug')">コピー</button>
-      <button class="btn btn-danger flex-grow-1" onclick="openUrlFromBox('webUrlDebug')">開く</button>
+      <button class="btn sp-btn-secondary flex-grow-1" onclick="copyUrl('webUrlDebug')">コピー</button>
+      <button class="btn sp-btn-primary flex-grow-1" onclick="openUrlFromBox('webUrlDebug')">開く</button>
     </div>
 
     <div class="hint mb-3 sp-hint-box">
@@ -1757,7 +1756,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
     </div>
 
     <!-- ✅ PWAインストールボタン（beforeinstallpromptがある時だけ表示） -->
-    <button id="pwaInstallBtn" class="btn btn-danger w-100 mb-2" style="display:none;" onclick="installPWA()">
+    <button id="pwaInstallBtn" class="btn sp-btn-primary w-100 mb-2" style="display:none;" onclick="installPWA()">
       📱 今すぐインストール
     </button>
 
@@ -4638,7 +4637,9 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
 
     finalSet.forEach(name => {
       const span = document.createElement('span');
-      span.className = 'store-tag' + (name === curStore ? ' active' : '');
+      const isUnset = (name === '未設定');
+      const isActive = (name === curStore);
+      span.className = 'store-tag' + (isActive ? ' active' : '') + (isUnset ? ' unset' : '');
       span.innerText = name;
       span.onclick = () => {
         document.querySelectorAll('.store-tag').forEach(s => s.classList.remove('active'));
@@ -8261,24 +8262,24 @@ return true;
       var current = preview || saved;
       // v23.9.158 Step1: 17テーマ（standard基準/debug3つは debug時のみ分岐は後続）
       var themes = [
-        { id: 'standard',       label: '🔴 標準（クリムゾン）',   desc: 'v158デフォルト・赤ブランド' },
-        { id: 'youth-pink',     label: '💗 若年ピンク',           desc: '軽快・10〜20代向け' },
-        { id: 'dusty-rose',     label: '🌹 ダスティローズ',        desc: '大人柔・上品' },
-        { id: 'sage-modern',    label: '🌿 セージモダン',         desc: '現代ミニマル' },
-        { id: 'navy-elegant',   label: '⚓ ネイビーエレガント',     desc: '高級・堅実' },
-        { id: 'access-green',   label: '♿ アクセス（高コント）',  desc: '50代以上・視認性' },
-        { id: 'gold-luxury',    label: '👑 ゴールドラグジュアリ',  desc: 'ダーク・プレミアム' },
-        { id: 'soft-blue',      label: '💧 ソフトブルー',          desc: '安心・清潔感' },
-        { id: 'lavender-calm',  label: '💜 ラベンダーカーム',     desc: '癒し・夜向き' },
-        { id: 'ocean-pro',      label: '🌊 オーシャンプロ',        desc: 'プロ・テック' },
-        { id: 'warm-home',      label: '🏠 ウォームホーム',        desc: '家族・温かさ' },
-        { id: 'sakura-premium', label: '🌸 さくらプレミアム',      desc: '和プレミアム' },
-        { id: 'dark-plum',      label: '🌙 ダークプラム',          desc: '女性向け省電力ダーク' },
-        { id: 'dark-mauve',     label: '🌃 ダークモーヴ',          desc: '柔らかい紫ダーク' },
+        { id: 'standard',       label: 'Velvet Rouge',      desc: 'v158デフォルト・赤ブランド' },
+        { id: 'youth-pink',     label: 'Berry Kiss',         desc: '軽快・10〜20代向け' },
+        { id: 'dusty-rose',     label: 'Rose Latte',         desc: '大人柔・上品' },
+        { id: 'sage-modern',    label: 'Herb Garden',        desc: '現代ミニマル' },
+        { id: 'navy-elegant',   label: 'Paris Midnight',     desc: '高級・堅実' },
+        { id: 'access-green',   label: 'Forest Calm',        desc: '50代以上・視認性' },
+        { id: 'gold-luxury',    label: 'Champagne Gold',     desc: 'ダーク・プレミアム' },
+        { id: 'soft-blue',      label: 'Blue Breeze',        desc: '安心・清潔感' },
+        { id: 'lavender-calm',  label: 'Lavender Dream',     desc: '癒し・夜向き' },
+        { id: 'ocean-pro',      label: 'Ocean Grace',        desc: 'プロ・テック' },
+        { id: 'warm-home',      label: 'Honey Cinnamon',     desc: '家族・温かさ' },
+        { id: 'sakura-premium', label: 'Sakura Étoile',      desc: '和プレミアム' },
+        { id: 'dark-plum',      label: 'Moon Plum',          desc: '女性向け省電力ダーク' },
+        { id: 'dark-mauve',     label: 'Twilight Mauve',     desc: '柔らかい紫ダーク' },
         // debug系（一般導線では非表示。debug時のみ）
-        { id: 'midnight-neon',  label: '⚡ ミッドナイト・ネオン',   desc: 'DEBUG専用ダーク' },
-        { id: 'cyber-magenta',  label: '⚡ サイバー・マゼンタ',     desc: 'DEBUG専用ダーク' },
-        { id: 'holo-pop',       label: '⚡ ホロ・ポップ',           desc: 'DEBUG専用ライト' }
+        { id: 'midnight-neon',  label: 'Tokyo Neon',         desc: 'DEBUG専用ダーク' },
+        { id: 'cyber-magenta',  label: 'Electric Diva',      desc: 'DEBUG専用ダーク' },
+        { id: 'holo-pop',       label: 'Aurora Candy',       desc: 'DEBUG専用ライト' }
       ];
       // debug 時のみ debug系を一覧に出す（簡易フィルタ）
       try {
@@ -11921,7 +11922,7 @@ function loadPurchaseHistory() {
   
   products.sort((a, b) => (b[1].date || 0) - (a[1].date || 0));
   
-  let html = `<div class="text-white mb-2">全${products.length}件</div>`;
+  let html = `<div class="sp-text-normal mb-2">全${products.length}件</div>`;
   
   products.slice(0, 50).forEach(([code, product]) => {
     const date = product.date ? new Date(product.date).toLocaleDateString('ja-JP') : '不明';
@@ -11930,8 +11931,8 @@ function loadPurchaseHistory() {
     const price = product.price ? `¥${product.price}` : '価格不明';
     
     html += `
-      <div class="border-bottom border-secondary py-1 small">
-        <div class="text-white">${name} <span class="text-warning">${price}</span></div>
+      <div class="border-bottom sp-border-muted py-1 small">
+        <div class="sp-text-normal">${name} <span class="text-warning">${price}</span></div>
         <div class="text-secondary" style="font-size: 0.75rem;">${store} | ${date}</div>
       </div>
     `;
@@ -11959,10 +11960,10 @@ function loadStats() {
   
   let html = `
     <div class="small">
-      <div class="mb-1">📦 登録商品数: <span class="text-white fw-bold">${totalItems}</span></div>
-      <div class="mb-1">🏪 利用店舗数: <span class="text-white fw-bold">${uniqueStores}</span></div>
+      <div class="mb-1">📦 登録商品数: <span class="sp-text-normal fw-bold">${totalItems}</span></div>
+      <div class="mb-1">🏪 利用店舗数: <span class="sp-text-normal fw-bold">${uniqueStores}</span></div>
       <div class="mb-1">💰 総支出額: <span class="text-warning fw-bold">¥${totalSpent.toLocaleString()}</span></div>
-      <div class="mb-1">📊 平均単価: <span class="text-white fw-bold">¥${avgPrice}</span></div>
+      <div class="mb-1">📊 平均単価: <span class="sp-text-normal fw-bold">¥${avgPrice}</span></div>
     </div>
   `;
   
@@ -12366,18 +12367,18 @@ async function showReferralStatus() {
   // Firebaseから紹介実績を取得
   const fbUrl = (db && db.config && db.config.firebaseUrl) ? db.config.firebaseUrl.trim() : '';
   
-  let html = '<div class="card bg-dark border-secondary p-3 mb-2">';
-  html += '<h6 class="text-white mb-3">👥 あなたの紹介実績</h6>';
+  let html = '<div class="card sp-bg-card sp-border-muted p-3 mb-2">';
+  html += '<h6 class="sp-text-normal mb-3">👥 あなたの紹介実績</h6>';
 
   if (!fbUrl) {
     // Firebase未設定でもローカルで確認できる情報を表示
     const myInvitedBy = localStorage.getItem('smartPrice_invitedBy') || '';
     html += `<div class="small text-secondary mb-2">紹介コード（あなたのID）:</div>
-      <div class="fw-bold text-white mb-3" style="font-size:0.85rem; word-break:break-all;">${myId}</div>`;
+      <div class="fw-bold sp-text-normal mb-3" style="font-size:0.85rem; word-break:break-all;">${myId}</div>`;
     if (myInvitedBy) {
-      html += `<div class="small text-secondary">あなたを紹介した人のID:<br><span class="text-white">${myInvitedBy.slice(0,8)}…</span></div>`;
+      html += `<div class="small text-secondary">あなたを紹介した人のID:<br><span class="sp-text-normal">${myInvitedBy.slice(0,8)}…</span></div>`;
     }
-    html += '<div class="small text-secondary mt-3 p-2 border border-secondary rounded">Firebase同期を設定すると、紹介した友人の利用状況が確認できます。</div>';
+    html += '<div class="small text-secondary mt-3 p-2 border sp-border-muted rounded">Firebase同期を設定すると、紹介した友人の利用状況が確認できます。</div>';
   } else {
     // Firebase設定済み：紹介先ユーザーの状況を取得
     container.innerHTML = '<div class="small text-secondary p-2">⏳ 読み込み中…</div>';
@@ -12392,12 +12393,12 @@ async function showReferralStatus() {
       if (data && typeof data === 'object') {
         const users = Object.entries(data);
         const qualified = users.filter(([, u]) => (u.products || 0) >= 5).length;
-        html = '<div class="card bg-dark border-secondary p-3 mb-2">';
-        html += '<h6 class="text-white mb-3">👥 あなたの紹介実績</h6>';
-        html += `<div class="mb-3"><span class="text-white fw-bold fs-5">${qualified}人</span><span class="text-secondary"> / ${users.length}人 が条件達成</span></div>`;
+        html = '<div class="card sp-bg-card sp-border-muted p-3 mb-2">';
+        html += '<h6 class="sp-text-normal mb-3">👥 あなたの紹介実績</h6>';
+        html += `<div class="mb-3"><span class="sp-text-normal fw-bold fs-5">${qualified}人</span><span class="text-secondary"> / ${users.length}人 が条件達成</span></div>`;
         users.forEach(([uid, u]) => {
           const ok = (u.products || 0) >= 5;
-          html += `<div class="small border-top border-secondary pt-2 mt-2 d-flex justify-content-between align-items-center">
+          html += `<div class="small border-top sp-border-muted pt-2 mt-2 d-flex justify-content-between align-items-center">
             <span class="text-secondary">${uid.slice(0,8)}…</span>
             <span class="${ok ? 'text-success' : 'text-warning'}">${ok ? '✅ 達成' : '⏳ 利用中'}</span>
           </div>`;
