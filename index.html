@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.163  BUILD_ID=2026-05-27_theme-worldview-final
+APP_VERSION=v23.9.164  BUILD_ID=2026-05-27_P0fix-8items
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.163";
-  const BUILD_ID    = "2026-05-27_theme-worldview-final";
+  const APP_VERSION = "v23.9.164";
+  const BUILD_ID    = "2026-05-27_P0fix-8items";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -931,7 +931,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   width: 100%;
 }
 #img-diag-copy-btn:active { background: #2a2a5a; }
-/* === COLOR THEME SYSTEM (v23.9.163 - World-View Final / 14 vars / 17 themes) === */
+/* === COLOR THEME SYSTEM (v23.9.164 - World-View Final / 14 vars / 17 themes) === */
 :root {
   --sp-card-alt: color-mix(in srgb, var(--sp-card) 92%, white);
   --sp-accent-glow: color-mix(in srgb, var(--sp-accent) 30%, transparent);
@@ -1079,6 +1079,17 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 </head>
 
 <body>
+<!-- P0-6: テーマフラッシュ防止 — CSS描画前に保存済みテーマを即時適用 -->
+<script>
+(function(){
+  try {
+    var _t = localStorage.getItem('smartPrice_colorTheme');
+    if (_t && _t !== 'default' && _t !== 'standard' && _t !== '') {
+      document.body.setAttribute('data-theme', _t);
+    }
+  } catch(e) {}
+})();
+</script>
 <header class="header d-flex justify-content-between align-items-center">
    <h5 class="m-0 fw-bold sp-text-normal"><i class="bi bi-cart4"></i> Smart Price <span class="v-badge" id="versionBadge">…</span></h5>
   <button class="btn btn-sm btn-outline-light" id="settingsBtn" onclick="window.openSettings && window.openSettings()"><i class="bi bi-gear-fill"></i></button>
@@ -1233,7 +1244,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
     <div class="mb-3" id="settingsCitySection">
       <label class="small text-secondary">生活圏（市）</label>
       <button type="button" id="homeCityBtn" class="btn sp-btn-secondary w-100 py-2 fw-bold mb-1" onclick="openHomeCityModal()">
-        生活圏を設定
+        タップして生活圏を設定
       </button>
       <div id="city-history-chips" class="city-chips"></div>
     </div>
@@ -7327,12 +7338,13 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
   }
 
   function buildGpsQueryKeywords(homeCity) {
-    const city = String(homeCity || '土浦市').trim() || '土浦市';
+    const city = String(homeCity || '').trim(); // P0-1: 土浦市固定初期値を撤去
+    const prefix = city ? city + ' ' : '';
     return [
-      city + ' 食品スーパー',
-      city + ' ドラッグストア',
-      city + ' ディスカウントストア',
-      city + ' ホームセンター',
+      prefix + '食品スーパー',
+      prefix + 'ドラッグストア',
+      prefix + 'ディスカウントストア',
+      prefix + 'ホームセンター',
     ];
   }
 
@@ -7374,7 +7386,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         const radiusList = buildGpsRadiusSequenceKm();
         const limit = 40;
         const histAll = collectHistoryStoreCandidatesForGps(40);
-        const homeCity = (db && db.config && db.config.homeCity) ? String(db.config.homeCity).trim() : '土浦市';
+        const homeCity = (db && db.config && db.config.homeCity) ? String(db.config.homeCity).trim() : ''; // P0-1: 土浦市固定初期値を撤去
         const GPS_QUERY_KEYWORDS = buildGpsQueryKeywords(homeCity);
         try { spDbg('[GPS_HISTORY_CANDIDATES]', { candidates: histAll.slice(0, 15) }); } catch (e) {}
 
@@ -8245,10 +8257,14 @@ return true;
         db.config.colorTheme = theme || 'default';
         if (typeof saveLocalOnly === 'function') saveLocalOnly();
       }
+      // P0-6: フラッシュ防止用に専用キーへも保存
+      try { localStorage.setItem('smartPrice_colorTheme', (theme && theme !== 'default' && theme !== 'standard') ? theme : ''); } catch(e) {}
       window._spThemePreview = null;
       applyColorTheme(theme);
       if (typeof showToast === 'function') showToast('✅ テーマを保存しました', 1500);
       renderThemePanel();
+      // P0-4: 保存後もThemeパネルに留まる（生活圏設定への誤遷移防止）
+      try { if (window.SmartPriceModal && typeof window.SmartPriceModal.navigate === 'function') window.SmartPriceModal.navigate('Theme'); } catch(e) {}
     } catch(e) {}
   }
   window.spSaveColorTheme = spSaveColorTheme;
@@ -11446,6 +11462,21 @@ function spVisibleTrace(tag, payload, cls) {
       window._spEscListener = function(e) { if (e.key === 'Escape' && state.isOpen) close(); };
       document.addEventListener('keydown', window._spEscListener);
     }
+    // P0-5: アプリ全体サイドスワイプ誤爆防止（設定モーダル含む全画面対象）
+    if (!window._spGlobalSwipeGuard) {
+      var _swipeStartX = 0, _swipeStartY = 0;
+      window._spGlobalSwipeGuard = true;
+      document.addEventListener('touchstart', function(e){ _swipeStartX = e.touches[0].clientX; _swipeStartY = e.touches[0].clientY; }, { passive: true });
+      document.addEventListener('touchmove', function(e){
+        var dx = e.touches[0].clientX - _swipeStartX;
+        var dy = e.touches[0].clientY - _swipeStartY;
+        var fromEdge = _swipeStartX < 20 || _swipeStartX > window.innerWidth - 20;
+        var isHorizontal = Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 2;
+        var tag = document.activeElement ? document.activeElement.tagName : '';
+        var isInputting = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+        if (fromEdge && isHorizontal && !isInputting) { e.preventDefault(); }
+      }, { passive: false });
+    }
     
     const settingsBtn = document.getElementById('settingsBtn');
     if (settingsBtn && !settingsBtn._spBound) {
@@ -11565,7 +11596,7 @@ function spVisibleTrace(tag, payload, cls) {
       
       const cityInput = document.getElementById('home-city-input');
       if (cityInput && window.db && window.db.config) cityInput.value = window.db.config.homeCity || '';
-      try{ const b=document.getElementById('homeCityBtn'); const v=(window.db&&window.db.config? (window.db.config.homeCity||''):''); if(b){ b.textContent = v? (`生活圏：${v}`) : '生活圏を入力'; } }catch(e){}
+      try{ const b=document.getElementById('homeCityBtn'); const v=(window.db&&window.db.config? (window.db.config.homeCity||''):''); if(b){ b.textContent = v? (`生活圏：${v}`) : 'タップして生活圏を設定'; } }catch(e){} // P0-2
       
       if (typeof window.renderCityChips === 'function') window.renderCityChips();
       
