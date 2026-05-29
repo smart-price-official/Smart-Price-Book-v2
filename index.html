@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.165  BUILD_ID=2026-05-29_homecity-fix-r4
+APP_VERSION=v23.9.166  BUILD_ID=2026-05-29_v166-homecity-clear
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.165";
-  const BUILD_ID    = "2026-05-29_homecity-fix-r4";
+  const APP_VERSION = "v23.9.166";
+  const BUILD_ID    = "2026-05-29_v166-homecity-clear";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -1603,8 +1603,8 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
     
     <div class="d-grid gap-2">
       <button class="btn btn-primary py-3 fw-bold" onclick="saveHomeCityFromModal()">保存</button>
-      <!-- v23.9.165 SP-250528-001: 生活圏クリアボタン（homeCityを空文字で保存・履歴もクリア） -->
-      <button class="btn btn-outline-danger" onclick="clearHomeCityFromModal()">買い物エリアをクリア</button>
+      <!-- v23.9.166 SP-250529-001: 買い物エリアクリア（ローカル+Firebase両方を空に＝リロードで復活しない） -->
+      <button class="btn btn-outline-danger" onclick="clearHomeCityEverywhere()">買い物エリアをクリア</button>
       <button class="btn btn-outline-secondary" onclick="closeHomeCityModal()">閉じる</button>
     </div>
   </div>
@@ -11722,32 +11722,68 @@ function saveHomeCityFromModal() {
   }
 }
 
-// v23.9.165 SP-250528-001: 生活圏クリア（土浦市など固定済みhomeCityを削除可能に）
-function clearHomeCityFromModal() {
-  if (typeof db !== 'undefined' && db.config) {
-    db.config.homeCity = "";
-    if (Array.isArray(db.config.homeCities)) db.config.homeCities = [];
+// v23.9.166 SP-250529-001: 買い物エリア(homeCity)をローカル+Firebase両方から削除。
+// クラウド優先マージ(mergeConfig)で復活しないよう、Firebaseには homeCity/homeCities を空で強制PUTする。
+async function clearHomeCityEverywhere() {
+  if (typeof db === 'undefined' || !db.config) return;
 
+  // 1-2. ローカルの値を空に
+  db.config.homeCity = "";
+  db.config.homeCities = [];
+
+  // 3. ローカル即時保存
+  if (typeof saveLocalOnly === 'function') saveLocalOnly();
+
+  // 5. UI即時反映
+  try {
     const input = document.getElementById('home-city-modal-input');
     if (input) input.value = "";
-
-    if (typeof saveLocalOnly === 'function') saveLocalOnly();
     if (typeof renderCityChips === 'function') renderCityChips();
-
-    // 設定モーダル上部ボタンの表示も「タップして買い物エリアを設定」に戻す
     const btn = document.getElementById('homeCityBtn');
     if (btn) btn.textContent = 'タップして買い物エリアを設定';
+  } catch (e) {}
 
-    if (typeof showToast === 'function') showToast('買い物エリアをクリアしました', 2000);
-
-    closeHomeCityModal();
+  // 4. Firebaseへ空を強制PUT（通常マージを通さない／products等は保持）
+  let cloudOk = true;
+  if (fbUrl) {
+    cloudOk = false;
+    try {
+      const uid = getOrCreateUserId();
+      const targetUrl = scopeUrlByUser(getSafeUrl(fbUrl), uid);
+      // products等の他データを保持するためクラウドを読みマージ（configはこの後で強制上書き）
+      let payloadDb = deepClone(db);
+      try {
+        const res = await fetchWithTimeout(targetUrl, {}, 9000);
+        const cloud = await res.json();
+        if (cloud && cloud.products) payloadDb = mergeDb(db, cloud);
+      } catch (e) { /* 読めなくてもローカル基準で続行 */ }
+      // ★ homeCity系を強制的に空で上書き（クラウドの土浦市を消す＝復活防止）
+      payloadDb.config.homeCity = "";
+      payloadDb.config.homeCities = [];
+      const payload = stripForCloud(payloadDb);
+      await fetchWithTimeout(targetUrl, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }, 9000);
+      cloudOk = true;
+    } catch (e) { cloudOk = false; }
   }
+
+  // 6. トースト
+  try {
+    if (typeof showToast === 'function') {
+      showToast(cloudOk ? '買い物エリアをクリアしました' : 'ローカル削除OK・クラウド反映は失敗（次回同期で再試行されます）', cloudOk ? 2000 : 5000);
+    }
+  } catch (e) {}
+
+  closeHomeCityModal();
 }
+
+// 後方互換：旧名は新関数に委譲（バグ挙動を残さない）
+function clearHomeCityFromModal() { return clearHomeCityEverywhere(); }
 
 window.openHomeCityModal = openHomeCityModal;
 window.closeHomeCityModal = closeHomeCityModal;
 window.saveHomeCityFromModal = saveHomeCityFromModal;
 window.clearHomeCityFromModal = clearHomeCityFromModal;
+window.clearHomeCityEverywhere = clearHomeCityEverywhere;
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // v22.0: バーコード手入力UI
