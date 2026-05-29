@@ -13,7 +13,7 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.166  BUILD_ID=2026-05-29_v166-homecity-clear
+APP_VERSION=v23.9.166  BUILD_ID=2026-05-29_v166-homecity-clear-oplog
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
@@ -21,7 +21,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 (() => {
   // ===== 正本（ここだけ編集可） =====
   const APP_VERSION = "v23.9.166";
-  const BUILD_ID    = "2026-05-29_v166-homecity-clear";
+  const BUILD_ID    = "2026-05-29_v166-homecity-clear-oplog";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -1404,6 +1404,13 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
           </div>
           <!-- v23.9.120: 人間向けログ導線（全ログ統合・最上部） -->
           <button type="button" class="btn btn-outline-info w-100 py-3 fw-bold mb-3" style="font-size:1rem;" onclick="copyAllLogsForYui()">📋 全ログをコピー</button>
+          <!-- v23.9.166 SP-250529-002: 動作ログ(sp_oplog)のダウンロード・件数表示・消去 -->
+          <div class="mb-3" style="border:2px solid #06c29a; border-radius:8px; padding:12px; background:rgba(6,194,154,0.1);">
+            <div class="small text-secondary mb-2 text-center" style="opacity:.85;">動作ログ（不安定化の原因追跡用・端末に永続保存）</div>
+            <div class="small text-center mb-2" style="opacity:.9;">記録件数: <span id="oplog-count" class="fw-bold">-</span> 件</div>
+            <button type="button" class="btn btn-success w-100 py-2 fw-bold mb-2" onclick="window.spOpLogDownload && window.spOpLogDownload()">⬇️ 動作ログをダウンロード（JSON）</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm w-100" onclick="if(window.spOpLogClear){ if(confirm('動作ログを消去しますか？')){ window.spOpLogClear(); var c=document.getElementById('oplog-count'); if(c)c.textContent='0'; if(typeof showToast==='function')showToast('動作ログを消去しました',2000); } }">🗑 動作ログを消去</button>
+          </div>
           <!-- v23.9.154: 検証データ（全体検証・端末比較） -->
           <div class="mb-3" style="border:2px solid #4a4aff; border-radius:8px; padding:12px; background:rgba(74,74,255,0.1);">
             <div class="small text-secondary mb-2 text-center" style="opacity:.85;">全体検証（端末・DB横断）</div>
@@ -1910,6 +1917,12 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
       } catch(e) {
         console.warn('[ErrorLog] Failed to save to localStorage:', e);
       }
+      // v23.9.166 SP-250529-002: 動作ログ(sp_oplog)にもエラーを記録（js_error/unhandled_rejection両方ここを通る）
+      try {
+        if (typeof window.spOpLog === 'function') {
+          window.spOpLog('error', { type: errorInfo.type || '', message: errorInfo.message || '', stack: errorInfo.stack || '' });
+        }
+      } catch(_) {}
     }
     
     function setLastError(msg) {
@@ -3066,6 +3079,16 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 
     // [p0-boot-chain-diagnosis] 工程ごとに try/catch を分離（1工程の失敗で後続を止めない）。ログのみ追加。
     try { spDbg('[APP_BOOT_START]', { version: typeof APP_VERSION !== 'undefined' ? APP_VERSION : '', build: typeof BUILD_ID !== 'undefined' ? BUILD_ID : '' }); } catch (_abs) {}
+    // v23.9.166 SP-250529-002: 動作ログ（起動 state:boot）＋復帰(resume)監視
+    try { if (typeof window.spOpLog === 'function') window.spOpLog('state', { to: 'boot', version: (window.APP_VERSION || ''), build: (window.BUILD_ID || '') }); } catch (_) {}
+    try {
+      if (!window._spResumeBound) {
+        window._spResumeBound = true;
+        document.addEventListener('visibilitychange', function () {
+          try { if (document.visibilityState === 'visible' && typeof window.spOpLog === 'function') window.spOpLog('state', { to: 'resume' }); } catch (_) {}
+        });
+      }
+    } catch (_) {}
 
     try {
       document.body.style.display = 'block';
@@ -3948,12 +3971,17 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       const uid = getOrCreateUserId();
       const targetUrl = scopeUrlByUser(getSafeUrl(fbUrl), uid);
       const payload = stripForCloud(db);
+      const _putT0 = Date.now();
       await fetchWithTimeout(targetUrl, {
         method: 'PUT',
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       }, 12000);
+      // v23.9.166 SP-250529-002: 動作ログ（Firebase PUT 成功）
+      try { if (typeof window.spOpLog === 'function') window.spOpLog('fb', { type: 'PUT', result: 'ok', ms: Date.now() - _putT0 }); } catch (_) {}
     } catch(e){
+      // v23.9.166 SP-250529-002: 動作ログ（Firebase PUT 失敗）
+      try { if (typeof window.spOpLog === 'function') window.spOpLog('fb', { type: 'PUT', result: 'ng', error: (e && e.message ? e.message : String(e)) }); } catch (_) {}
       if (isDebug()) showToast(`PUT失敗: ${e.message}`, 8000);
     }
   }
@@ -4181,7 +4209,9 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       
       syncResult.success = true;
       const elapsed = Date.now() - startTime;
-      
+      // v23.9.166 SP-250529-002: 動作ログ（Firebase同期GET 成功）
+      try { if (typeof window.spOpLog === 'function') window.spOpLog('fb', { type: 'GET', result: 'ok', ms: elapsed, items: syncResult.itemsCount }); } catch (_) {}
+
       if (isDebug()) {
         const msg = `同期成功: ${syncResult.itemsCount}商品 / ${syncResult.historyCount}履歴 / ${syncResult.imageKeyCount}画像 / ${elapsed}ms`;
         showToast(msg, 5000);
@@ -4192,6 +4222,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       
     } catch(e) {
       syncResult.error = e.message || String(e);
+      // v23.9.166 SP-250529-002: 動作ログ（Firebase同期GET 失敗）
+      try { if (typeof window.spOpLog === 'function') window.spOpLog('fb', { type: 'GET', result: 'ng', error: syncResult.error }); } catch (_) {}
       if (isDebug()) {
         showToast(`同期失敗: ${syncResult.error}`, 8000);
         console.error('[Sync]', syncResult.error, e);
@@ -5008,6 +5040,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
 
   // ========= Form =========
   async function openForm(code) {
+    try { if (typeof window.spOpLog === 'function') window.spOpLog('state', { to: 'form', code: String(code != null ? code : '') }); } catch (_) {}
     const calcArea = document.getElementById('calcOptionArea');
     const saveBtn = document.getElementById('saveBtn');
     const delBtn = document.getElementById('delHistBtn');
@@ -5768,6 +5801,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         price: val,
         store: curStore
       });
+      // v23.9.166 SP-250529-002: 動作ログ（商品追加 成功）
+      try { if (typeof window.spOpLog === 'function') window.spOpLog('product_add', { jan: jan, name: safeName, result: 'ok', price: val, store: curStore }); } catch (_) {}
 
       // [ssot-fix-save-version-log] どの版で保存したかを記録
       spDbg('[SAVE_VERSION]', {
@@ -5795,6 +5830,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       
     } catch(e) {
       spDbg('[SAVE_BLOCK_REASON]', { reason: 'exception', message: e && e.message ? e.message : String(e) });
+      // v23.9.166 SP-250529-002: 動作ログ（商品追加 失敗）
+      try { if (typeof window.spOpLog === 'function') window.spOpLog('product_add', { jan: String(curBarcode || ''), result: 'ng', error: (e && e.message ? e.message : String(e)) }); } catch (_) {}
       showToast("保存に失敗しました", 8000);
       if (isDebug()) {
         console.error("[SaveData] Error:", e);
@@ -7784,6 +7821,7 @@ function openManualEntryOnly(){
 
 function startScanner() {
     if (isScanning) return;
+    try { if (typeof window.spOpLog === 'function') window.spOpLog('state', { to: 'scan' }); } catch (_) {}
 
     if (typeof Html5Qrcode === 'undefined') {
       showToast("スキャンライブラリが読み込まれていません。再読込してください。", 8000);
@@ -8344,6 +8382,7 @@ return true;
 
   async function showHome() {
     try{ clearToasts(); }catch(e){}
+    try { if (typeof window.spOpLog === 'function') window.spOpLog('state', { to: 'home' }); } catch (_) {}
 
     document.getElementById('mainView').style.display='block';
     document.getElementById('formView').style.display='none';
@@ -9241,6 +9280,7 @@ function spVisibleTrace(tag, payload, cls) {
     if (jan.length !== 13 && jan.length !== 8) {
       // [jan-maker-nonjan-toast] 桁数が合わない → 非JAN扱い
       spDbg('[NON_JAN_DETECTED]', { code: jan, reason: 'invalid_length' });
+      try { if (typeof window.spOpLog === 'function') window.spOpLog('scan', { jan: jan, result: 'ng', reason: 'invalid_length' }); } catch (_) {}
       showNonJanToast();
       if (isDebug()) {
         console.error("[ProcessBarcode] Invalid JAN length:", jan, "original:", code);
@@ -9253,6 +9293,7 @@ function spVisibleTrace(tag, payload, cls) {
     if (!validateJanCheckDigit(jan)) {
       // [jan-maker-nonjan-toast] チェックデジット不正 → 非JAN扱い
       spDbg('[NON_JAN_DETECTED]', { code: jan, reason: 'checkdigit_invalid' });
+      try { if (typeof window.spOpLog === 'function') window.spOpLog('scan', { jan: jan, result: 'ng', reason: 'checkdigit_invalid' }); } catch (_) {}
       showNonJanToast();
       if (isDebug()) {
         console.error("[ProcessBarcode] Invalid check digit:", jan);
@@ -9268,6 +9309,7 @@ function spVisibleTrace(tag, payload, cls) {
     }
 
     curBarcode = jan;
+    try { if (typeof window.spOpLog === 'function') window.spOpLog('scan', { jan: jan, result: 'ok' }); } catch (_) {}
     try { setLastScannedJanSafe(jan, code); } catch (_sj) {}
     
     // ✅ P0: 同一JANの二重発火を止める（連続読取り対策）
@@ -11490,6 +11532,8 @@ function spVisibleTrace(tag, payload, cls) {
     if (!modal) return;
     try { const dp = document.getElementById('debug-panel'); if (dp && dp.classList.contains('show')) { dp.classList.remove('show'); dp.style.display = 'none'; } } catch(e) {}
     try { if (typeof window.clearToasts === 'function') window.clearToasts(); } catch(e) {}
+    // v23.9.166 SP-250529-002: 動作ログ件数を表示更新
+    try { var _oc = document.getElementById('oplog-count'); if (_oc && typeof window.spOpLogCount === 'function') _oc.textContent = String(window.spOpLogCount()); } catch(e) {}
     
     state.isOpen = true; state.currentPanel = 'Main'; state.history = ['Main'];
     // インラインstyleで確実に全画面オーバーレイを設定
@@ -15347,9 +15391,57 @@ window.spSetReportPeriod = spSetReportPeriod;
       if (typeof window.spDbgLog === 'function') {
         window.spDbgLog(line);
       }
+      // v23.9.166 SP-250529-002: 既存spDbgも永続ログ(sp_oplog)へミラー（起動・エラーログを再起動後も保持）
+      try { if (typeof window.spOpLog === 'function') window.spOpLog('dbg', { tag: String(tag || ''), payload: payload || {} }); } catch (_) {}
     } catch (e) {}
   }
   window.spDbg = spDbg;
+
+  // === v23.9.166 SP-250529-002: 動作ログ永続化ストア（localStorage 'sp_oplog' / 直近1000件リングバッファ / 書込デバウンス500ms） ===
+  var _spOpLog = [];
+  var _spOpLogTimer = null;
+  try { var _spRaw = localStorage.getItem('sp_oplog'); _spOpLog = _spRaw ? JSON.parse(_spRaw) : []; if (!Array.isArray(_spOpLog)) _spOpLog = []; } catch (e) { _spOpLog = []; }
+  function _spOpLogPersist() {
+    try {
+      localStorage.setItem('sp_oplog', JSON.stringify(_spOpLog));
+    } catch (e) {
+      // QuotaExceededError等：古い半分を破棄して再試行（ログ機能がアプリ本体を壊さない）
+      try {
+        _spOpLog = _spOpLog.slice(Math.floor(_spOpLog.length / 2));
+        localStorage.setItem('sp_oplog', JSON.stringify(_spOpLog));
+      } catch (e2) {}
+    }
+  }
+  function spOpLog(ev, d) {
+    try {
+      _spOpLog.push({ t: new Date().toISOString(), ev: String(ev || ''), d: (d && typeof d === 'object') ? d : (d != null ? { v: d } : {}) });
+      if (_spOpLog.length > 1000) _spOpLog = _spOpLog.slice(-1000); // リングバッファ（古いものから破棄）
+      if (_spOpLogTimer) clearTimeout(_spOpLogTimer);
+      _spOpLogTimer = setTimeout(_spOpLogPersist, 500); // デバウンス（スキャン等の高頻度でも性能劣化を抑制）
+    } catch (e) {}
+  }
+  window.spOpLog = spOpLog;
+  window.spOpLogGetAll = function () { try { return _spOpLog.slice(); } catch (e) { return []; } };
+  window.spOpLogCount = function () { try { return _spOpLog.length; } catch (e) { return 0; } };
+  window.spOpLogClear = function () { try { _spOpLog = []; localStorage.removeItem('sp_oplog'); return true; } catch (e) { return false; } };
+  // Firebaseログ用URLマスク（クエリ値を伏せる）
+  window._spMaskUrl = function (u) { try { var s = String(u || '').replace(/([?&])([^=]+)=[^&]*/g, '$1$2=***'); return s.length > 90 ? s.slice(0, 90) + '…' : s; } catch (e) { return ''; } };
+  // 動作ログをJSONファイルでダウンロード
+  window.spOpLogDownload = function () {
+    try {
+      var data = JSON.stringify({ app: (window.APP_VERSION || ''), build: (window.BUILD_ID || ''), exported: new Date().toISOString(), count: _spOpLog.length, logs: _spOpLog }, null, 2);
+      var blob = new Blob([data], { type: 'application/json' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      var d = new Date();
+      var pad = function (n) { return String(n).padStart(2, '0'); };
+      a.href = url;
+      a.download = 'sp_oplog_' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '_' + pad(d.getHours()) + pad(d.getMinutes()) + '.json';
+      document.body.appendChild(a); a.click();
+      setTimeout(function () { try { document.body.removeChild(a); URL.revokeObjectURL(url); } catch (_) {} }, 1000);
+      try { if (typeof showToast === 'function') showToast('動作ログをダウンロードしました（' + _spOpLog.length + '件）', 2500); } catch (_) {}
+    } catch (e) { try { if (typeof showToast === 'function') showToast('ログDL失敗: ' + (e && e.message || e), 4000); } catch (_) {} }
+  };
 
   window.spDbgDump = function() {
     var state = '';
