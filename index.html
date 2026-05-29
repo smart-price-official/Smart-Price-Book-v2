@@ -13,7 +13,7 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.166  BUILD_ID=2026-05-29_v166-homecity-clear-oplog
+APP_VERSION=v23.9.166  BUILD_ID=2026-05-29_v166-r2-placeholder
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
@@ -21,7 +21,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 (() => {
   // ===== 正本（ここだけ編集可） =====
   const APP_VERSION = "v23.9.166";
-  const BUILD_ID    = "2026-05-29_v166-homecity-clear-oplog";
+  const BUILD_ID    = "2026-05-29_v166-r2-placeholder";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -1594,7 +1594,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
     
     <div class="mb-3">
       <label class="small text-secondary">買い物エリア（市）</label>
-      <input type="text" id="home-city-modal-input" class="form-control sp-bg-card sp-border-muted mb-1" placeholder="例：土浦市、水戸市、東京都荒川区">
+      <input type="text" id="home-city-modal-input" class="form-control sp-bg-card sp-border-muted mb-1" placeholder="例：〇〇市、〇〇区">
       <div class="small text-secondary mb-2" style="opacity:.9;">複数の場合は「、」で区切ってください</div>
     </div>
     
