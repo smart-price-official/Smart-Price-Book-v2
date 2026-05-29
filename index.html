@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.164  BUILD_ID=2026-05-27_P0fix-8items
+APP_VERSION=v23.9.165  BUILD_ID=2026-05-29_homecity-fix-r4
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.164";
-  const BUILD_ID    = "2026-05-27_P0fix-8items";
+  const APP_VERSION = "v23.9.165";
+  const BUILD_ID    = "2026-05-29_homecity-fix-r4";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -143,7 +143,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#D50000">
-  <title>Smart Price v23.9.121</title><!-- VERSION SSOT: applyVersionEverywhere() が自動上書き -->
+  <title>Smart Price</title><!-- VERSION SSOT: applyVersionEverywhere() が自動上書き -->
   <!-- ✅ SW RESET TOOL (v22.7.0) : ?reset=sw -->
   <script>
   (function() {
@@ -251,7 +251,8 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
     .prod-thumb { width: 68px; height: 68px; object-fit: contain; background: #fff; border-radius: 8px; margin-right: 12px; }
 
     .price-main { font-size: 1.25rem; font-weight: bold; color: var(--sp-text); line-height: 1; }
-    .stats-strip { display: flex; flex-direction: column; background: var(--sp-card-alt); padding: 10px; border-radius: 8px; margin-bottom: 15px; font-size: 0.75rem; border: 1px solid var(--sp-border); }
+    /* v23.9.165 SP-250528-002: 統計帯(平均・最安・直近)がライトテーマで黒く浮く問題を修正。--sp-card-alt は :root(standard)の暗色#26262cをライトテーマが継承するため、テーマ追従する var(--sp-card)/var(--sp-text) に変更 */
+    .stats-strip { display: flex; flex-direction: column; background: var(--sp-card); color: var(--sp-text); padding: 10px; border-radius: 8px; margin-bottom: 15px; font-size: 0.75rem; border: 1px solid var(--sp-border); }
     .stats-row { display: flex; justify-content: space-around; width: 100%; }
     .stat-item { text-align: center; flex: 1; color: var(--sp-text-muted); }
     .stat-val { display: block; font-weight: bold; color: var(--sp-text); font-size: 0.9rem; }
@@ -518,6 +519,8 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 
 /* === PATCH: settings modal visibility & stacking (settingsnav-r3) === */
 #settingsModal.show-modal { z-index: 100500 !important; }
+/* v23.9.165 SP-250528-001: ⑥生活圏設定ボタン経由でhomeCityModalを開くため、settingsModalより前面に出す必要がある */
+#homeCityModal { z-index: 100600 !important; }
 #settingsModal .modal-content { max-height: 80vh; overflow-y: auto; }
 #settingsModal .sp-settings-box { max-height: 70vh; overflow-y: auto; }
 #settingsModal .sp-settings-menu { position: sticky; top: 0; background: rgba(26,26,26,0.98); padding-top: 6px; z-index: 2; }
@@ -946,35 +949,35 @@ body[data-theme="standard"] {
   --sp-danger-form:#dc3545;
 }
 body[data-theme="youth-pink"] {
-  --sp-bg:#ffd6e7; --sp-card:#ffe8f2;
+  --sp-bg:#ffd6e7; --sp-card:#ffe8f2; --sp-card-alt:#ffeaf3;
   --sp-text:#4a1030; --sp-text-muted:#b86080; --sp-border:#f0b0cc;
   --sp-header-bg:#e91e8c; --sp-primary:#e91e8c; --sp-accent:#ffd23f;
   --sp-success:#2fae62; --sp-warning:#f4a000; --sp-danger:#de2e60;
   --sp-shadow:rgba(233,30,140,.22); --sp-button-bg:#e91e8c; --sp-button-text:#ffffff;
 }
 body[data-theme="dusty-rose"] {
-  --sp-bg:#e8cfc0; --sp-card:#f2ddd3;
+  --sp-bg:#e8cfc0; --sp-card:#f2ddd3; --sp-card-alt:#f3e0d7;
   --sp-text:#3d1f18; --sp-text-muted:#9a6a60; --sp-border:#d4a898;
   --sp-header-bg:#8a5462; --sp-primary:#b87082; --sp-accent:#c97b5a;
   --sp-success:#588460; --sp-warning:#b8843a; --sp-danger:#ad5454;
   --sp-shadow:rgba(138,84,98,.22); --sp-button-bg:#b87082; --sp-button-text:#ffffff;
 }
 body[data-theme="sage-modern"] {
-  --sp-bg:#ccd8b8; --sp-card:#dce8c8;
+  --sp-bg:#ccd8b8; --sp-card:#dce8c8; --sp-card-alt:#dfeacc;
   --sp-text:#1e2a14; --sp-text-muted:#587050; --sp-border:#aac090;
   --sp-header-bg:#586846; --sp-primary:#819570; --sp-accent:#c2a44d;
   --sp-success:#57854f; --sp-warning:#c2a44d; --sp-danger:#a86342;
   --sp-shadow:rgba(88,104,70,.22); --sp-button-bg:#819570; --sp-button-text:#ffffff;
 }
 body[data-theme="navy-elegant"] {
-  --sp-bg:#ccd4e0; --sp-card:#dce4f0;
+  --sp-bg:#ccd4e0; --sp-card:#dce4f0; --sp-card-alt:#dfe6f1;
   --sp-text:#0a1628; --sp-text-muted:#405070; --sp-border:#a8b8cc;
   --sp-header-bg:#1d3258; --sp-primary:#1d3258; --sp-accent:#8893a8;
   --sp-success:#2a724f; --sp-warning:#b58428; --sp-danger:#a8333f;
   --sp-shadow:rgba(29,50,88,.24); --sp-button-bg:#1d3258; --sp-button-text:#ffffff;
 }
 body[data-theme="access-green"] {
-  --sp-bg:#c8e0c0; --sp-card:#dcefd8;
+  --sp-bg:#c8e0c0; --sp-card:#dcefd8; --sp-card-alt:#dff0db;
   --sp-text:#061a0a; --sp-text-muted:#2a5030; --sp-border:#90c080;
   --sp-header-bg:#0c3a25; --sp-primary:#0c3a25; --sp-accent:#b08d57;
   --sp-success:#157038; --sp-warning:#a86208; --sp-danger:#9c1414;
@@ -988,28 +991,28 @@ body[data-theme="gold-luxury"] {
   --sp-shadow:rgba(201,162,39,.20); --sp-button-bg:#c9a227; --sp-button-text:#1a160c;
 }
 body[data-theme="soft-blue"] {
-  --sp-bg:#b8d0e8; --sp-card:#cce0f5;
+  --sp-bg:#b8d0e8; --sp-card:#cce0f5; --sp-card-alt:#d0e2f6;
   --sp-text:#0a1828; --sp-text-muted:#3a5878; --sp-border:#90b8d8;
   --sp-header-bg:#3a6a9c; --sp-primary:#4f7cac; --sp-accent:#5aa9e6;
   --sp-success:#287f60; --sp-warning:#cd8a23; --sp-danger:#c2434f;
   --sp-shadow:rgba(79,124,172,.22); --sp-button-bg:#4f7cac; --sp-button-text:#ffffff;
 }
 body[data-theme="lavender-calm"] {
-  --sp-bg:#d0c0e0; --sp-card:#e0d0f0;
+  --sp-bg:#d0c0e0; --sp-card:#e0d0f0; --sp-card-alt:#e2d4f1;
   --sp-text:#280e38; --sp-text-muted:#6a4888; --sp-border:#b8a0d0;
   --sp-header-bg:#5a407a; --sp-primary:#8266b0; --sp-accent:#b39ddb;
   --sp-success:#538a66; --sp-warning:#b8893a; --sp-danger:#ad546f;
   --sp-shadow:rgba(90,64,122,.22); --sp-button-bg:#8266b0; --sp-button-text:#ffffff;
 }
 body[data-theme="ocean-pro"] {
-  --sp-bg:#b0d8d5; --sp-card:#c8eae8;
+  --sp-bg:#b0d8d5; --sp-card:#c8eae8; --sp-card-alt:#ccecea;
   --sp-text:#041820; --sp-text-muted:#305a60; --sp-border:#88c0bc;
   --sp-header-bg:#003540; --sp-primary:#005f73; --sp-accent:#2ec4b6;
   --sp-success:#18867c; --sp-warning:#c08023; --sp-danger:#b8443a;
   --sp-shadow:rgba(0,95,115,.24); --sp-button-bg:#005f73; --sp-button-text:#ffffff;
 }
 body[data-theme="warm-home"] {
-  --sp-bg:#f0d0a0; --sp-card:#f8e0b8;
+  --sp-bg:#f0d0a0; --sp-card:#f8e0b8; --sp-card-alt:#f9e2be;
   --sp-text:#2a1508; --sp-text-muted:#805030; --sp-border:#e0b078;
   --sp-header-bg:#a64a32; --sp-primary:#de6a4e; --sp-accent:#f4a261;
   --sp-success:#5f8a48; --sp-warning:#d28823; --sp-danger:#c34e3c;
@@ -1023,7 +1026,7 @@ body[data-theme="midnight-neon"] {
   --sp-shadow:rgba(0,212,255,.20); --sp-button-bg:#00d4ff; --sp-button-text:#06121a;
 }
 body[data-theme="sakura-premium"] {
-  --sp-bg:#f0d0e0; --sp-card:#f8e0ec;
+  --sp-bg:#f0d0e0; --sp-card:#f8e0ec; --sp-card-alt:#f9e2ee;
   --sp-text:#300a20; --sp-text-muted:#884060; --sp-border:#e0a8c0;
   --sp-header-bg:#993f64; --sp-primary:#d86f9a; --sp-accent:#e08ca8;
   --sp-success:#56906a; --sp-warning:#c0883a; --sp-danger:#b8526b;
@@ -1037,7 +1040,7 @@ body[data-theme="cyber-magenta"] {
   --sp-shadow:rgba(255,43,214,.20); --sp-button-bg:#ff2bd6; --sp-button-text:#0a0a12;
 }
 body[data-theme="holo-pop"] {
-  --sp-bg:#b8c8f8; --sp-card:#ccd8ff;
+  --sp-bg:#b8c8f8; --sp-card:#ccd8ff; --sp-card-alt:#d0dbff;
   --sp-text:#080e28; --sp-text-muted:#384888; --sp-border:#98b0f0;
   --sp-header-bg:#1e58f0; --sp-primary:#2563ff; --sp-accent:#ff2e9a;
   --sp-success:#06c29a; --sp-warning:#ff9f1c; --sp-danger:#ff2e6e;
@@ -1241,10 +1244,11 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   <div class="modal-content">
     <h5 class="sp-text-normal mb-4 text-center" id="settingsTitle" onclick="handleSettingsTitleClick()" style="cursor: pointer;">設定</h5>
 
-    <div class="mb-3" id="settingsCitySection">
-      <label class="small text-secondary">生活圏（市）</label>
+    <!-- v23.9.165 SP-250528-001: 設定画面上部の生活圏セクションは非表示化。⑥生活圏設定ボタンに集約 -->
+    <div class="mb-3" id="settingsCitySection" style="display:none !important;">
+      <label class="small text-secondary">買い物エリア（市）</label>
       <button type="button" id="homeCityBtn" class="btn sp-btn-secondary w-100 py-2 fw-bold mb-1" onclick="openHomeCityModal()">
-        タップして生活圏を設定
+        タップして買い物エリアを設定
       </button>
       <div id="city-history-chips" class="city-chips"></div>
     </div>
@@ -1256,6 +1260,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
           <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelSupport">③ 運営者へ質問／不具合報告</button>
           <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelTaxSettings" onclick="renderStoreTaxSettingsPanel()">④ 店舗の税設定</button>
           <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelTheme" onclick="renderThemePanel()">⑤ 🎨 テーマ設定</button>
+          <button type="button" class="btn btn-outline-secondary sp-menu-btn" onclick="openHomeCityModal()">⑥ 買い物エリア設定</button>
 </div>
       </div>
 
@@ -1299,9 +1304,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
         <div id="ref-from-status" class="small text-secondary mt-2" style="opacity:.9;"></div>
         <div id="referral-status-list" class="mt-2" style="display:none;"></div>
       </div>
-        <div class="mt-3 d-grid">
-          <button type="button" class="btn btn-outline-secondary sp-back-btn" data-back="">戻る</button>
-        </div>
+        <!-- v23.9.165 SP-250528-001: パネル末尾[戻る]を settingsCommonBack に共通化（panelReferral） -->
 
       <div id="panelFamily" class="sp-panel mt-3" style="display:none;">
         <div class="small text-secondary mb-2" style="opacity:.9;">個人ID：<span class="sp-text-normal fw-bold" id="sp-personal-id-panelFamily"></span></div>
@@ -1335,9 +1338,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 
         </div>
         <div id="familyMsg" class="small text-secondary mt-2"></div>
-        <div class="mt-3 d-grid">
-          <button type="button" class="btn btn-outline-secondary sp-back-btn" data-back="">戻る</button>
-        </div>
+        <!-- v23.9.165 SP-250528-001: パネル末尾[戻る]を settingsCommonBack に共通化（panelFamily） -->
       </div>
 
       <div id="panelSupport" class="sp-panel mt-3" style="display:none;">
@@ -1378,9 +1379,7 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
         <div class="d-grid gap-2 mt-2">
           <button type="button" class="btn btn-outline-secondary" id="supportDiagnoseBtn">不具合の検出（情報を埋める）</button>
         </div>
-        <div class="mt-3 d-grid">
-          <button type="button" class="btn btn-outline-secondary sp-back-btn" data-back="">戻る</button>
-        </div>
+        <!-- v23.9.165 SP-250528-001: パネル末尾[戻る]を settingsCommonBack に共通化（panelSupport） -->
       </div>
 
       <div id="panelOperator" class="sp-panel mt-3" style="display:none;">
@@ -1463,29 +1462,29 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
           </div>
           
         </div>
-      <!-- v23.9.156: 戻るボタンをoperatorPanelBody外へ移動（他パネルと同じ配置に統一） -->
-      <div class="mt-3 d-grid">
-        <button type="button" class="btn btn-outline-secondary sp-back-btn" data-back="Main">戻る</button>
-      </div>
+      <!-- v23.9.165 SP-250528-001: パネル末尾[戻る]を settingsCommonBack に共通化（panelOperator） -->
     </div>
-    
+
       <div id="panelTaxSettings" class="sp-panel mt-3" style="display:none;">
         <div class="small text-secondary mb-3" style="opacity:.9;">店舗ごとに税込/税別の既定値を設定します。買い物時にストアを選ぶと自動で切り替わります。</div>
         <div id="taxSettingsList"></div>
         <div class="mt-3 d-grid gap-2">
+          <!-- v23.9.165 SP-250528-001: 「保存して戻る」は機能合成のため残置。単純[戻る]のみ settingsCommonBack に共通化 -->
           <button type="button" class="btn btn-primary sp-back-btn" data-back=""
                   onclick="try{saveLocalOnly();}catch(e){} showToast('✅ 税設定を保存しました', 2000);">保存して戻る</button>
-          <button type="button" class="btn btn-outline-secondary sp-back-btn" data-back="">戻る</button>
         </div>
       </div>
 
       <!-- v23.9.157: テーマ設定パネル -->
       <div id="panelTheme" class="sp-panel mt-3" style="display:none;">
         <div id="themeList"></div>
-        <div class="mt-3 d-grid">
-          <button type="button" class="btn btn-outline-secondary sp-back-btn" data-back="Main">戻る</button>
-        </div>
+        <!-- v23.9.165 SP-250528-001: パネル末尾[戻る]を settingsCommonBack に共通化（panelTheme） -->
       </div>
+
+    <!-- v23.9.165 SP-250528-001: 共通[戻る]ボタン。メインメニュー時は非表示、パネル展開時のみ表示。d-grid の !important を上書きするため setProperty で制御 -->
+    <div id="settingsCommonBack" class="mt-3 d-grid" style="display:none !important;">
+      <button type="button" class="btn btn-outline-secondary sp-back-btn" data-back="Main">戻る</button>
+    </div>
 
     <button id="syncBtn" class="btn btn-primary w-100 py-2 fw-bold mb-2" onclick="startMigration()">設定保存と同期</button>
     <button id="clearCacheBtn" class="btn sp-btn-primary w-100 py-2 fw-bold mb-2" onclick="clearAllCache()">🔄 キャッシュクリア（表示崩れ修正）</button>
@@ -1584,10 +1583,10 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 
 <div id="homeCityModal" class="modal">
   <div class="modal-content">
-    <h5 class="sp-text-normal mb-3 text-center">生活圏の設定</h5>
+    <h5 class="sp-text-normal mb-3 text-center">買い物エリアの設定</h5>
     
     <div class="mb-3">
-      <label class="small text-secondary">生活圏（市）</label>
+      <label class="small text-secondary">買い物エリア（市）</label>
       <input type="text" id="home-city-modal-input" class="form-control sp-bg-card sp-border-muted mb-1" placeholder="例：土浦市、水戸市、東京都荒川区">
       <div class="small text-secondary mb-2" style="opacity:.9;">複数の場合は「、」で区切ってください</div>
     </div>
@@ -1604,6 +1603,8 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
     
     <div class="d-grid gap-2">
       <button class="btn btn-primary py-3 fw-bold" onclick="saveHomeCityFromModal()">保存</button>
+      <!-- v23.9.165 SP-250528-001: 生活圏クリアボタン（homeCityを空文字で保存・履歴もクリア） -->
+      <button class="btn btn-outline-danger" onclick="clearHomeCityFromModal()">買い物エリアをクリア</button>
       <button class="btn btn-outline-secondary" onclick="closeHomeCityModal()">閉じる</button>
     </div>
   </div>
@@ -5871,7 +5872,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         html += `<div class="dbg-err">❌ GPS失敗</div>`;
       }
       // 設定
-      html += `<div><span class="dbg-key">生活圏</span>: ${data.settings.homeCity || '(未設定)'}</div>`;
+      html += `<div><span class="dbg-key">買い物エリア</span>: ${data.settings.homeCity || '(未設定)'}</div>`;
       html += `<div><span class="dbg-key">GPS範囲</span>: ${data.settings.gpsRange} m</div>`;
       // ストア候補
       html += `<div><span class="dbg-key">raw店舗</span>: ${data.stores.raw.length}件 [${data.stores.raw.slice(0,3).join(', ')}${data.stores.raw.length > 3 ? '...' : ''}]</div>`;
@@ -11555,15 +11556,19 @@ function spVisibleTrace(tag, payload, cls) {
     if (typeof window.setHeaderVersionBadge === 'function') { try { window.setHeaderVersionBadge(); } catch(e) {} }
     const showMain = (normalizedName === 'Main');
     try{
+      // v23.9.165 SP-250528-001: settingsCitySection は常時非表示（⑥生活圏設定に集約）
       const citySec = document.getElementById('settingsCitySection');
-      if(citySec) citySec.style.display = showMain ? 'block' : 'none';
+      if(citySec) citySec.style.display = 'none';
       const syncBtn = document.getElementById('syncBtn');
       if(syncBtn) syncBtn.style.display = showMain ? 'block' : 'none';
       const cacheBtn = document.getElementById('clearCacheBtn');
       if(cacheBtn) cacheBtn.style.display = showMain ? 'block' : 'none';
       const webBtn = document.getElementById('webBtn');
       if(webBtn) webBtn.style.display = showMain ? 'block' : 'none';
-    }catch(e){} 
+      // v23.9.165 SP-250528-001: 共通[戻る]ボタンの表示制御（メインメニュー時=非表示／パネル展開時=表示）。Bootstrap .d-grid の !important を上書きするため setProperty で priority 指定
+      const commonBack = document.getElementById('settingsCommonBack');
+      if(commonBack) commonBack.style.setProperty('display', showMain ? 'none' : 'grid', 'important');
+    }catch(e){}
     
     const prevPanel = state.currentPanel;
     state.currentPanel = normalizedName;
@@ -11596,7 +11601,7 @@ function spVisibleTrace(tag, payload, cls) {
       
       const cityInput = document.getElementById('home-city-input');
       if (cityInput && window.db && window.db.config) cityInput.value = window.db.config.homeCity || '';
-      try{ const b=document.getElementById('homeCityBtn'); const v=(window.db&&window.db.config? (window.db.config.homeCity||''):''); if(b){ b.textContent = v? (`生活圏：${v}`) : 'タップして生活圏を設定'; } }catch(e){} // P0-2
+      try{ const b=document.getElementById('homeCityBtn'); const v=(window.db&&window.db.config? (window.db.config.homeCity||''):''); if(b){ b.textContent = v? (`買い物エリア：${v}`) : 'タップして買い物エリアを設定'; } }catch(e){} // P0-2
       
       if (typeof window.renderCityChips === 'function') window.renderCityChips();
       
@@ -11717,9 +11722,32 @@ function saveHomeCityFromModal() {
   }
 }
 
+// v23.9.165 SP-250528-001: 生活圏クリア（土浦市など固定済みhomeCityを削除可能に）
+function clearHomeCityFromModal() {
+  if (typeof db !== 'undefined' && db.config) {
+    db.config.homeCity = "";
+    if (Array.isArray(db.config.homeCities)) db.config.homeCities = [];
+
+    const input = document.getElementById('home-city-modal-input');
+    if (input) input.value = "";
+
+    if (typeof saveLocalOnly === 'function') saveLocalOnly();
+    if (typeof renderCityChips === 'function') renderCityChips();
+
+    // 設定モーダル上部ボタンの表示も「タップして買い物エリアを設定」に戻す
+    const btn = document.getElementById('homeCityBtn');
+    if (btn) btn.textContent = 'タップして買い物エリアを設定';
+
+    if (typeof showToast === 'function') showToast('買い物エリアをクリアしました', 2000);
+
+    closeHomeCityModal();
+  }
+}
+
 window.openHomeCityModal = openHomeCityModal;
 window.closeHomeCityModal = closeHomeCityModal;
 window.saveHomeCityFromModal = saveHomeCityFromModal;
+window.clearHomeCityFromModal = clearHomeCityFromModal;
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // v22.0: バーコード手入力UI
@@ -12957,7 +12985,7 @@ function renderCityChips() {
       ? db.config.homeCities.filter(Boolean)
       : [];
     container.innerHTML = cities.map(c =>
-      `<span class="city-chip" onclick="(function(v){ if(typeof db!=='undefined'){ db.config.homeCity=v; if(typeof saveLocalOnly==='function') saveLocalOnly(); } const btn=document.getElementById('homeCityBtn'); if(btn) btn.textContent='生活圏：'+v; try{showToast('生活圏を変更しました',1500);}catch(e){} })('${c.replace(/'/g,"\\'")}')">` + c + `</span>`
+      `<span class="city-chip" onclick="(function(v){ if(typeof db!=='undefined'){ db.config.homeCity=v; if(typeof saveLocalOnly==='function') saveLocalOnly(); } const btn=document.getElementById('homeCityBtn'); if(btn) btn.textContent='買い物エリア：'+v; try{showToast('買い物エリアを変更しました',1500);}catch(e){} })('${c.replace(/'/g,"\\'")}')">` + c + `</span>`
     ).join('');
   } catch(e) {}
 }
