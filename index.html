@@ -13,7 +13,7 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.166  BUILD_ID=2026-05-30_v166-r3-uid-merge-fix
+APP_VERSION=v23.9.166  BUILD_ID=2026-05-30_v166-r4-homecity-clear-observability
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
@@ -21,7 +21,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 (() => {
   // ===== 正本（ここだけ編集可） =====
   const APP_VERSION = "v23.9.166";
-  const BUILD_ID    = "2026-05-30_v166-r3-uid-merge-fix";
+  const BUILD_ID    = "2026-05-30_v166-r4-homecity-clear-observability";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -11780,15 +11780,33 @@ function saveHomeCityFromModal() {
 
 // v23.9.166 SP-250529-001: 買い物エリア(homeCity)をローカル+Firebase両方から削除。
 // クラウド優先マージ(mergeConfig)で復活しないよう、Firebaseには homeCity/homeCities を空で強制PUTする。
+// v23.9.166 SP-250530-002 (r4): 全経路に spOpLog 観測点を追加し、サイレント早期returnを可視化。
 async function clearHomeCityEverywhere() {
-  if (typeof db === 'undefined' || !db.config) return;
+  // 観測点1: 関数先頭（呼出されたこと自体を記録）
+  try {
+    if (typeof window.spOpLog === 'function') window.spOpLog('homecity_clear_start', {
+      hasDb: typeof db !== 'undefined',
+      hasConfig: !!(typeof db !== 'undefined' && db && db.config),
+      currentHomeCity: (typeof db !== 'undefined' && db && db.config) ? (db.config.homeCity || '') : '(no_db)',
+      hasFbUrl: !!(typeof fbUrl !== 'undefined' && fbUrl)
+    });
+  } catch (_) {}
+
+  if (typeof db === 'undefined' || !db.config) {
+    // 観測点2: 早期return（db/config 未取得）— サイレント解消（ログ+トースト）
+    try { if (typeof window.spOpLog === 'function') window.spOpLog('homecity_clear_abort', { reason: 'no_db_or_config' }); } catch (_) {}
+    try { if (typeof showToast === 'function') showToast('クリアできません（DBが読み込めません）。アプリを再読み込みしてください。', 5000); } catch (_) {}
+    return;
+  }
 
   // 1-2. ローカルの値を空に
+  const _prevHomeCity = db.config.homeCity || '';
   db.config.homeCity = "";
   db.config.homeCities = [];
 
   // 3. ローカル即時保存
   if (typeof saveLocalOnly === 'function') saveLocalOnly();
+  try { if (typeof window.spOpLog === 'function') window.spOpLog('homecity_clear_progress', { step: 'local_done', prevHomeCity: _prevHomeCity }); } catch (_) {}
 
   // 5. UI即時反映
   try {
@@ -11804,6 +11822,7 @@ async function clearHomeCityEverywhere() {
   if (fbUrl) {
     cloudOk = false;
     try {
+      try { if (typeof window.spOpLog === 'function') window.spOpLog('homecity_clear_progress', { step: 'put_start' }); } catch (_) {}
       const uid = getOrCreateUserId();
       const targetUrl = scopeUrlByUser(getSafeUrl(fbUrl), uid);
       // products等の他データを保持するためクラウドを読みマージ（configはこの後で強制上書き）
@@ -11819,15 +11838,22 @@ async function clearHomeCityEverywhere() {
       const payload = stripForCloud(payloadDb);
       await fetchWithTimeout(targetUrl, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }, 9000);
       cloudOk = true;
-    } catch (e) { cloudOk = false; }
+      try { if (typeof window.spOpLog === 'function') window.spOpLog('homecity_clear_progress', { step: 'put_done' }); } catch (_) {}
+    } catch (e) {
+      cloudOk = false;
+      try { if (typeof window.spOpLog === 'function') window.spOpLog('homecity_clear_error', { phase: 'put', message: (e && e.message) ? e.message : String(e), stack: (e && e.stack) ? String(e.stack).slice(0, 500) : '' }); } catch (_) {}
+    }
+  } else {
+    try { if (typeof window.spOpLog === 'function') window.spOpLog('homecity_clear_progress', { step: 'put_skipped', reason: 'no_fbUrl' }); } catch (_) {}
   }
 
-  // 6. トースト
+  // 6. トースト + 観測点：完了
   try {
     if (typeof showToast === 'function') {
       showToast(cloudOk ? '買い物エリアをクリアしました' : 'ローカル削除OK・クラウド反映は失敗（次回同期で再試行されます）', cloudOk ? 2000 : 5000);
     }
   } catch (e) {}
+  try { if (typeof window.spOpLog === 'function') window.spOpLog('homecity_clear_done', { cloudOk: cloudOk, hasFbUrl: !!fbUrl }); } catch (_) {}
 
   closeHomeCityModal();
 }
