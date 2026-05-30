@@ -1139,8 +1139,10 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
           </div>
           <div class="flex-grow-1">
             <div class="d-flex align-items-center mb-2 gap-1">
-              <input type="text" id="inputName" class="form-control sp-bg-card sp-border-muted" placeholder="商品名（内容量）" style="flex:1;">
+              <input type="text" id="inputName" class="form-control sp-bg-card sp-border-muted" placeholder="商品名（内容量）" style="flex:1;" oninput="try{ if(typeof updateRefetchBtnVisibility==='function') updateRefetchBtnVisibility(); }catch(_){}">
               <button id="aiNameBtn" onclick="aiRefineName()" title="AIで商品名を整える" class="sp-ai-btn">✨</button>
+              <!-- v23.9.167 SP-250530-004: 商品情報を再取得（AI補完失敗 or 画像なしの時に出る） -->
+              <button id="refetchBtn" onclick="refetchProductInfo()" title="商品情報を再取得（AI+画像）" class="sp-ai-btn" style="display:none;">🔄</button>
             </div>
             <select id="inputCategory" class="form-control sp-bg-card sp-border-muted mb-2" style="font-size:0.85rem; padding:4px;"></select>
             <!-- ✅ サブカテゴリ復活（最小UI） -->
@@ -5106,6 +5108,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       if(delProdBtn) delProdBtn.style.display = 'block';
       document.getElementById('inputName').value = p.name || "";
       document.getElementById('inputMaker').value = p.maker || "";
+      // v23.9.167 SP-250530-004: 再取得ボタン表示判定（既存商品オープン時）
+      try { if (typeof window.updateRefetchBtnVisibility === 'function') setTimeout(window.updateRefetchBtnVisibility, 50); } catch (_) {}
 
       const rawCat = (p.category && String(p.category).trim()) ? String(p.category).trim() : '';
       let catVal = rawCat ? normalizeCategory(rawCat) : '__NONE__';
@@ -8630,6 +8634,63 @@ return true;
   }
   window.aiRefineName = aiRefineName;
 
+  // === v23.9.167 SP-250530-004: 商品情報再取得（AI補完失敗 or 画像なしのとき AI補完を再実行） ===
+  // 表示条件: 商品名がJANコードと同じ（補完失敗）または画像URLが空
+  function updateRefetchBtnVisibility() {
+    try {
+      const btn = document.getElementById('refetchBtn');
+      if (!btn) return;
+      const jan = (typeof curBarcode !== 'undefined' && curBarcode) ? String(curBarcode) : (typeof window.curBarcode !== 'undefined' && window.curBarcode) ? String(window.curBarcode) : '';
+      const nameVal = (document.getElementById('inputName')?.value || '').trim();
+      const previewImg = document.getElementById('previewImg');
+      const imgSrc = previewImg ? (previewImg.getAttribute('src') || '') : '';
+      // 画像URL空 判定：srcが無い／svgプレースホルダ（No Image）が出ている
+      const noImage = !imgSrc || imgSrc.indexOf('data:image/svg+xml') === 0;
+      // 商品名がJANと同じ ＝ 補完失敗扱い
+      const nameIsJan = !!jan && nameVal === jan;
+      const shouldShow = (nameIsJan || noImage) && !!jan;
+      btn.style.display = shouldShow ? 'inline-block' : 'none';
+    } catch (_) {}
+  }
+  window.updateRefetchBtnVisibility = updateRefetchBtnVisibility;
+
+  async function refetchProductInfo() {
+    const jan = (typeof curBarcode !== 'undefined' && curBarcode) ? String(curBarcode) : '';
+    try { if (typeof window.spOpLog === 'function') window.spOpLog('product_refetch_start', { jan: jan, hasJan: !!jan }); } catch (_) {}
+    if (!jan) {
+      try { if (typeof window.spOpLog === 'function') window.spOpLog('product_refetch_abort', { reason: 'no_jan' }); } catch (_) {}
+      try { if (typeof showToast === 'function') showToast('JANが設定されていないため再取得できません', 4000); } catch (_) {}
+      return;
+    }
+    try {
+      // 確定名を一旦クリア（processBarcodeData 内の localConfirmedName で lookup がスキップされるのを防ぐ）
+      if (db && db.products && db.products[jan]) {
+        db.products[jan].name = '';
+        if (typeof db.products[jan].maker === 'string') db.products[jan].maker = '';
+        if (typeof db.products[jan].imageUrl === 'string') db.products[jan].imageUrl = '';
+        if (typeof db.products[jan].imageKey === 'string') db.products[jan].imageKey = '';
+        if (typeof db.products[jan].imageRefType === 'string') db.products[jan].imageRefType = '';
+      }
+      // JANローカルキャッシュ（localStorage `smartPrice_jan_<JAN>`）も削除
+      try { localStorage.removeItem('smartPrice_jan_' + jan); } catch (_) {}
+      if (typeof saveLocalOnly === 'function') saveLocalOnly();
+      // UI も空に戻す（再取得中の表示）
+      try {
+        const nameInput = document.getElementById('inputName'); if (nameInput) { nameInput.value = ''; nameInput.placeholder = '商品情報を取得中…'; }
+        const makerInput = document.getElementById('inputMaker'); if (makerInput) makerInput.value = '';
+      } catch (_) {}
+      try { if (typeof showToast === 'function') showToast('商品情報を再取得しています…', 2500); } catch (_) {}
+      // multi-source AI lookup を再実行
+      await processBarcodeData(jan, 'refetch');
+      try { if (typeof window.spOpLog === 'function') window.spOpLog('product_refetch_done', { jan: jan }); } catch (_) {}
+      try { updateRefetchBtnVisibility(); } catch (_) {}
+    } catch (e) {
+      try { if (typeof window.spOpLog === 'function') window.spOpLog('product_refetch_error', { jan: jan, message: (e && e.message) ? e.message : String(e), stack: (e && e.stack) ? String(e.stack).slice(0, 500) : '' }); } catch (_) {}
+      try { if (typeof showToast === 'function') showToast('再取得失敗: ' + ((e && e.message) || e), 5000); } catch (_) {}
+    }
+  }
+  window.refetchProductInfo = refetchProductInfo;
+
 // ✅ local-name-fallback v23.9.61: JANローカル辞書
 const JAN_NAME_HINTS = {
   "4902105001103": { name: "チキンラーメン",              maker: "日清" },
@@ -10187,7 +10248,10 @@ function spVisibleTrace(tag, payload, cls) {
         const hasData = finalInfo.name || finalInfo.maker || finalInfo.imageUrl;
         if (hasData) {
           showToast("商品情報を取得しました", 3000);
-        } else {
+        }
+        // v23.9.167 SP-250530-004: 取得後に再取得ボタンの表示判定を更新（成否どちらでも）
+        try { if (typeof window.updateRefetchBtnVisibility === 'function') setTimeout(window.updateRefetchBtnVisibility, 100); } catch (_) {}
+        if (!hasData) {
           // ✅ history-fallback v23.9.64: 過去履歴 → ローカルヒント → JAN の順で補完
           spVisibleTrace('[BARCODE] API empty → fallback', { jan }, 'e');
 
