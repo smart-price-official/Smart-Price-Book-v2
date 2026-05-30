@@ -13,7 +13,7 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.166  BUILD_ID=2026-05-29_v166-r2-placeholder
+APP_VERSION=v23.9.166  BUILD_ID=2026-05-30_v166-r3-uid-merge-fix
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
@@ -21,7 +21,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 (() => {
   // ===== 正本（ここだけ編集可） =====
   const APP_VERSION = "v23.9.166";
-  const BUILD_ID    = "2026-05-29_v166-r2-placeholder";
+  const BUILD_ID    = "2026-05-30_v166-r3-uid-merge-fix";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -1613,6 +1613,18 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
       <!-- v23.9.166 SP-250529-001: 買い物エリアクリア（ローカル+Firebase両方を空に＝リロードで復活しない） -->
       <button class="btn btn-outline-danger" onclick="clearHomeCityEverywhere()">買い物エリアをクリア</button>
       <button class="btn btn-outline-secondary" onclick="closeHomeCityModal()">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- v23.9.166 SP-250530-001: アプリ内 confirm 代替モーダル（spConfirm 用） -->
+<div id="spConfirmModal" class="modal" style="z-index:100700;">
+  <div class="modal-content" style="max-width:380px; width:95%;">
+    <h5 id="spConfirmTitle" class="sp-text-normal mb-3 text-center">確認</h5>
+    <div id="spConfirmBody" class="mb-3" style="white-space:pre-wrap; color:var(--sp-text);"></div>
+    <div class="d-grid gap-2">
+      <button id="spConfirmOk" type="button" class="btn sp-btn-primary py-2 fw-bold">統合する</button>
+      <button id="spConfirmCancel" type="button" class="btn btn-outline-secondary py-2">キャンセル</button>
     </div>
   </div>
 </div>
@@ -12230,39 +12242,97 @@ async function copyDeviceCompareData() {
 }
 window.copyDeviceCompareData = copyDeviceCompareData;
 
+// === v23.9.166 SP-250530-001: アプリ内 confirm 代替（spConfirm） ===
+// window.confirm のネイティブダイアログを廃し、テーマ追従モーダルで Promise<boolean> を返す。
+function spConfirm(opts) {
+  opts = opts || {};
+  return new Promise(function (resolve) {
+    var modal = document.getElementById('spConfirmModal');
+    if (!modal) { resolve(false); return; }
+    var titleEl = modal.querySelector('#spConfirmTitle');
+    var bodyEl = modal.querySelector('#spConfirmBody');
+    var okBtn = modal.querySelector('#spConfirmOk');
+    var cancelBtn = modal.querySelector('#spConfirmCancel');
+    if (titleEl) titleEl.textContent = opts.title || '確認';
+    if (bodyEl) bodyEl.textContent = opts.body || '';
+    if (okBtn) okBtn.textContent = opts.okLabel || 'OK';
+    if (cancelBtn) cancelBtn.textContent = opts.cancelLabel || 'キャンセル';
+    modal.style.setProperty('display', 'flex', 'important');
+    function cleanup(v) {
+      try { modal.style.display = 'none'; } catch (_) {}
+      try { okBtn.onclick = null; } catch (_) {}
+      try { cancelBtn.onclick = null; } catch (_) {}
+      resolve(v);
+    }
+    okBtn.onclick = function () { cleanup(true); };
+    cancelBtn.onclick = function () { cleanup(false); };
+  });
+}
+window.spConfirm = spConfirm;
+
+// === v23.9.166 SP-250530-001: applySharedUserId 全面改修 ===
+// 観測点(spOpLog)を全経路に追加、window.confirm→spConfirmに置換、サイレント早期returnをUI/ログ化、
+// 統合後に syncFirebasePut() で新uidのクラウドパスへ書き戻し（GET→merge→PUT）。
 async function applySharedUserId() {
+  // 観測点1: 関数先頭
+  var _spStarted = false;
+  try {
+    var _curUid = (localStorage.getItem('sp_user_id') || '').toString();
+    var _input0 = document.getElementById('sharedUserIdInput');
+    var _msg0 = document.getElementById('sharedUserIdMsg');
+    if (typeof window.spOpLog === 'function') window.spOpLog('uid_merge_start', {
+      hasInput: !!_input0,
+      hasMsg: !!_msg0,
+      currentUidHead: _curUid ? _curUid.slice(0, 8) : ''
+    });
+    _spStarted = true;
+  } catch (_) {}
+
   const input = document.getElementById('sharedUserIdInput');
   const msg = document.getElementById('sharedUserIdMsg');
-  if (!input || !msg) return;
+  if (!input || !msg) {
+    // 観測点2: 早期return（DOM無し）— サイレント解消（ログ+トースト）
+    try { if (typeof window.spOpLog === 'function') window.spOpLog('uid_merge_abort', { reason: 'no_dom_elements', hasInput: !!input, hasMsg: !!msg }); } catch (_) {}
+    try { if (typeof showToast === 'function') showToast('統合UIが読み込めません。管理メニューを開き直してください。', 5000); } catch (_) {}
+    return;
+  }
 
   const newUid = (input.value || '').trim();
   if (!newUid) {
     msg.style.color = '#f88';
     msg.textContent = '❌ IDを入力してください';
+    try { if (typeof window.spOpLog === 'function') window.spOpLog('uid_merge_abort', { reason: 'empty_input' }); } catch (_) {}
     return;
   }
   if (newUid === localStorage.getItem('sp_user_id')) {
     msg.style.color = '#f88';
     msg.textContent = '❌ 現在と同じIDです';
+    try { if (typeof window.spOpLog === 'function') window.spOpLog('uid_merge_abort', { reason: 'same_uid' }); } catch (_) {}
     return;
   }
 
-  // 確認ダイアログ
-  const confirmed = confirm(
-    '以下のIDへ統合します。\n\n' +
-    '現在: ' + (localStorage.getItem('sp_user_id') || '不明') + '\n' +
-    '変更後: ' + newUid + '\n\n' +
-    '実行前にJSONバックアップを取得してください。\n続けますか？'
-  );
+  // 確認モーダル（spConfirm）— ネイティブconfirmを置換
+  const confirmed = await spConfirm({
+    title: 'データ統合',
+    body:
+      '以下のIDへ統合します。\n\n' +
+      '現在: ' + (localStorage.getItem('sp_user_id') || '不明') + '\n' +
+      '変更後: ' + newUid + '\n\n' +
+      '実行前にJSONバックアップを取得してください。',
+    okLabel: '統合する',
+    cancelLabel: 'キャンセル'
+  });
   if (!confirmed) {
     msg.style.color = '#aaa';
     msg.textContent = 'キャンセルしました';
+    try { if (typeof window.spOpLog === 'function') window.spOpLog('uid_merge_abort', { reason: 'user_cancel' }); } catch (_) {}
     return;
   }
 
   try {
     msg.style.color = '#aaa';
     msg.textContent = '⏳ バックアップ中...';
+    try { if (typeof window.spOpLog === 'function') window.spOpLog('uid_merge_progress', { step: 'backup' }); } catch (_) {}
 
     // Step1: 現在のlocalStorageをバックアップ
     const oldUid = localStorage.getItem('sp_user_id') || '';
@@ -12270,24 +12340,36 @@ async function applySharedUserId() {
     localStorage.setItem('smart_price_db_backup', JSON.stringify(db));
 
     msg.textContent = '⏳ ユーザーID変更中...';
+    try { if (typeof window.spOpLog === 'function') window.spOpLog('uid_merge_progress', { step: 'switch_uid', oldUidHead: oldUid.slice(0, 8), newUidHead: newUid.slice(0, 8) }); } catch (_) {}
 
     // Step2: sp_user_idを変更
     localStorage.setItem('sp_user_id', newUid);
     if (db.config) db.config.userId = newUid;
 
-    msg.textContent = '⏳ Firebase同期中...';
+    msg.textContent = '⏳ Firebase同期中（取得）...';
+    try { if (typeof window.spOpLog === 'function') window.spOpLog('uid_merge_progress', { step: 'sync_start' }); } catch (_) {}
 
     // Step3: Firebase pull（mergeDb）
     if (typeof syncFirebase === 'function') {
       await syncFirebase();
     }
+    try { if (typeof window.spOpLog === 'function') window.spOpLog('uid_merge_progress', { step: 'sync_done' }); } catch (_) {}
+
+    // Step3b: 新uidのクラウドパスへマージ結果を書き戻し（v23.9.166 r3）
+    msg.textContent = '⏳ Firebase同期中（書き戻し）...';
+    try { if (typeof window.spOpLog === 'function') window.spOpLog('uid_merge_progress', { step: 'put_start' }); } catch (_) {}
+    if (typeof syncFirebasePut === 'function') {
+      await syncFirebasePut();
+    }
+    try { if (typeof window.spOpLog === 'function') window.spOpLog('uid_merge_progress', { step: 'put_done' }); } catch (_) {}
 
     // Step4: 結果確認
     const productCount = db.products ? Object.keys(db.products).length : 0;
-    const historyCount = db.history ? Object.values(db.history).reduce((s, p) => s + (p.history ? p.history.length : 0), 0) : 0;
+    const historyCount = db.products ? Object.values(db.products).reduce((s, p) => s + (Array.isArray(p.history) ? p.history.length : 0), 0) : 0;
 
     msg.style.color = '#8f8';
     msg.textContent = '✅ 統合完了 商品:' + productCount + '件 履歴:' + historyCount + '件';
+    try { if (typeof window.spOpLog === 'function') window.spOpLog('uid_merge_done', { productCount: productCount, historyCount: historyCount }); } catch (_) {}
 
     if (typeof showToast === 'function') {
       showToast('✅ ユーザーID統合完了', 4000);
@@ -12303,6 +12385,7 @@ async function applySharedUserId() {
 
   } catch(e) {
     // rollback
+    try { if (typeof window.spOpLog === 'function') window.spOpLog('uid_merge_error', { message: (e && e.message) ? e.message : String(e), stack: (e && e.stack) ? String(e.stack).slice(0, 500) : '' }); } catch (_) {}
     const backup = localStorage.getItem('smart_price_db_backup');
     const backupUid = localStorage.getItem('sp_user_id_backup');
     if (backup) {
