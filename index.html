@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.166  BUILD_ID=2026-05-30_v166-r4-homecity-clear-observability
+APP_VERSION=v23.9.167  BUILD_ID=2026-05-30_v167-field-improvements
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.166";
-  const BUILD_ID    = "2026-05-30_v166-r4-homecity-clear-observability";
+  const APP_VERSION = "v23.9.167";
+  const BUILD_ID    = "2026-05-30_v167-field-improvements";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -15506,7 +15506,7 @@ window.spSetReportPeriod = spSetReportPeriod;
   }
   window.spDbg = spDbg;
 
-  // === v23.9.166 SP-250529-002: 動作ログ永続化ストア（localStorage 'sp_oplog' / 直近1000件リングバッファ / 書込デバウンス500ms） ===
+  // === v23.9.166 SP-250529-002: 動作ログ永続化ストア（localStorage 'sp_oplog' / 直近5000件リングバッファ[v23.9.167で拡大] / 書込デバウンス500ms） ===
   var _spOpLog = [];
   var _spOpLogTimer = null;
   try { var _spRaw = localStorage.getItem('sp_oplog'); _spOpLog = _spRaw ? JSON.parse(_spRaw) : []; if (!Array.isArray(_spOpLog)) _spOpLog = []; } catch (e) { _spOpLog = []; }
@@ -15524,7 +15524,7 @@ window.spSetReportPeriod = spSetReportPeriod;
   function spOpLog(ev, d) {
     try {
       _spOpLog.push({ t: new Date().toISOString(), ev: String(ev || ''), d: (d && typeof d === 'object') ? d : (d != null ? { v: d } : {}) });
-      if (_spOpLog.length > 1000) _spOpLog = _spOpLog.slice(-1000); // リングバッファ（古いものから破棄）
+      if (_spOpLog.length > 5000) _spOpLog = _spOpLog.slice(-5000); // v23.9.167 SP-250530-003: リングバッファ 1000→5000件（現場ログ保持・容量目安~1MB）
       if (_spOpLogTimer) clearTimeout(_spOpLogTimer);
       _spOpLogTimer = setTimeout(_spOpLogPersist, 500); // デバウンス（スキャン等の高頻度でも性能劣化を抑制）
     } catch (e) {}
