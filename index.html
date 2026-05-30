@@ -7861,9 +7861,12 @@ function startScanner() {
     scanner.start(
       { facingMode: "environment" },
       { fps: 10 },
-      async (code) => {
+      async (code, decodedResult) => {
+        // v23.9.167 SP-250530-006: html5-qrcode の decodedResult から format 名を取得（誤読取り調査用）
+        var fmt = '';
+        try { fmt = (decodedResult && decodedResult.result && decodedResult.result.format && decodedResult.result.format.formatName) || ''; } catch (_) {}
         await stopScanner();
-        try { await processBarcodeData(code, 'scan'); } catch(e) { showToast(`エラー: ${e.message}`, 8000); }
+        try { await processBarcodeData(code, 'scan', fmt); } catch(e) { showToast(`エラー: ${e.message}`, 8000); }
       }
     ).then(() => {
       setTimeout(() => {
@@ -9271,9 +9274,25 @@ function spVisibleTrace(tag, payload, cls) {
   }
 
   // ✅ バーコードデータ処理（スキャン/手入力共通）with OFF優先 + dirtyフラグ保護 + P0タイムラグ対策
-  async function processBarcodeData(code, debugSourceTag) {
+  // v23.9.167 SP-250530-006: 第3引数 scannerFormat（EAN_13/EAN_8等）を任意で受け取り誤読取り調査用ログに記録
+  async function processBarcodeData(code, debugSourceTag, scannerFormat) {
     // ✅ P0: JAN正規化（数字のみに統一・空白・ハイフン除去）
     let jan = normalizeJan(code);
+    // v23.9.167 SP-250530-006: 誤読取り調査ログ用の補助情報
+    var _spRaw = String(code != null ? code : '');
+    var _spFormat = String(scannerFormat || '');
+    // format 未指定時は桁数から推定（EAN-13/EAN-8/UPC-A/ITF-14/OTHER）
+    if (!_spFormat) {
+      var _l = jan.length;
+      _spFormat = (_l === 13) ? 'EAN_13_inferred' : (_l === 8) ? 'EAN_8_inferred' : (_l === 12) ? 'UPC_A_inferred' : (_l === 14) ? 'ITF_14_inferred' : 'OTHER';
+    }
+    // retry counter（同一JANの何回目の読み取りか／セッション中・window単位で保持）
+    try {
+      window._spScanRetry = window._spScanRetry || {};
+      window._spScanRetry[jan] = (window._spScanRetry[jan] || 0) + 1;
+    } catch (_) {}
+    var _spRetry = 0;
+    try { _spRetry = (window._spScanRetry && window._spScanRetry[jan]) || 1; } catch (_) {}
     try { spDbg('[BARCODE_START]', { raw: String(code != null ? code : '') }); } catch (_bs) {}
     try { spDbg('[BARCODE_NORMALIZED]', { raw: String(code != null ? code : ''), normalized: jan }); } catch (_bn) {}
     
@@ -9292,7 +9311,7 @@ function spVisibleTrace(tag, payload, cls) {
     if (jan.length !== 13 && jan.length !== 8) {
       // [jan-maker-nonjan-toast] 桁数が合わない → 非JAN扱い
       spDbg('[NON_JAN_DETECTED]', { code: jan, reason: 'invalid_length' });
-      try { if (typeof window.spOpLog === 'function') window.spOpLog('scan', { jan: jan, result: 'ng', reason: 'invalid_length' }); } catch (_) {}
+      try { if (typeof window.spOpLog === 'function') window.spOpLog('scan', { jan: jan, result: 'ng', reason: 'invalid_length', raw: _spRaw, format: _spFormat, retry: _spRetry, source: debugSourceTag || '' }); } catch (_) {}
       showNonJanToast();
       if (isDebug()) {
         console.error("[ProcessBarcode] Invalid JAN length:", jan, "original:", code);
@@ -9305,7 +9324,7 @@ function spVisibleTrace(tag, payload, cls) {
     if (!validateJanCheckDigit(jan)) {
       // [jan-maker-nonjan-toast] チェックデジット不正 → 非JAN扱い
       spDbg('[NON_JAN_DETECTED]', { code: jan, reason: 'checkdigit_invalid' });
-      try { if (typeof window.spOpLog === 'function') window.spOpLog('scan', { jan: jan, result: 'ng', reason: 'checkdigit_invalid' }); } catch (_) {}
+      try { if (typeof window.spOpLog === 'function') window.spOpLog('scan', { jan: jan, result: 'ng', reason: 'checkdigit_invalid', raw: _spRaw, format: _spFormat, retry: _spRetry, source: debugSourceTag || '' }); } catch (_) {}
       showNonJanToast();
       if (isDebug()) {
         console.error("[ProcessBarcode] Invalid check digit:", jan);
@@ -9321,7 +9340,7 @@ function spVisibleTrace(tag, payload, cls) {
     }
 
     curBarcode = jan;
-    try { if (typeof window.spOpLog === 'function') window.spOpLog('scan', { jan: jan, result: 'ok' }); } catch (_) {}
+    try { if (typeof window.spOpLog === 'function') window.spOpLog('scan', { jan: jan, result: 'ok', raw: _spRaw, format: _spFormat, retry: _spRetry, source: debugSourceTag || '' }); } catch (_) {}
     try { setLastScannedJanSafe(jan, code); } catch (_sj) {}
     
     // ✅ P0: 同一JANの二重発火を止める（連続読取り対策）
