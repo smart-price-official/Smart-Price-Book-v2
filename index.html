@@ -3121,6 +3121,16 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
       try { spDbg('[BOOT_STEP_ERROR]', { step: 'loadConfig', message: String(e && e.message), stack: String(e && e.stack) }); } catch (_) {}
     }
 
+    // v23.9.168 SP-250531-002: P0-1 起動時マイグレーション（JAN_NAME_HINTS で db.products の弱値を上書き）
+    try {
+      if (typeof applyManualMasterPatches === 'function') {
+        var _mpResult = applyManualMasterPatches();
+        try { spDbg('[BOOT_MASTER_PATCH]', _mpResult); } catch (_) {}
+      }
+    } catch (e) {
+      try { spDbg('[BOOT_STEP_ERROR]', { step: 'applyManualMasterPatches', message: String(e && e.message) }); } catch (_) {}
+    }
+
     try {
       if ('storage' in navigator && 'persist' in navigator.storage) {
         const persisted = await navigator.storage.persist();
@@ -8691,15 +8701,59 @@ return true;
   }
   window.refetchProductInfo = refetchProductInfo;
 
-// ✅ local-name-fallback v23.9.61: JANローカル辞書
+// ✅ local-name-fallback v23.9.61: JANローカル辞書（v23.9.168 で category/subCategory も対応）
 const JAN_NAME_HINTS = {
   "4902105001103": { name: "チキンラーメン",              maker: "日清" },
   "4901777310159": { name: "ランチパック ピーナッツ",      maker: "ヤマザキ" },
   "4902102141000": { name: "ポテトチップス うすしお味 60g", maker: "カルビー" },
   "4987244127860": { name: "生茶 525ml",                  maker: "キリン" },
-  "4901085043387": { name: "コカ・コーラ 500ml",           maker: "コカ・コーラ" }
-  // ↑ 後で追加可能（文字列 or {name, maker} オブジェクト 両対応）
+  "4901085043387": { name: "コカ・コーラ 500ml",           maker: "コカ・コーラ" },
+  // v23.9.168 SP-250531-002: P0-1 正本補完（なべさん実機で3回購入済みなのに商品名=JANのまま）
+  "4901366039696": { name: "フードリエ 家族の定番モーニングステーキ 140g", maker: "フードリエ", category: "食品", subCategory: "加工肉" }
+  // ↑ 後で追加可能（文字列 or {name, maker, [category], [subCategory], [imageUrl]} オブジェクト 両対応）
 };
+
+// === v23.9.168 SP-250531-002: P0-1 起動時マイグレーション ===
+// JAN_NAME_HINTS（手動正本マスター）の値で db.products の弱値（name=JAN/空/不明 等）を上書き補完する。
+// 既存購入履歴は p.history を保持したまま、p.name/maker/category/subCategory/imageUrl のみ補完。
+// good name（ユーザー編集済み等）は上書きしない（isWeakNameCandidate で判定）。
+function applyManualMasterPatches() {
+  try {
+    if (typeof db === 'undefined' || !db || !db.products) return { patched: 0, scanned: 0 };
+    var patched = 0;
+    var scanned = 0;
+    var keys = Object.keys(JAN_NAME_HINTS || {});
+    keys.forEach(function (jan) {
+      scanned++;
+      var master = JAN_NAME_HINTS[jan];
+      if (!master || typeof master !== 'object' || !master.name) return;
+      var p = db.products[jan];
+      if (!p) return; // 購入履歴の無い JAN は対象外
+      var changed = false;
+      // name: 弱値（空/JAN/短/不明 等）のときだけ上書き＝ユーザー編集名は保護
+      if (!p.name || isWeakNameCandidate(String(p.name).trim(), jan)) { p.name = master.name; changed = true; }
+      if (master.maker && (!p.maker || !String(p.maker).trim())) { p.maker = master.maker; changed = true; }
+      if (master.imageUrl && (!p.imageUrl || !String(p.imageUrl).trim())) { p.imageUrl = master.imageUrl; changed = true; }
+      if (master.category && (!p.category || !String(p.category).trim())) { p.category = master.category; changed = true; }
+      if (master.subCategory && (!p.subCategory || !String(p.subCategory).trim())) { p.subCategory = master.subCategory; changed = true; }
+      if (changed) {
+        db.products[jan] = p;
+        patched++;
+        try { spDbg('[MASTER_PATCH_APPLIED]', { jan: jan, name: master.name, maker: master.maker || '' }); } catch (_) {}
+        try { if (typeof window.spOpLog === 'function') window.spOpLog('master_patch', { jan: jan, name: master.name, maker: master.maker || '' }); } catch (_) {}
+      }
+    });
+    if (patched > 0) {
+      try { if (typeof saveLocalOnly === 'function') saveLocalOnly(); } catch (_) {}
+      try { spDbg('[MASTER_PATCH_DONE]', { scanned: scanned, patched: patched }); } catch (_) {}
+    }
+    return { patched: patched, scanned: scanned };
+  } catch (e) {
+    try { spDbg('[MASTER_PATCH_ERR]', { message: (e && e.message) || String(e) }); } catch (_) {}
+    return { patched: 0, scanned: 0, error: (e && e.message) || String(e) };
+  }
+}
+window.applyManualMasterPatches = applyManualMasterPatches;
 
 // ✅ local-name-fallback v23.9.61: 弱い候補を判定
 function isWeakNameCandidate(v, jan) {
