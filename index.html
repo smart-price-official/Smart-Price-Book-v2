@@ -1413,6 +1413,13 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
             <button type="button" class="btn btn-success w-100 py-2 fw-bold mb-2" onclick="window.spOpLogDownload && window.spOpLogDownload()">⬇️ 動作ログをダウンロード（JSON）</button>
             <button type="button" class="btn btn-outline-secondary btn-sm w-100" onclick="if(window.spOpLogClear){ if(confirm('動作ログを消去しますか？')){ window.spOpLogClear(); var c=document.getElementById('oplog-count'); if(c)c.textContent='0'; if(typeof showToast==='function')showToast('動作ログを消去しました',2000); } }">🗑 動作ログを消去</button>
           </div>
+          <!-- v23.9.168 SP-250531-003: P0-2 未整備商品一覧（商品名がJAN/空/不明 等の商品を抽出） -->
+          <div class="mb-3" style="border:2px solid #ff9f1c; border-radius:8px; padding:12px; background:rgba(255,159,28,0.1);">
+            <div class="small text-secondary mb-2 text-center" style="opacity:.85;">⚠️ 未整備商品一覧（商品名がJAN番号のまま等）</div>
+            <div class="small text-center mb-2" style="opacity:.9;">検出件数: <span id="unresolved-count" class="fw-bold">-</span> 件</div>
+            <button type="button" class="btn btn-warning w-100 py-2 fw-bold mb-2" onclick="window.renderUnresolvedProducts && window.renderUnresolvedProducts()">📋 未整備商品を一覧表示</button>
+            <div id="unresolvedProductList" class="mt-2"></div>
+          </div>
           <!-- v23.9.154: 検証データ（全体検証・端末比較） -->
           <div class="mb-3" style="border:2px solid #4a4aff; border-radius:8px; padding:12px; background:rgba(74,74,255,0.1);">
             <div class="small text-secondary mb-2 text-center" style="opacity:.85;">全体検証（端末・DB横断）</div>
@@ -8754,6 +8761,130 @@ function applyManualMasterPatches() {
   }
 }
 window.applyManualMasterPatches = applyManualMasterPatches;
+
+// === v23.9.168 SP-250531-003: P0-2 未整備商品一覧 ===
+// db.products を走査して name が isWeakNameCandidate に該当する商品を抽出。
+// db.unresolvedProducts（fallback到達履歴）からも候補を併合（products に無い JAN を補足）。
+function listUnresolvedProducts() {
+  var out = [];
+  try {
+    if (typeof db === 'undefined' || !db) return out;
+    var products = db.products || {};
+    var seen = {};
+    Object.keys(products).forEach(function (jan) {
+      var p = products[jan] || {};
+      var name = String(p.name || '').trim();
+      if (!isWeakNameCandidate(name, jan)) return;
+      var hist = Array.isArray(p.history) ? p.history : [];
+      var lastStore = '';
+      if (hist.length > 0) {
+        for (var i = hist.length - 1; i >= 0; i--) {
+          if (hist[i] && hist[i].store) { lastStore = String(hist[i].store); break; }
+        }
+      }
+      out.push({ jan: jan, name: name || '(空)', count: hist.length, lastStore: lastStore, source: 'products' });
+      seen[jan] = true;
+    });
+    // unresolvedProducts のうち products に無い JAN を補足
+    var unresolved = db.unresolvedProducts || {};
+    Object.keys(unresolved).forEach(function (jan) {
+      if (seen[jan]) return;
+      var u = unresolved[jan] || {};
+      out.push({ jan: jan, name: '(未保存)', count: 0, lastStore: u.store || '', source: 'unresolved' });
+    });
+  } catch (_) {}
+  // 購入回数の多い順
+  out.sort(function (a, b) { return (b.count || 0) - (a.count || 0); });
+  return out;
+}
+window.listUnresolvedProducts = listUnresolvedProducts;
+
+function renderUnresolvedProducts() {
+  try {
+    var listEl = document.getElementById('unresolvedProductList');
+    var countEl = document.getElementById('unresolved-count');
+    if (!listEl) return;
+    var items = listUnresolvedProducts();
+    if (countEl) countEl.textContent = String(items.length);
+    try { if (typeof window.spOpLog === 'function') window.spOpLog('unresolved_list_render', { count: items.length }); } catch (_) {}
+    if (items.length === 0) {
+      listEl.innerHTML = '<div class="small text-success text-center py-2">✅ 未整備商品はありません</div>';
+      return;
+    }
+    var rows = items.map(function (it) {
+      // safe-escape（最低限・innerHTML 用）
+      var esc = function (s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
+      var jan = esc(it.jan);
+      var name = esc(it.name);
+      var lastStore = esc(it.lastStore || '-');
+      return (
+        '<div class="mb-2 p-2" style="border:1px solid var(--sp-border); border-radius:6px;">' +
+          '<div class="small fw-bold" style="color:var(--sp-text); word-break:break-all;">' + name + '</div>' +
+          '<div class="small text-secondary" style="opacity:.85;">JAN: ' + jan + ' / 購入: ' + it.count + '回 / 最終店舗: ' + lastStore + '</div>' +
+          '<div class="d-flex gap-1 mt-1">' +
+            '<button type="button" class="btn btn-warning btn-sm flex-grow-1" onclick="window.refetchProductByJan && window.refetchProductByJan(\'' + jan + '\')">🔄 再取得</button>' +
+            '<button type="button" class="btn btn-outline-light btn-sm flex-grow-1" onclick="window.editUnresolvedProduct && window.editUnresolvedProduct(\'' + jan + '\')">✏️ 編集</button>' +
+          '</div>' +
+        '</div>'
+      );
+    }).join('');
+    listEl.innerHTML = rows;
+  } catch (e) {
+    try { spDbg('[UNRESOLVED_LIST_ERR]', { message: (e && e.message) || String(e) }); } catch (_) {}
+  }
+}
+window.renderUnresolvedProducts = renderUnresolvedProducts;
+
+// JAN指定で再取得（refetchProductInfo の JAN 指定版）
+async function refetchProductByJan(jan) {
+  try {
+    if (!jan) { try { showToast('JANが指定されていません', 3000); } catch (_) {} return; }
+    try { if (typeof window.spOpLog === 'function') window.spOpLog('product_refetch_by_jan_start', { jan: jan }); } catch (_) {}
+    // 確定名一旦クリア → processBarcodeData で再lookup
+    if (db && db.products && db.products[jan]) {
+      var p = db.products[jan];
+      if (p.name && isWeakNameCandidate(String(p.name).trim(), jan)) {
+        // 既に弱値なので変更不要
+      } else {
+        // 強制再取得のため一旦空に
+        p.name = '';
+        p.maker = '';
+        p.imageUrl = '';
+        p.imageKey = '';
+        p.imageRefType = '';
+      }
+    }
+    try { localStorage.removeItem('smartPrice_jan_' + jan); } catch (_) {}
+    if (typeof saveLocalOnly === 'function') saveLocalOnly();
+    try { showToast('「' + jan + '」を再取得しています…', 2500); } catch (_) {}
+    await processBarcodeData(jan, 'refetch_unresolved');
+    try { if (typeof window.spOpLog === 'function') window.spOpLog('product_refetch_by_jan_done', { jan: jan }); } catch (_) {}
+    // 一覧更新
+    try { renderUnresolvedProducts(); } catch (_) {}
+  } catch (e) {
+    try { if (typeof window.spOpLog === 'function') window.spOpLog('product_refetch_by_jan_error', { jan: jan, message: (e && e.message) || String(e) }); } catch (_) {}
+    try { showToast('再取得失敗: ' + ((e && e.message) || e), 5000); } catch (_) {}
+  }
+}
+window.refetchProductByJan = refetchProductByJan;
+
+// 編集：設定モーダルを閉じてフォーム画面で商品を開く
+function editUnresolvedProduct(jan) {
+  try {
+    if (!jan) return;
+    try { if (typeof window.spOpLog === 'function') window.spOpLog('unresolved_edit_open', { jan: jan }); } catch (_) {}
+    // 設定モーダルを閉じる
+    try {
+      var sm = document.getElementById('settingsModal');
+      if (sm) { sm.classList.remove('show-modal', 'show'); sm.style.display = 'none'; }
+    } catch (_) {}
+    // フォーム画面を開く
+    try { if (typeof openForm === 'function') openForm(jan); } catch (_) {}
+  } catch (e) {
+    try { spDbg('[UNRESOLVED_EDIT_ERR]', { message: (e && e.message) || String(e) }); } catch (_) {}
+  }
+}
+window.editUnresolvedProduct = editUnresolvedProduct;
 
 // ✅ local-name-fallback v23.9.61: 弱い候補を判定
 function isWeakNameCandidate(v, jan) {
