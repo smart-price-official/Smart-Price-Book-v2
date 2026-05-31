@@ -3128,16 +3128,6 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
       try { spDbg('[BOOT_STEP_ERROR]', { step: 'loadConfig', message: String(e && e.message), stack: String(e && e.stack) }); } catch (_) {}
     }
 
-    // v23.9.168 SP-250531-002: P0-1 起動時マイグレーション（JAN_NAME_HINTS で db.products の弱値を上書き）
-    try {
-      if (typeof applyManualMasterPatches === 'function') {
-        var _mpResult = applyManualMasterPatches();
-        try { spDbg('[BOOT_MASTER_PATCH]', _mpResult); } catch (_) {}
-      }
-    } catch (e) {
-      try { spDbg('[BOOT_STEP_ERROR]', { step: 'applyManualMasterPatches', message: String(e && e.message) }); } catch (_) {}
-    }
-
     try {
       if ('storage' in navigator && 'persist' in navigator.storage) {
         const persisted = await navigator.storage.persist();
@@ -3170,7 +3160,17 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
       db = normalizeDb(db);
       try { spDbg('[NORMALIZE_DB_DONE]', { productCount: Object.keys((db && db.products) || {}).length }); } catch (_) {}
     } catch (e) {
-      try { spDbg('[BOOT_STEP_ERROR]', { step: 'normalizeDb', message: String(e && e.message), stack: String(e && e.stack) }); } catch (_) {}
+      try { spDbg('[BOOT_STEP_ERROR]', { step: 'normalizeDb', message: String(e && e.message) }); } catch (_) {}
+    }
+
+    // v23.9.168 SP-250531-002 r2: P0-1 起動時マイグレーション（loadLocal+normalizeDb の後で db.products が確実にロード済みのタイミングで実行）
+    try {
+      if (typeof applyManualMasterPatches === 'function') {
+        var _mpResult = applyManualMasterPatches();
+        try { spDbg('[BOOT_MASTER_PATCH]', _mpResult); } catch (_) {}
+      }
+    } catch (e) {
+      try { spDbg('[BOOT_STEP_ERROR]', { step: 'applyManualMasterPatches', message: String(e && e.message), stack: String(e && e.stack) }); } catch (_) {}
     }
 
     // v23.9.157: カラーテーマ適用
@@ -8741,7 +8741,9 @@ function applyManualMasterPatches() {
       if (!p.name || isWeakNameCandidate(String(p.name).trim(), jan)) { p.name = master.name; changed = true; }
       if (master.maker && (!p.maker || !String(p.maker).trim())) { p.maker = master.maker; changed = true; }
       if (master.imageUrl && (!p.imageUrl || !String(p.imageUrl).trim())) { p.imageUrl = master.imageUrl; changed = true; }
-      if (master.category && (!p.category || !String(p.category).trim())) { p.category = master.category; changed = true; }
+      // v23.9.168 SP-250531-002 r2: category は normalizeDb で「""→その他」に自動変換されるため
+      //   p.category が空 or 'その他' なら master 値で上書き（受け入れ条件 #3 達成のため）
+      if (master.category && (!p.category || !String(p.category).trim() || String(p.category).trim() === 'その他')) { p.category = master.category; changed = true; }
       if (master.subCategory && (!p.subCategory || !String(p.subCategory).trim())) { p.subCategory = master.subCategory; changed = true; }
       if (changed) {
         db.products[jan] = p;
