@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.167  BUILD_ID=2026-05-30_v167-field-improvements
+APP_VERSION=v23.9.168  BUILD_ID=2026-05-31_v168-product-name-fix
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.167";
-  const BUILD_ID    = "2026-05-30_v167-field-improvements";
+  const APP_VERSION = "v23.9.168";
+  const BUILD_ID    = "2026-05-31_v168-product-name-fix";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -9491,10 +9491,50 @@ function spVisibleTrace(tag, payload, cls) {
         // ========= [lookup-aiflow] STEP 1: ローカル確定データ（LocalStorage + db.products） =========
         // 既にローカルに確定名がある場合はここで終了（AIも外部APIも呼ばない）
         const cachedData = getJanCache(jan);
+        // v23.9.168 SP-250531-001: STEP0 手動正本マスター（JAN_NAME_HINTS）を最優先でチェック
+        // 既存DBに JAN番号が name に入っていた場合でも、手動マスターを正本として上書き反映する
+        try {
+          const _masterHit = (typeof JAN_NAME_HINTS !== 'undefined') ? JAN_NAME_HINTS[jan] : null;
+          if (_masterHit && typeof _masterHit === 'object' && _masterHit.name) {
+            try { spDbg('[PRODUCT_LOOKUP_MASTER_HIT]', { jan, name: _masterHit.name, maker: _masterHit.maker || '' }); } catch (_) {}
+            try { if (typeof window.spOpLog === 'function') window.spOpLog('product_lookup', { jan: jan, source: 'manual_master', name: _masterHit.name, maker: _masterHit.maker || '' }); } catch (_) {}
+            finalInfo.name = _masterHit.name;
+            if (_masterHit.maker) finalInfo.maker = _masterHit.maker;
+            if (_masterHit.imageUrl) finalInfo.imageUrl = _masterHit.imageUrl;
+            sourceUsed = 'manual_master';
+            // フォーム即反映
+            const currentJanCheckM = String(curBarcode || '').trim();
+            if (currentJanCheckM === jan) {
+              if (nameInput && nameInput.value === nameAtStart && finalInfo.name) {
+                nameInput.value = finalInfo.name;
+                nameInput.placeholder = originalPlaceholder;
+              }
+              if (makerInput && makerInput.value === makerAtStart && finalInfo.maker) {
+                makerInput.value = finalInfo.maker;
+              }
+            }
+            // DBへ正本を反映（既存 name=JAN 等の弱い値は上書き）
+            if (p && (!p.name || isWeakNameCandidate(String(p.name).trim(), jan))) p.name = _masterHit.name;
+            if (p && _masterHit.maker && (!p.maker || !String(p.maker).trim())) p.maker = _masterHit.maker;
+            if (p && _masterHit.imageUrl && (!p.imageUrl || !String(p.imageUrl).trim())) p.imageUrl = _masterHit.imageUrl;
+            db.products[jan] = p;
+            saveLocalOnly();
+            markLookupPipelineStep(jan, 'localStorage', 'HIT', { name: _masterHit.name, maker: _masterHit.maker || '', reason: 'manual_master' });
+            markLookupPipelineStep(jan, 'Final', 'HIT', { name: finalInfo.name || '', maker: finalInfo.maker || '', reason: 'manual_master' });
+            try { applyPreviewImage(finalInfo.imageUrl || ''); } catch (_) {}
+            processBarcodeInFlight.delete(jan);
+            try { spDbg('[PRODUCT_LOOKUP_FINAL]', { name: finalInfo.name, maker: finalInfo.maker, source: sourceUsed }); } catch (_) {}
+            return; // ✅ 手動正本マスターHIT → 以降の lookup をすべてスキップ
+          }
+        } catch (_mmErr) {
+          try { spDbg('[PRODUCT_LOOKUP_MASTER_ERR]', { message: _mmErr && _mmErr.message ? _mmErr.message : String(_mmErr) }); } catch (_) {}
+        }
         // db.products にも確定名があれば優先
-        const localConfirmedName = (p && p.name && String(p.name).trim().length > 3)
+        // v23.9.168 SP-250531-001: 「length > 3」だけだと name=JAN (13桁) が確定扱いされて再lookupが走らないバグの修正。
+        //                          !isWeakNameCandidate（空/JAN/短/不明/数字記号）で堅牢化。
+        const localConfirmedName = (p && p.name && !isWeakNameCandidate(String(p.name).trim(), jan))
           ? p.name
-          : (cachedData && cachedData.name && String(cachedData.name).trim().length > 3 ? cachedData.name : null);
+          : (cachedData && cachedData.name && !isWeakNameCandidate(String(cachedData.name).trim(), jan) ? cachedData.name : null);
 
         markLookupPipelineStepStart(jan, 'localStorage');
 
