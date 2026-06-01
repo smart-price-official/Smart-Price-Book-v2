@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.170  BUILD_ID=2026-06-01_v170-subcategory-display-fix
+APP_VERSION=v23.9.171  BUILD_ID=2026-06-01_v171-user-id-display
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.170";
-  const BUILD_ID    = "2026-06-01_v170-subcategory-display-fix";
+  const APP_VERSION = "v23.9.171";
+  const BUILD_ID    = "2026-06-01_v171-user-id-display";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -1245,6 +1245,14 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 <div id="settingsModal" class="modal">
   <div class="modal-content">
     <h5 class="sp-text-normal mb-4 text-center" id="settingsTitle" onclick="handleSettingsTitleClick()" style="cursor: pointer;">設定</h5>
+
+    <!-- v23.9.171 SP-260601-005: 個人ID表示（PC/スマホ照合用・小さめテキスト＋コピーボタン） -->
+    <div id="settingsUserIdRow" class="mb-3 d-flex align-items-center flex-wrap" style="font-size:0.78rem; gap:6px;">
+      <span class="text-secondary">あなたのID:</span>
+      <span id="settingsUserIdValue" class="text-secondary" style="word-break:break-all; user-select:all;">-</span>
+      <button type="button" id="settingsUserIdCopyBtn" class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:0.72rem; line-height:1.4;" onclick="copyUserId()">コピー</button>
+      <span id="settingsUserIdCopyStatus" class="text-success" style="font-size:0.72rem;"></span>
+    </div>
 
     <!-- v23.9.165 SP-250528-001: 設定画面上部の生活圏セクションは非表示化。⑥生活圏設定ボタンに集約 -->
     <div class="mb-3" id="settingsCitySection" style="display:none !important;">
@@ -12011,22 +12019,79 @@ function spVisibleTrace(tag, payload, cls) {
     }
   }
   
+  // v23.9.171 SP-260601-005: 個人ID表示（設定モーダル上部）＋コピー
+  function renderUserIdRow() {
+    try {
+      var el = document.getElementById('settingsUserIdValue');
+      if (!el) return;
+      var uid = '';
+      try { uid = (window.db && window.db.config && window.db.config.userId) ? String(window.db.config.userId).trim() : ''; } catch(_) {}
+      if (!uid) { try { uid = (localStorage.getItem('sp_user_id') || '').toString().trim(); } catch(_) {} }
+      el.textContent = uid || '(未設定)';
+      try { spDbg('[USER_ID_DISPLAY]', { uid: uid || '' }); } catch(_) {}
+    } catch(e) {}
+  }
+  window.renderUserIdRow = renderUserIdRow;
+
+  function copyUserId() {
+    var statusEl = document.getElementById('settingsUserIdCopyStatus');
+    function showStatus(msg, ok) {
+      if (!statusEl) return;
+      statusEl.textContent = msg;
+      statusEl.className = ok ? 'text-success' : 'text-danger';
+      statusEl.style.fontSize = '0.72rem';
+      setTimeout(function(){ if (statusEl) statusEl.textContent = ''; }, 1500);
+    }
+    try {
+      var el = document.getElementById('settingsUserIdValue');
+      var uid = el ? String(el.textContent || '').trim() : '';
+      if (!uid || uid === '(未設定)') { showStatus('未設定', false); return; }
+      var done = function() {
+        showStatus('✓ コピーしました', true);
+        try { spDbg('[USER_ID_COPY]', { ok: true }); } catch(_) {}
+      };
+      var fallback = function() {
+        try {
+          var ta = document.createElement('textarea');
+          ta.value = uid; ta.style.position = 'fixed'; ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          var ok = document.execCommand('copy');
+          document.body.removeChild(ta);
+          if (ok) done(); else showStatus('✗ コピー失敗', false);
+        } catch(e2) { showStatus('✗ コピー失敗', false); }
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(uid).then(done, fallback);
+      } else {
+        fallback();
+      }
+    } catch(e) {
+      showStatus('✗ コピー失敗', false);
+      try { spDbg('[USER_ID_COPY_ERR]', { message: e && e.message ? e.message : String(e) }); } catch(_) {}
+    }
+  }
+  window.copyUserId = copyUserId;
+
   function syncSettings() {
     try {
       if (typeof window.db !== 'undefined' && typeof window.normalizeDb === 'function') window.db = window.normalizeDb(window.db);
       if (typeof window.resetSyncBtn === 'function') window.resetSyncBtn();
-      
+
       const urlInput = document.getElementById('fb-url-input');
       if (urlInput && typeof window.fbUrl !== 'undefined') urlInput.value = window.fbUrl;
-      
+
       const cityInput = document.getElementById('home-city-input');
       if (cityInput && window.db && window.db.config) cityInput.value = window.db.config.homeCity || '';
       try{ const b=document.getElementById('homeCityBtn'); const v=(window.db&&window.db.config? (window.db.config.homeCity||''):''); if(b){ b.textContent = v? (`買い物エリア：${v}`) : 'タップして買い物エリアを設定'; } }catch(e){} // P0-2
-      
+
       if (typeof window.renderCityChips === 'function') window.renderCityChips();
-      
+
       const backupButtons = document.getElementById('debugBackupButtons');
       if (backupButtons && typeof window.isDebug === 'function') backupButtons.style.display = window.isDebug() ? 'block' : 'none';
+
+      // v23.9.171 SP-260601-005: 個人ID表示を最新化
+      try { renderUserIdRow(); } catch(_) {}
     } catch(e) {}
   }
   
