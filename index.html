@@ -9549,7 +9549,9 @@ function spVisibleTrace(tag, payload, cls) {
 
     // [scan-ux-improve] STEP1: UIを先に動かす（非同期処理より前）
     showScanAnimation();
-    showToast(`📷 ${jan}`, 1500);
+    // v23.9.169 SP-260601-002: 段階1 バーコードを読み取りました（置換更新方式）
+    try { if (typeof showLookupStageToast === 'function') showLookupStageToast(1, 'バーコードを読み取りました', { jan: jan, ev: 'barcode_lookup_stage_start' }); } catch (_) {}
+    if (isDebug()) { try { showToast(`📷 ${jan}`, 1500); } catch (_) {} }
     spDbg('[SCAN] immediate UI done', { jan });
 
     // [jan-maker-nonjan-toast] 生バーコードログ
@@ -9677,6 +9679,8 @@ function spVisibleTrace(tag, payload, cls) {
 
         // ========= [lookup-aiflow] STEP 1: ローカル確定データ（LocalStorage + db.products） =========
         // 既にローカルに確定名がある場合はここで終了（AIも外部APIも呼ばない）
+        // v23.9.169 SP-260601-002: 段階3 スマホ内の保存データを確認中（manual_master + LS + db.products）
+        try { if (typeof showLookupStageToast === 'function') showLookupStageToast(3, 'スマホ内の保存データを確認中', { jan: jan, ev: 'barcode_lookup_stage_local' }); } catch (_) {}
         const cachedData = getJanCache(jan);
         // v23.9.168 SP-250531-001: STEP0 手動正本マスター（JAN_NAME_HINTS）を最優先でチェック
         // 既存DBに JAN番号が name に入っていた場合でも、手動マスターを正本として上書き反映する
@@ -9711,6 +9715,8 @@ function spVisibleTrace(tag, payload, cls) {
             try { applyPreviewImage(finalInfo.imageUrl || ''); } catch (_) {}
             processBarcodeInFlight.delete(jan);
             try { spDbg('[PRODUCT_LOOKUP_FINAL]', { name: finalInfo.name, maker: finalInfo.maker, source: sourceUsed }); } catch (_) {}
+            // v23.9.169 SP-260601-002: 段階8 商品情報を表示しました（manual_master HIT 早期 return）
+            try { if (typeof showLookupStageToast === 'function') showLookupStageToast(8, '商品情報を表示しました', { jan: jan, ev: 'barcode_lookup_stage_done', source: 'manual_master', final: true }); } catch (_) {}
             return; // ✅ 手動正本マスターHIT → 以降の lookup をすべてスキップ
           }
         } catch (_mmErr) {
@@ -9773,6 +9779,8 @@ function spVisibleTrace(tag, payload, cls) {
           processBarcodeInFlight.delete(jan);
           // v23.9.102: 最終結果ログ（指示書対応）
           spDbg('[PRODUCT_LOOKUP_FINAL]', { name: finalInfo.name, maker: finalInfo.maker, source: sourceUsed });
+          // v23.9.169 SP-260601-002: 段階8 商品情報を表示しました（localStorage HIT 早期 return）
+          try { if (typeof showLookupStageToast === 'function') showLookupStageToast(8, '商品情報を表示しました', { jan: jan, ev: 'barcode_lookup_stage_done', source: 'local', final: true }); } catch (_) {}
           return; // ✅ ローカルHIT → AI・外部API呼ばない
         }
         
@@ -9781,6 +9789,8 @@ function spVisibleTrace(tag, payload, cls) {
         markLookupPipelineStep(jan, 'localStorage', 'MISS', { reason: 'no_local_confirmed_name' });
 
         // ========= [lookup-aiflow] STEP 2: サーバー確定データ（Firebase RTDB） =========
+        // v23.9.169 SP-260601-002: 段階4 サーバーの商品情報を確認中
+        try { if (typeof showLookupStageToast === 'function') showLookupStageToast(4, 'サーバーの商品情報を確認中', { jan: jan, ev: 'barcode_lookup_stage_server' }); } catch (_) {}
         spDbg('[LOOKUP_EXTERNAL_START]', { jan, reason: 'local miss' });
         markLookupPipelineStepStart(jan, 'Firebase');
         const serverConfirmed = await lookupServerConfirmedProduct(jan);
@@ -9838,6 +9848,8 @@ function spVisibleTrace(tag, payload, cls) {
           processBarcodeInFlight.delete(jan);
           // v23.9.102: 最終結果ログ（指示書対応）
           spDbg('[PRODUCT_LOOKUP_FINAL]', { name: finalInfo.name, maker: finalInfo.maker, source: sourceUsed });
+          // v23.9.169 SP-260601-002: 段階8 商品情報を表示しました（Firebase HIT 早期 return）
+          try { if (typeof showLookupStageToast === 'function') showLookupStageToast(8, '商品情報を表示しました', { jan: jan, ev: 'barcode_lookup_stage_done', source: 'server-confirmed', final: true }); } catch (_) {}
           return; // ✅ サーバーHIT → AI・外部API呼ばない
         }
         
@@ -9903,6 +9915,8 @@ function spVisibleTrace(tag, payload, cls) {
             // ✅ 処理完了
             processBarcodeInFlight.delete(jan);
             markLookupPipelineStep(jan, 'Final', 'HIT', { name: finalInfo.name || '', maker: finalInfo.maker || '', reason: 'jan_cache_sufficient' });
+            // v23.9.169 SP-260601-002: 段階8 商品情報を表示しました（cache HIT 早期 return）
+            try { if (typeof showLookupStageToast === 'function') showLookupStageToast(8, '商品情報を表示しました', { jan: jan, ev: 'barcode_lookup_stage_done', source: 'cache', final: true }); } catch (_) {}
             return;
           }
         }
@@ -9915,6 +9929,8 @@ function spVisibleTrace(tag, payload, cls) {
         let candidateSource = 'none';
 
         // ✅ 優先順位1: Yahoo最優先
+        // v23.9.169 SP-260601-002: 段階5 外部の商品情報を検索中（Yahoo/Rakuten/OFF を包括）
+        try { if (typeof showLookupStageToast === 'function') showLookupStageToast(5, '外部の商品情報を検索中', { jan: jan, ev: 'barcode_lookup_stage_external' }); } catch (_) {}
         markLookupPipelineStepStart(jan, 'Yahoo');
         yahooInfo = await lookupYahooByJan(jan);
         
@@ -10163,6 +10179,8 @@ function spVisibleTrace(tag, payload, cls) {
         }
 
         // v23.9.105: Web検索（プロキシ・Google CSE 相当）Yahoo/Rakuten/OFF 後段
+        // v23.9.169 SP-260601-002: 段階6 AIで商品名を整えています（Google CSE → AI normalize 工程）
+        try { if (typeof showLookupStageToast === 'function') showLookupStageToast(6, 'AIで商品名を整えています', { jan: jan, ev: 'barcode_lookup_stage_ai' }); } catch (_) {}
         if (!candidateName || candidateName.trim().length < 3) {
           markLookupPipelineStepStart(jan, 'Google CSE');
           try {
@@ -10282,6 +10300,8 @@ function spVisibleTrace(tag, payload, cls) {
           finalInfo.category = catOut;
         }
 
+        // v23.9.169 SP-260601-002: 段階7 商品画像を探しています（画像URL確定直前）
+        try { if (typeof showLookupStageToast === 'function') showLookupStageToast(7, '商品画像を探しています', { jan: jan, ev: 'barcode_lookup_stage_image' }); } catch (_) {}
         // [maker-image-fix] 画像URL確定ログ
         spDbg('[IMAGE_ROUTE_FINAL]', {
           jan: jan,
@@ -10529,7 +10549,10 @@ function spVisibleTrace(tag, payload, cls) {
             }
           }
           } // end if(!finalInfo.name) - STEP1/STEP2
-          showToast(`商品情報が見つかりませんでした\nJAN: ${jan}\n商品名・メーカーを手入力してください`, 8000);
+          // v23.9.169 SP-260601-002: 段階9 商品情報が見つかりませんでした（旧 8 秒 showToast は append 方式のため置換）
+          //   ※ JAN 詳細表示は debug 時のみに格下げ。通常運用ではステージトースト本文のみ表示
+          try { if (typeof showLookupStageToast === 'function') showLookupStageToast(9, '商品情報が見つかりませんでした。手入力または再取得できます', { jan: jan, ev: 'barcode_lookup_stage_failed', final: true, ms: 5000 }); } catch (_) {}
+          if (isDebug()) { try { showToast(`商品情報が見つかりませんでした\nJAN: ${jan}\n商品名・メーカーを手入力してください`, 8000); } catch (_) {} }
           try { spDbg('[LOOKUP_TOAST_FALLBACK]', { reason: 'no_product_data', jan: jan }); } catch (_ltf) {}
           // v23.9.153: 商品名未解決をローカルに記録
           try {
@@ -10551,6 +10574,18 @@ function spVisibleTrace(tag, payload, cls) {
         {
           const fn = !!(finalInfo.name && String(finalInfo.name).trim());
           markLookupPipelineStep(jan, 'Final', fn ? 'HIT' : 'MISS', { name: finalInfo.name || '', maker: finalInfo.maker || '', reason: String(sourceUsed || '') });
+          // v23.9.169 SP-260601-002: 段階8/9 終端トースト（Final 通過時）
+          //   ※ 早期 return パス（manual_master/local/firebase/cache HIT）は各 return 直前で 段階8 final 済
+          try {
+            if (typeof showLookupStageToast === 'function') {
+              if (fn) {
+                showLookupStageToast(8, '商品情報を表示しました', { jan: jan, ev: 'barcode_lookup_stage_done', source: String(sourceUsed || ''), final: true });
+              } else {
+                // 段階9 は L10532 の fallback 側で既に最終表示済の場合もあるが、ここは念のため失敗確定として呼ぶ
+                showLookupStageToast(9, '商品情報が見つかりませんでした。手入力または再取得できます', { jan: jan, ev: 'barcode_lookup_stage_failed', final: true, ms: 5000 });
+              }
+            }
+          } catch (_) {}
         }
         
         // ✅ P0: debug=1 時の詳細表示（LAST_JAN / SOURCE / STATUS / 取得データ）
@@ -10580,7 +10615,14 @@ function spVisibleTrace(tag, payload, cls) {
         });
       } catch(e) {
         // [scan-ux-improve] STEP4: catchでも必ずトースト表示
-        showToast('エラーが発生しました', 5000);
+        // v23.9.169 SP-260601-002: 段階9 失敗終端トースト（例外時）
+        try {
+          if (typeof showLookupStageToast === 'function') {
+            showLookupStageToast(9, '商品情報が見つかりませんでした。手入力または再取得できます', { jan: String(jan || ''), ev: 'barcode_lookup_stage_failed', final: true, ms: 5000, result: 'error' });
+          } else {
+            showToast('エラーが発生しました', 5000);
+          }
+        } catch (_) { try { showToast('エラーが発生しました', 5000); } catch (_) {} }
         try {
           markLookupPipelineStep(String(jan || ''), 'Final', 'ERROR', { error: e && e.message ? e.message : String(e), reason: 'processBarcodeData_catch' });
         } catch (_mle) {}
@@ -15270,19 +15312,20 @@ function showLookupStageToast(stage, message, opts) {
 window.showLookupStageToast = showLookupStageToast;
 
 function showLookupProgressToast() {
+  // v23.9.169 SP-260601-002: 段階2 商品情報を確認しています（置換更新方式へ移行）
+  //   旧 append 方式（'検索しています…' + 5秒後に追加 toast）は廃止
+  //   遅延警告（10秒/20秒）は commit③ で scheduleProductLookupSlowWatchers 内に移管
   try {
-    showToast('商品情報を検索しています…', 6000);
-    spDbg('[LOOKUP_TOAST_SHOW]', { msg: '商品情報を検索しています…' });
+    var jan = '';
+    try { jan = String(window.currentJan || window.lastScannedJan || ''); } catch (_) {}
+    if (typeof showLookupStageToast === 'function') {
+      showLookupStageToast(2, '商品情報を確認しています', { jan: jan, ev: 'barcode_lookup_stage_start' });
+    } else {
+      showToast('商品情報を確認しています', 6000);
+    }
+    spDbg('[LOOKUP_TOAST_SHOW]', { msg: '商品情報を確認しています' });
   } catch (_e) {}
   clearLookupProgressToastChain();
-  window.__lookupToastTimer = setTimeout(function () {
-    try {
-      if (window.__lookupTraceComplete) return;
-      showToast('検索に時間がかかっています。JANだけでも保存できます。', 6000);
-      spDbg('[LOOKUP_TOAST_LATE]', { atMs: 5000 });
-      spDbg('[LOOKUP_TOAST_TIMEOUT]', { atMs: 5000 });
-    } catch (_e2) {}
-  }, 5000);
 }
 
 function markLookupTraceComplete() {
