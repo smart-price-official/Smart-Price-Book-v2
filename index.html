@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.174  BUILD_ID=2026-06-01_v174-account-uid-link
+APP_VERSION=v23.9.176  BUILD_ID=2026-06-01_v176-public-code
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.174";
-  const BUILD_ID    = "2026-06-01_v174-account-uid-link";
+  const APP_VERSION = "v23.9.176";
+  const BUILD_ID    = "2026-06-01_v176-public-code";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -1525,24 +1525,35 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
       </div>
 
       <!-- v23.9.172 SP-260601-006: デバイスID・端末照合 パネル（PC/スマホ照合用・新規） -->
+      <!-- v23.9.176 SP-260601-009: 上級者向けに格下げ（通常はログインで自動同期・手動照合は不要） -->
       <div id="panelDeviceId" class="sp-panel mt-3" style="display:none;">
+        <div class="small text-warning mb-2" style="line-height:1.6;">
+          <span class="fw-bold">⚠ 上級者向け（通常は不要）</span>
+        </div>
         <div class="small text-secondary mb-3" style="line-height:1.6;">
-          このIDはPCとスマホのデータを照合するために使います。
+          ログインすればPC/スマホは自動で同期されます。<br>
+          このパネルは旧端末データの手動照合・移行を行う上級者向け機能です。
         </div>
-
-        <div class="small text-secondary mb-1">あなたのID:</div>
-        <div class="d-flex gap-2 mb-3 align-items-center flex-wrap">
-          <input id="deviceIdValue" class="form-control sp-bg-card sp-border-muted" readonly style="font-size:0.85rem; user-select:all; word-break:break-all;" value="-">
-          <button type="button" class="btn sp-btn-secondary" onclick="copyDeviceIdValue()">コピー</button>
-          <span id="deviceIdCopyStatus" class="text-success" style="font-size:0.78rem;"></span>
-        </div>
-
-        <div class="small text-secondary mb-2" style="line-height:1.6;">
-          <div class="fw-bold mb-1">使い方：</div>
-          ・PCとスマホで同じIDならデータが同期されています<br>
-          ・IDが違う場合は「PC・スマホ同期統合」で統一できます<br>
-          <span class="text-secondary" style="opacity:0.8;">（設定→管理メニューから操作）</span>
-        </div>
+        <details>
+          <summary class="small text-secondary mb-2" style="cursor:pointer; user-select:none;">▶ デバイスIDの詳細を表示</summary>
+          <div class="mt-2">
+            <div class="small text-secondary mb-3" style="line-height:1.6;">
+              このIDはPCとスマホのデータを照合するために使います。
+            </div>
+            <div class="small text-secondary mb-1">あなたのデバイスID:</div>
+            <div class="d-flex gap-2 mb-3 align-items-center flex-wrap">
+              <input id="deviceIdValue" class="form-control sp-bg-card sp-border-muted" readonly style="font-size:0.85rem; user-select:all; word-break:break-all;" value="-">
+              <button type="button" class="btn sp-btn-secondary" onclick="copyDeviceIdValue()">コピー</button>
+              <span id="deviceIdCopyStatus" class="text-success" style="font-size:0.78rem;"></span>
+            </div>
+            <div class="small text-secondary mb-2" style="line-height:1.6;">
+              <div class="fw-bold mb-1">使い方：</div>
+              ・PCとスマホで同じIDならデータが同期されています<br>
+              ・IDが違う場合は「PC・スマホ同期統合」で統一できます<br>
+              <span class="text-secondary" style="opacity:0.8;">（設定→管理メニューから操作）</span>
+            </div>
+          </div>
+        </details>
         <!-- v23.9.172 SP-260601-006: パネル末尾[戻る]を settingsCommonBack に共通化（panelDeviceId） -->
       </div>
 
@@ -12031,26 +12042,17 @@ function spVisibleTrace(tag, payload, cls) {
     // DBG: セット直後の実際の表示状態を確認
 
     try{ if(typeof window.setHeaderVersionBadge==='function') window.setHeaderVersionBadge(); }catch(e){}
-    // ✅ 個人ID表示（設定内の各画面にも表示）
-    try{
-      const pid = (typeof getDeviceId === 'function') ? getDeviceId() : '';
-      const ids = [
-        'sp-personal-id-panelReferral',
-        'sp-personal-id-panelFamily',
-        'sp-personal-id-panelSupport',
-        'sp-personal-id-panelOperator'
-      ];
-      ids.forEach(function(idEl){
-        const el = document.getElementById(idEl);
-        if(el) el.textContent = pid || '-';
-      });
-    }catch(e){}
+    // v23.9.176 SP-260601-009: 個人ID表示は public_code（8桁・XXXX-XXXX）に統一
+    //   旧 getDeviceId()（dev_ プレフィックス長UUID）は廃止し、4 spans + family-my-id を一括更新
+    //   未ログイン時は「ログインすると個人IDが発行されます」を表示
+    try {
+      if (typeof window._spUpdatePersonalIdDisplay === 'function') {
+        window._spUpdatePersonalIdDisplay();
+      }
+    } catch (e) {}
     // ✅ 友人紹介パネル更新
     try{
       if (typeof window.updateReferralPanel === 'function') window.updateReferralPanel();
-      const el2 = document.getElementById('family-my-id');
-      const pid2 = (typeof getDeviceId === 'function') ? getDeviceId() : '';
-      if(el2) el2.value = pid2 || '';
     }catch(e){}
 
     setTimeout(function() { modal.classList.add('show'); }, 10);
@@ -12240,6 +12242,8 @@ function spVisibleTrace(tag, payload, cls) {
     if (ret.ok && ret.body && ret.body.session && ret.body.session.access_token) {
       try { localStorage.setItem('sp_auth_token', ret.body.session.access_token); } catch (_) {}
       try { localStorage.setItem('sp_auth_email', (ret.body.user && ret.body.user.email) || email); } catch (_) {}
+      // v23.9.176 SP-260601-009: public_code をローカルにキャッシュ（個人ID表示用）
+      try { _spStorePublicCodeFromUser(ret.body.user); } catch (_) {}
     }
     return ret;
   }
@@ -12248,16 +12252,83 @@ function spVisibleTrace(tag, payload, cls) {
     var token = '';
     try { token = localStorage.getItem('sp_auth_token') || ''; } catch (_) {}
     if (!token) return { status: 0, ok: false, body: null, noToken: true };
-    return await _spApiCall('/api/auth/me', 'GET', null, token);
+    var ret = await _spApiCall('/api/auth/me', 'GET', null, token);
+    // v23.9.176 SP-260601-009: /me 成功時に public_code をキャッシュ＆全表示を最新化
+    if (ret && ret.ok && ret.body && ret.body.user) {
+      try { _spStorePublicCodeFromUser(ret.body.user); } catch (_) {}
+    }
+    return ret;
   }
   window.spAccountFetchMe = spAccountFetchMe;
 
   function spAccountLogout() {
     try { localStorage.removeItem('sp_auth_token'); } catch (_) {}
     try { localStorage.removeItem('sp_auth_email'); } catch (_) {}
+    // v23.9.176 SP-260601-009: public_code キャッシュもクリア（個人ID表示は未ログイン案内へ）
+    try { localStorage.removeItem('sp_public_code'); } catch (_) {}
+    try { window._spPublicCode = ''; } catch (_) {}
+    try { _spUpdatePersonalIdDisplay(); } catch (_) {}
     try { spDbg('[ACCOUNT_LOGOUT]', {}); } catch(_) {}
   }
   window.spAccountLogout = spAccountLogout;
+
+  // v23.9.176 SP-260601-009: 公開コード（8 桁・XXXX-XXXX 表示）系ヘルパー
+  //   - DB 保存はハイフン無しの 8 文字
+  //   - 表示は formatPublicCode で XXXX-XXXX に整形
+  //   - 個人ID表示（4 spans + family-my-id + 共有文面）に使う唯一の出所
+  function _spStorePublicCodeFromUser(userObj) {
+    if (!userObj) return '';
+    var raw = '';
+    try { raw = userObj.public_code ? String(userObj.public_code).trim().toUpperCase() : ''; } catch (_) {}
+    if (!raw) return '';
+    try { localStorage.setItem('sp_public_code', raw); } catch (_) {}
+    try { window._spPublicCode = raw; } catch (_) {}
+    try { spDbg('[PUBLIC_CODE_CACHED]', { codeHead: raw.slice(0, 4) }); } catch (_) {}
+    // 即座に個人ID表示を最新化（ログイン後に古いまま残さない）
+    try { _spUpdatePersonalIdDisplay(); } catch (_) {}
+    return raw;
+  }
+  function _spGetPublicCode() {
+    try { if (window._spPublicCode) return String(window._spPublicCode); } catch (_) {}
+    try { return (localStorage.getItem('sp_public_code') || '').toString(); } catch (_) {}
+    return '';
+  }
+  window._spGetPublicCode = _spGetPublicCode;
+
+  function formatPublicCode(code) {
+    var c = String(code || '').trim().toUpperCase().replace(/[^0-9A-Z]/g, '');
+    if (c.length !== 8) return c; // 想定外長の場合はそのまま返す（フォールバック）
+    return c.slice(0, 4) + '-' + c.slice(4, 8);
+  }
+  window.formatPublicCode = formatPublicCode;
+
+  // 4 つの個人ID span + family-my-id input + アカウントパネル内 ID 表示 を一括更新
+  // 未ログイン時 or public_code 未取得時は案内メッセージを表示
+  function _spUpdatePersonalIdDisplay() {
+    var code = _spGetPublicCode();
+    var formatted = code ? formatPublicCode(code) : '';
+    var fallbackMsg = 'ログインすると個人IDが発行されます';
+    // span 4 箇所
+    var ids = ['sp-personal-id-panelReferral', 'sp-personal-id-panelFamily', 'sp-personal-id-panelSupport', 'sp-personal-id-panelOperator'];
+    for (var i = 0; i < ids.length; i++) {
+      var el = document.getElementById(ids[i]);
+      if (el) el.textContent = formatted || fallbackMsg;
+    }
+    // family-my-id input
+    var famInput = document.getElementById('family-my-id');
+    if (famInput) {
+      famInput.value = formatted || '';
+      famInput.placeholder = formatted ? '' : fallbackMsg;
+    }
+    // referralUserIdValue（v172/v173 で追加した friend referral input）
+    var refInput = document.getElementById('referralUserIdValue');
+    if (refInput) {
+      refInput.value = formatted || '';
+      refInput.placeholder = formatted ? '' : fallbackMsg;
+    }
+    try { spDbg('[PERSONAL_ID_DISPLAY_UPDATE]', { hasCode: !!code, codeHead: code ? code.slice(0, 4) : '' }); } catch (_) {}
+  }
+  window._spUpdatePersonalIdDisplay = _spUpdatePersonalIdDisplay;
 
   // パネル描画（未ログイン/ログイン済の切替・⑧ボタンラベル更新）
   function renderAccountPanel() {
@@ -13937,8 +14008,19 @@ window.spShareReferral = spShareReferral;
 
 async function spShareFamilyId(){
   try{
-    const pid = (typeof getDeviceId === 'function') ? getDeviceId() : '';
-    const text = `【Smart Price 家族共有】\n共有したい個人ID: ${pid}\n※相手側の「家族共有」→「共有ID」に貼り付けてください`;
+    // v23.9.176 SP-260601-009: 共有文面は public_code（8桁・XXXX-XXXX）に変更
+    //   メールアドレスは PII のため共有文面に一切含めない。
+    //   未ログイン時は案内テキストを返す（旧 getDeviceId 由来の dev_ UUID は使わない）
+    const code = (typeof window._spGetPublicCode === 'function') ? window._spGetPublicCode() : '';
+    const formatted = (code && typeof window.formatPublicCode === 'function') ? window.formatPublicCode(code) : '';
+    if(!formatted){
+      const guideText = '【Smart Price 家族共有】\n個人IDを発行するには、設定→「⑧ アカウント連携」からログインしてください。';
+      try { showToast('ログインすると個人IDが発行されます', 4000); } catch(_){}
+      const ok = await spShareText('Smart Price 家族共有', guideText);
+      if(!ok) spCopyTextFallback(guideText);
+      return;
+    }
+    const text = `【Smart Price 家族共有】\n共有したい個人ID: ${formatted}\n※相手側の「家族共有」→「共有ID」に貼り付けてください`;
     const ok = await spShareText('Smart Price 家族共有', text);
     if(!ok) spCopyTextFallback(text);
   }catch(e){}
