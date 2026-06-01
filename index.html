@@ -15235,16 +15235,34 @@ function scheduleProductLookupSlowWatchers(jan) {
   clearProductLookupSlowTimers();
   var j = String(jan || '').trim();
   if (!j) return;
+  // v23.9.169 SP-260601-003: 10s/20s に進行状況トースト（置換更新方式）を組込み
+  //   10s → barcode_lookup_stage_slow（新規 ev）
+  //   20s → barcode_lookup_stage_timeout（final=true で 5 秒後 DOM 削除）
   var milestones = [
-    { ms: 3000, tag: '[PRODUCT_LOOKUP_SLOW_3S]' },
-    { ms: 5000, tag: '[PRODUCT_LOOKUP_SLOW_5S]' },
-    { ms: 10000, tag: '[PRODUCT_LOOKUP_SLOW_10S]' },
-    { ms: 20000, tag: '[PRODUCT_LOOKUP_SLOW_20S]' }
+    { ms: 3000,  tag: '[PRODUCT_LOOKUP_SLOW_3S]',  toast: null },
+    { ms: 5000,  tag: '[PRODUCT_LOOKUP_SLOW_5S]',  toast: null },
+    { ms: 10000, tag: '[PRODUCT_LOOKUP_SLOW_10S]', toast: { msg: '少し時間がかかっています。商品情報を探しています', ev: 'barcode_lookup_stage_slow', final: false } },
+    { ms: 20000, tag: '[PRODUCT_LOOKUP_SLOW_20S]', toast: { msg: 'タイムアウト。再取得ボタンまたは手入力へ案内', ev: 'barcode_lookup_stage_timeout', final: true, ms: 5000 } }
   ];
   milestones.forEach(function (m) {
     var tid = setTimeout(function () {
       if (window.__lookupTraceComplete) return;
       try { spDbg(m.tag, { jan: j, atMs: m.ms }); } catch (_e) {}
+      // v23.9.169 SP-260601-003: 該当 milestone でステージトーストを置換更新
+      if (m.toast) {
+        try {
+          if (typeof showLookupStageToast === 'function') {
+            showLookupStageToast('-', m.toast.msg, {
+              jan: j,
+              elapsedMs: m.ms,
+              ev: m.toast.ev,
+              final: !!m.toast.final,
+              ms: m.toast.ms || 3500,
+              noPrefix: true
+            });
+          }
+        } catch (_t) {}
+      }
       if (m.ms >= 20000) {
         window.__lookupJanOnlySaveOk = true;
         try { spDbg('[LOOKUP_JAN_ONLY_SAVE_OK]', { jan: j, atMs: m.ms }); } catch (_e2) {}
@@ -15276,7 +15294,8 @@ function clearLookupProgressToastChain() {
 window.__lookupStageToastEl = window.__lookupStageToastEl || null;
 function showLookupStageToast(stage, message, opts) {
   opts = opts || {};
-  var text = '(' + stage + '/9) ' + message;
+  // v23.9.169 SP-260601-003: opts.noPrefix=true で「(N/9) 」を省略（slow/timeout 用）
+  var text = opts.noPrefix ? String(message) : ('(' + stage + '/9) ' + message);
   var el = window.__lookupStageToastEl;
   try {
     if (el && document.body.contains(el)) {
