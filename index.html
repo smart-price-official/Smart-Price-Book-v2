@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.176  BUILD_ID=2026-06-01_v176-public-code
+APP_VERSION=v23.9.177  BUILD_ID=2026-06-01_v177-banner-scanner-fix
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.176";
-  const BUILD_ID    = "2026-06-01_v176-public-code";
+  const APP_VERSION = "v23.9.177";
+  const BUILD_ID    = "2026-06-01_v177-banner-scanner-fix";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -8379,6 +8379,8 @@ return true;
     if (nv) { try { nv.srcObject = null; nv.remove(); } catch(e) {} }
     const _ca=document.getElementById('camera-area'); if(_ca){_ca.style.display='none';_ca.style.pointerEvents='none';}
     try { const me = document.getElementById('manual-entry'); if(me) me.style.display='none'; } catch(e) {}
+    // v23.9.177 SP-260601-010 FIX-2(1): スキャナ閉じ時刻を記録（突き抜けタップで設定が開くのを open() 側で抑止）
+    try { window._spScannerClosedAt = Date.now(); } catch (_) {}
   }
 
   // ✅ P0-4: 店舗ごと税設定を手動変更
@@ -12020,6 +12022,16 @@ function spVisibleTrace(tag, payload, cls) {
   
   function open() {
     if (!modal) return;
+    // v23.9.177 SP-260601-010 FIX-2(2): スキャナを閉じた直後(≦600ms) の突き抜けタップで設定が開くのを抑止
+    //   stopScanner() が camera-area を display:none にした合成 click が同座標の ⚙ #settingsBtn へ
+    //   突き抜けて open() が発火する古典的 tap fall-through を防ぐ。通常の ⚙ タップ（時間経過後）は素通り
+    try {
+      if (window._spScannerClosedAt && (Date.now() - window._spScannerClosedAt) < 600) {
+        window._spScannerClosedAt = 0;
+        try { spDbg('[SETTINGS_OPEN_GUARD]', { reason: 'scanner_close_fallthrough' }); } catch (_) {}
+        return;
+      }
+    } catch (_) {}
     try { const dp = document.getElementById('debug-panel'); if (dp && dp.classList.contains('show')) { dp.classList.remove('show'); dp.style.display = 'none'; } } catch(e) {}
     try { if (typeof window.clearToasts === 'function') window.clearToasts(); } catch(e) {}
     // v23.9.166 SP-250529-002: 動作ログ件数を表示更新
@@ -12360,6 +12372,9 @@ function spVisibleTrace(tag, payload, cls) {
         if (ret && ret.ok && ret.body && ret.body.user) {
           try { localStorage.setItem('sp_auth_email', ret.body.user.email); } catch (_) {}
           if (emailEl) emailEl.textContent = ret.body.user.email;
+          // v23.9.177 SP-260601-010 FIX-1A: /me 成功確定でバナーを隠す
+          //   起動時にトークンがあるのにバナーが残るケース（成功分岐で呼出漏れ）の修正
+          try { renderStartupBannerIfNeeded(); } catch (_) {}
         } else if (ret && ret.status === 401) {
           // token 失効 → 強制ログアウト
           spAccountLogout();
@@ -12463,6 +12478,10 @@ function spVisibleTrace(tag, payload, cls) {
   function renderStartupBannerIfNeeded() {
     var banner = document.getElementById('startupAccountBanner');
     if (!banner) return;
+    // v23.9.177 SP-260601-010 FIX-1B: in-memory session フラグ（belt-and-suspenders）
+    //   ✕ ボタンのタップが何らかの理由（スタッキング等）でうまく届かなくても、
+    //   一度 dismissStartupBanner が呼ばれたら同一セッション中は再描画で再表示しない
+    try { if (window._spBannerHiddenSession) { banner.style.display = 'none'; return; } } catch (_) {}
     if (spAccountIsLoggedIn()) { banner.style.display = 'none'; return; }
     var dismissed = '';
     try { dismissed = localStorage.getItem('sp_banner_dismissed_date') || ''; } catch (_) {}
@@ -12473,6 +12492,8 @@ function spVisibleTrace(tag, payload, cls) {
   window.renderStartupBannerIfNeeded = renderStartupBannerIfNeeded;
 
   function dismissStartupBanner() {
+    // v23.9.177 SP-260601-010 FIX-1B: in-memory フラグ即座に立てる（再描画ガード）
+    try { window._spBannerHiddenSession = true; } catch (_) {}
     try { localStorage.setItem('sp_banner_dismissed_date', _spTodayStr()); } catch (_) {}
     var banner = document.getElementById('startupAccountBanner');
     if (banner) banner.style.display = 'none';
