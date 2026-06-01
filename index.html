@@ -12125,15 +12125,17 @@ function spVisibleTrace(tag, payload, cls) {
     return uid;
   }
 
-  // 2 つの ID 表示インプットを最新化（panelDeviceId / panelReferral）
+  // v23.9.176 SP-260601-009 HOLDFIX: renderUserIdRow は deviceIdValue（⑦内部UID）専用に分離
+  //   referralUserIdValue は _spUpdatePersonalIdDisplay() だけが更新する（public_code 専用）
+  //   旧仕様では本関数が renderUserIdRow()→referralUserIdValue=_spGetUserId() で旧UIDで上書きしていた
+  //   設定 open 時 _spUpdatePersonalIdDisplay → 後続 syncSettings の renderUserIdRow で旧UIDに戻る順序依存バグの修正
   function renderUserIdRow() {
     try {
       var uid = _spGetUserId();
       var dev = document.getElementById('deviceIdValue');
       if (dev) dev.value = uid || '(未設定)';
-      var ref = document.getElementById('referralUserIdValue');
-      if (ref) ref.value = uid || '(未設定)';
-      try { spDbg('[USER_ID_DISPLAY]', { uid: uid || '', targets: [dev ? 'deviceIdValue' : '', ref ? 'referralUserIdValue' : ''].filter(Boolean) }); } catch(_) {}
+      // ★削除：referralUserIdValue への書き込みは _spUpdatePersonalIdDisplay() に一本化
+      try { spDbg('[USER_ID_DISPLAY]', { uid: uid || '', target: dev ? 'deviceIdValue' : '' }); } catch(_) {}
     } catch(e) {}
   }
   window.renderUserIdRow = renderUserIdRow;
@@ -12421,6 +12423,9 @@ function spVisibleTrace(tag, payload, cls) {
         if (ret.body && ret.body.session && ret.body.session.access_token) {
           try { localStorage.setItem('sp_auth_token', ret.body.session.access_token); } catch (_) {}
           try { localStorage.setItem('sp_auth_email', (ret.body.user && ret.body.user.email) || email); } catch (_) {}
+          // v23.9.176 SP-260601-009 HOLDFIX: 登録直後に public_code をキャッシュ＆即表示
+          //   spAccountLogin/spAccountFetchMe 経路と異なり、register は _spStorePublicCodeFromUser を経由しないため明示呼出
+          try { _spStorePublicCodeFromUser(ret.body.user); } catch (_) {}
           setMsg('✓ 登録完了（自動ログイン済）', 'text-success');
           renderAccountPanel();
           renderStartupBannerIfNeeded();
