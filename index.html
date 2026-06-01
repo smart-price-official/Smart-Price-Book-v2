@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.169  BUILD_ID=2026-06-01_v169-barcode-progress-toast
+APP_VERSION=v23.9.170  BUILD_ID=2026-06-01_v170-subcategory-display-fix
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.169";
-  const BUILD_ID    = "2026-06-01_v169-barcode-progress-toast";
+  const APP_VERSION = "v23.9.170";
+  const BUILD_ID    = "2026-06-01_v170-subcategory-display-fix";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -5141,6 +5141,18 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         initSubCategorySelect(catVal);
         const subVal = p.subCategory || "__NONE__";
         if (subSel) {
+          // v23.9.170 SP-260601-004: 保存済み subCategory が dropdown に無ければ動的追加
+          //   （categoryTree のキー構造が PARENT_CATEGORY_LIST と一致しない既存構造バグの最小回避）
+          //   parent カテゴリ配下の細分 list が引けず list=["その他"] になっても、
+          //   p.subCategory（例：「加工肉」）を ADD_SUB 直前に挿入して必ず表示する
+          if (subVal && subVal !== "__NONE__" && ![...subSel.options].some(o => o.value === subVal)) {
+            const opt = document.createElement('option');
+            opt.value = subVal;
+            opt.textContent = subVal;
+            const addSubOpt = [...subSel.options].find(o => o.value === 'ADD_SUB');
+            if (addSubOpt) subSel.insertBefore(opt, addSubOpt); else subSel.appendChild(opt);
+            try { spDbg('[SUBCATEGORY_DYNAMIC_OPTION]', { subCategory: subVal }); } catch (_) {}
+          }
           subSel.value = ([...subSel.options].some(o => o.value === subVal)) ? subVal : "__NONE__";
         }
       } else {
