@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.173  BUILD_ID=2026-06-01_v173-login-ui
+APP_VERSION=v23.9.174  BUILD_ID=2026-06-01_v174-account-uid-link
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.173";
-  const BUILD_ID    = "2026-06-01_v173-login-ui";
+  const APP_VERSION = "v23.9.174";
+  const BUILD_ID    = "2026-06-01_v174-account-uid-link";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -3343,6 +3343,18 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
     }
 
     try { spDbg('[APP_BOOT_DONE]', { productCount: Object.keys((db && db.products) || {}).length }); } catch (_) {}
+
+    // v23.9.174 SP-260601-008: 起動時アカウントUID統合（token あり時のみ・冪等・C1で no-op）
+    //   - Firebase 未初期化なら linkAccountUid 内で G4 deferred → 1 秒間隔で最大 30 秒監視・準備完了で 1 回再試行
+    //   - C1 (sp_user_id === accountUid) で no-op return するため起動毎の負荷は最小
+    try {
+      var _hasToken = false;
+      try { _hasToken = !!(localStorage.getItem('sp_auth_token') || ''); } catch (_) {}
+      if (_hasToken && typeof window.linkAccountUid === 'function') {
+        // 起動直後の同期処理と競合しないよう少し遅延させて発火
+        setTimeout(function () { try { window.linkAccountUid('boot'); } catch (_) {} }, 1500);
+      }
+    } catch (_) {}
 
     try {
       if (isDebug()) {
@@ -12305,6 +12317,8 @@ function spVisibleTrace(tag, payload, cls) {
         try { spDbg('[ACCOUNT_LOGIN_OK]', { email: email }); } catch(_) {}
         renderAccountPanel();
         renderStartupBannerIfNeeded();
+        // v23.9.174 SP-260601-008: ログイン成功直後にアカウントUID統合を実行
+        try { if (typeof window.linkAccountUid === 'function') window.linkAccountUid('login'); } catch(_) {}
       } else if (ret.networkError) {
         setMsg('✗ 通信エラー: ' + ret.networkError, 'text-danger');
       } else {
@@ -12339,6 +12353,8 @@ function spVisibleTrace(tag, payload, cls) {
           setMsg('✓ 登録完了（自動ログイン済）', 'text-success');
           renderAccountPanel();
           renderStartupBannerIfNeeded();
+          // v23.9.174 SP-260601-008: 登録 → 自動ログイン直後にアカウントUID統合を実行
+          try { if (typeof window.linkAccountUid === 'function') window.linkAccountUid('register'); } catch (_) {}
         } else {
           // メール確認待ちの場合
           setMsg('✓ 登録完了（メール内リンクをクリック後、ログインしてください）', 'text-success');
@@ -13059,30 +13075,91 @@ window.spConfirm = spConfirm;
 // === v23.9.166 SP-250530-001: applySharedUserId 全面改修 ===
 // 観測点(spOpLog)を全経路に追加、window.confirm→spConfirmに置換、サイレント早期returnをUI/ログ化、
 // 統合後に syncFirebasePut() で新uidのクラウドパスへ書き戻し（GET→merge→PUT）。
-async function applySharedUserId() {
-  // 観測点1: 関数先頭
-  var _spStarted = false;
+// v23.9.174 SP-260601-008: DOM 非依存の uid 切替コア（手動統合とログイン連動統合の両方から呼ぶ）
+//   バックアップ → uid切替 → GET(syncFirebase: merge含む) → mergeLocal=true なら PUT → エラー時 自動ロールバック
+//   opts = { trigger: 'manual' | 'login' | 'register' | 'boot' | ..., mergeLocal: true|false }
+//   戻り値: { ok, mode, productCount, historyCount, reason?, error? }
+async function migrateUserIdTo(newUid, opts) {
+  opts = opts || {};
+  var trigger = opts.trigger || 'manual';
+  var mergeLocal = opts.mergeLocal !== false; // 既定 true
+  // 1. バリデーション
+  if (!newUid || typeof newUid !== 'string') return { ok: false, reason: 'invalid_uid' };
+  newUid = String(newUid).trim();
+  if (!newUid) return { ok: false, reason: 'empty_uid' };
+  var current = '';
+  try { current = (localStorage.getItem('sp_user_id') || '').toString(); } catch (_) {}
+  var _countProducts = function () {
+    try { return (db && db.products) ? Object.keys(db.products).length : 0; } catch (_) { return 0; }
+  };
+  var _countHistory = function () {
+    try {
+      return (db && db.products)
+        ? Object.values(db.products).reduce(function (s, p) { return s + (Array.isArray(p.history) ? p.history.length : 0); }, 0)
+        : 0;
+    } catch (_) { return 0; }
+  };
+  if (current === newUid) {
+    try { spDbg('[UID_MIGRATE_NOOP]', { trigger: trigger, uidHead: newUid.slice(0, 8) }); } catch (_) {}
+    return { ok: true, mode: 'noop', productCount: _countProducts(), historyCount: _countHistory() };
+  }
+  // 2. バックアップ
   try {
-    var _curUid = (localStorage.getItem('sp_user_id') || '').toString();
-    var _input0 = document.getElementById('sharedUserIdInput');
-    var _msg0 = document.getElementById('sharedUserIdMsg');
-    if (typeof window.spOpLog === 'function') window.spOpLog('uid_merge_start', {
-      hasInput: !!_input0,
-      hasMsg: !!_msg0,
-      currentUidHead: _curUid ? _curUid.slice(0, 8) : ''
-    });
-    _spStarted = true;
-  } catch (_) {}
+    localStorage.setItem('sp_user_id_backup', current);
+    localStorage.setItem('smart_price_db_backup', JSON.stringify(db));
+    try { if (typeof window.spOpLog === 'function') window.spOpLog('uid_migrate_progress', { step: 'backup', trigger: trigger }); } catch (_) {}
+  } catch (e) {
+    return { ok: false, reason: 'backup_failed', error: e && e.message ? e.message : String(e) };
+  }
+  try {
+    // 3. sp_user_id 切替
+    localStorage.setItem('sp_user_id', newUid);
+    if (db && db.config) db.config.userId = newUid;
+    try { if (typeof window.spOpLog === 'function') window.spOpLog('uid_migrate_progress', { step: 'switch_uid', trigger: trigger, oldUidHead: current.slice(0, 8), newUidHead: newUid.slice(0, 8) }); } catch (_) {}
+    // 4. GET（syncFirebase 内で新uidパスを取得し既存ローカルと merge）
+    if (typeof syncFirebase === 'function') {
+      await syncFirebase();
+    }
+    try { if (typeof window.spOpLog === 'function') window.spOpLog('uid_migrate_progress', { step: 'sync_done', trigger: trigger }); } catch (_) {}
+    // 5. PUT は mergeLocal:true の時だけ（C4 別アカウントは PUT しない＝ローカルデータを別アカウントへ漏洩させない）
+    if (mergeLocal && typeof syncFirebasePut === 'function') {
+      await syncFirebasePut();
+      try { if (typeof window.spOpLog === 'function') window.spOpLog('uid_migrate_progress', { step: 'put_done', trigger: trigger }); } catch (_) {}
+    }
+    // 6. 結果
+    var productCount = _countProducts();
+    var historyCount = _countHistory();
+    try { if (typeof window.spOpLog === 'function') window.spOpLog('uid_migrate_done', { trigger: trigger, productCount: productCount, historyCount: historyCount, mergeLocal: mergeLocal }); } catch (_) {}
+    return { ok: true, mode: 'migrate', productCount: productCount, historyCount: historyCount };
+  } catch (e) {
+    // 7. ロールバック（バックアップから復元）
+    try { if (typeof window.spOpLog === 'function') window.spOpLog('uid_migrate_error', { trigger: trigger, message: e && e.message ? e.message : String(e) }); } catch (_) {}
+    var backupDb = '';
+    var backupUid = '';
+    try { backupDb = localStorage.getItem('smart_price_db_backup') || ''; } catch (_) {}
+    try { backupUid = localStorage.getItem('sp_user_id_backup') || ''; } catch (_) {}
+    if (backupDb) {
+      try { db = JSON.parse(backupDb); if (typeof saveLocalOnly === 'function') saveLocalOnly(); } catch (_) {}
+    }
+    if (backupUid) {
+      try { localStorage.setItem('sp_user_id', backupUid); } catch (_) {}
+      if (db && db.config) db.config.userId = backupUid;
+    }
+    return { ok: false, reason: 'sync_failed', error: e && e.message ? e.message : String(e), productCount: _countProducts(), historyCount: _countHistory() };
+  }
+}
+window.migrateUserIdTo = migrateUserIdTo;
 
+// v23.9.174 SP-260601-008: 手動統合パネル（PC・スマホ同期統合）の薄ラッパー
+//   既存 UI / トースト / モーダルメッセージはそのまま維持し、コア部分は migrateUserIdTo に集約
+async function applySharedUserId() {
   const input = document.getElementById('sharedUserIdInput');
   const msg = document.getElementById('sharedUserIdMsg');
   if (!input || !msg) {
-    // 観測点2: 早期return（DOM無し）— サイレント解消（ログ+トースト）
     try { if (typeof window.spOpLog === 'function') window.spOpLog('uid_merge_abort', { reason: 'no_dom_elements', hasInput: !!input, hasMsg: !!msg }); } catch (_) {}
     try { if (typeof showToast === 'function') showToast('統合UIが読み込めません。管理メニューを開き直してください。', 5000); } catch (_) {}
     return;
   }
-
   const newUid = (input.value || '').trim();
   if (!newUid) {
     msg.style.color = '#f88';
@@ -13090,19 +13167,18 @@ async function applySharedUserId() {
     try { if (typeof window.spOpLog === 'function') window.spOpLog('uid_merge_abort', { reason: 'empty_input' }); } catch (_) {}
     return;
   }
-  if (newUid === localStorage.getItem('sp_user_id')) {
+  const curUid = (localStorage.getItem('sp_user_id') || '').toString();
+  if (newUid === curUid) {
     msg.style.color = '#f88';
     msg.textContent = '❌ 現在と同じIDです';
     try { if (typeof window.spOpLog === 'function') window.spOpLog('uid_merge_abort', { reason: 'same_uid' }); } catch (_) {}
     return;
   }
-
-  // 確認モーダル（spConfirm）— ネイティブconfirmを置換
   const confirmed = await spConfirm({
     title: 'データ統合',
     body:
       '以下のIDへ統合します。\n\n' +
-      '現在: ' + (localStorage.getItem('sp_user_id') || '不明') + '\n' +
+      '現在: ' + (curUid || '不明') + '\n' +
       '変更後: ' + newUid + '\n\n' +
       '実行前にJSONバックアップを取得してください。',
     okLabel: '統合する',
@@ -13114,80 +13190,199 @@ async function applySharedUserId() {
     try { if (typeof window.spOpLog === 'function') window.spOpLog('uid_merge_abort', { reason: 'user_cancel' }); } catch (_) {}
     return;
   }
+  try { if (typeof window.spOpLog === 'function') window.spOpLog('uid_merge_start', { currentUidHead: curUid.slice(0, 8), newUidHead: newUid.slice(0, 8) }); } catch (_) {}
 
-  try {
-    msg.style.color = '#aaa';
-    msg.textContent = '⏳ バックアップ中...';
-    try { if (typeof window.spOpLog === 'function') window.spOpLog('uid_merge_progress', { step: 'backup' }); } catch (_) {}
+  msg.style.color = '#aaa';
+  msg.textContent = '⏳ 統合処理中...';
 
-    // Step1: 現在のlocalStorageをバックアップ
-    const oldUid = localStorage.getItem('sp_user_id') || '';
-    localStorage.setItem('sp_user_id_backup', oldUid);
-    localStorage.setItem('smart_price_db_backup', JSON.stringify(db));
+  // v23.9.174: コア処理は migrateUserIdTo に集約
+  const result = await migrateUserIdTo(newUid, { trigger: 'manual', mergeLocal: true });
 
-    msg.textContent = '⏳ ユーザーID変更中...';
-    try { if (typeof window.spOpLog === 'function') window.spOpLog('uid_merge_progress', { step: 'switch_uid', oldUidHead: oldUid.slice(0, 8), newUidHead: newUid.slice(0, 8) }); } catch (_) {}
-
-    // Step2: sp_user_idを変更
-    localStorage.setItem('sp_user_id', newUid);
-    if (db.config) db.config.userId = newUid;
-
-    msg.textContent = '⏳ Firebase同期中（取得）...';
-    try { if (typeof window.spOpLog === 'function') window.spOpLog('uid_merge_progress', { step: 'sync_start' }); } catch (_) {}
-
-    // Step3: Firebase pull（mergeDb）
-    if (typeof syncFirebase === 'function') {
-      await syncFirebase();
-    }
-    try { if (typeof window.spOpLog === 'function') window.spOpLog('uid_merge_progress', { step: 'sync_done' }); } catch (_) {}
-
-    // Step3b: 新uidのクラウドパスへマージ結果を書き戻し（v23.9.166 r3）
-    msg.textContent = '⏳ Firebase同期中（書き戻し）...';
-    try { if (typeof window.spOpLog === 'function') window.spOpLog('uid_merge_progress', { step: 'put_start' }); } catch (_) {}
-    if (typeof syncFirebasePut === 'function') {
-      await syncFirebasePut();
-    }
-    try { if (typeof window.spOpLog === 'function') window.spOpLog('uid_merge_progress', { step: 'put_done' }); } catch (_) {}
-
-    // Step4: 結果確認
-    const productCount = db.products ? Object.keys(db.products).length : 0;
-    const historyCount = db.products ? Object.values(db.products).reduce((s, p) => s + (Array.isArray(p.history) ? p.history.length : 0), 0) : 0;
-
+  if (result && result.ok) {
     msg.style.color = '#8f8';
-    msg.textContent = '✅ 統合完了 商品:' + productCount + '件 履歴:' + historyCount + '件';
-    try { if (typeof window.spOpLog === 'function') window.spOpLog('uid_merge_done', { productCount: productCount, historyCount: historyCount }); } catch (_) {}
-
-    if (typeof showToast === 'function') {
-      showToast('✅ ユーザーID統合完了', 4000);
-    }
-
-    // Step5: UI更新
+    msg.textContent = '✅ 統合完了 商品:' + (result.productCount || 0) + '件 履歴:' + (result.historyCount || 0) + '件';
+    try { if (typeof window.spOpLog === 'function') window.spOpLog('uid_merge_done', { productCount: result.productCount || 0, historyCount: result.historyCount || 0 }); } catch (_) {}
+    try { if (typeof showToast === 'function') showToast('✅ ユーザーID統合完了', 4000); } catch (_) {}
     if (typeof renderStats === 'function') {
-      const allHistory = db.products
-        ? Object.values(db.products).flatMap(p => p.history || [])
-        : [];
+      const allHistory = db.products ? Object.values(db.products).flatMap(p => p.history || []) : [];
       renderStats(allHistory);
     }
-
-  } catch(e) {
-    // rollback
-    try { if (typeof window.spOpLog === 'function') window.spOpLog('uid_merge_error', { message: (e && e.message) ? e.message : String(e), stack: (e && e.stack) ? String(e.stack).slice(0, 500) : '' }); } catch (_) {}
-    const backup = localStorage.getItem('smart_price_db_backup');
-    const backupUid = localStorage.getItem('sp_user_id_backup');
-    if (backup) {
-      try {
-        db = JSON.parse(backup);
-        if (typeof saveLocalOnly === 'function') saveLocalOnly();
-      } catch(e2) {}
-    }
-    if (backupUid) localStorage.setItem('sp_user_id', backupUid);
-
+  } else {
+    var detail = result && (result.error || result.reason) ? (result.error || result.reason) : '不明';
     msg.style.color = '#f88';
-    msg.textContent = '❌ エラー発生・ロールバック済: ' + (e.message || '不明');
-    if (isDebug()) console.error('[applySharedUserId]', e);
+    msg.textContent = '❌ エラー発生・ロールバック済: ' + detail;
+    try { if (typeof window.spOpLog === 'function') window.spOpLog('uid_merge_error', { reason: result ? result.reason : 'unknown', message: result ? result.error : '' }); } catch (_) {}
+    if (isDebug()) console.error('[applySharedUserId]', result);
   }
 }
 window.applySharedUserId = applySharedUserId;
+
+// ============================================================
+// v23.9.174 SP-260601-008: ログイン連動 同期UID統合（P2-4）
+// ============================================================
+// アカウントUID（Supabase auth user id）を sp_user_id に紐付け、
+// 同じアカウントでログインした端末は自動で同期するようにする。
+// 名前空間 'acct_' を付けて端末生成 uid と明確に区別。
+// 状態管理: localStorage.sp_linked_account_uid（直近リンクした acct_xxx）
+// 冪等性: __spLinkInflight 多重実行禁止、C1 sp_user_id === accountUid なら no-op return
+
+window.__spLinkInflight = window.__spLinkInflight || false;
+window.__spLinkRetryScheduled = window.__spLinkRetryScheduled || false;
+
+function _spExtractAccountUid(meBody, token) {
+  // 候補: body.user.id → body.id → JWT.sub
+  var uid = '';
+  var field = '';
+  if (meBody && meBody.user && meBody.user.id) { uid = String(meBody.user.id); field = 'body.user.id'; }
+  else if (meBody && meBody.id) { uid = String(meBody.id); field = 'body.id'; }
+  else if (token) {
+    try {
+      var parts = String(token).split('.');
+      if (parts.length === 3) {
+        var b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+        while (b64.length % 4) b64 += '=';
+        var payload = JSON.parse(atob(b64));
+        if (payload && payload.sub) { uid = String(payload.sub); field = 'jwt.sub'; }
+      }
+    } catch (_) {}
+  }
+  return { uid: uid.trim(), field: field };
+}
+
+function _spScheduleLinkRetry(trigger) {
+  if (window.__spLinkRetryScheduled) return;
+  window.__spLinkRetryScheduled = true;
+  var startTs = Date.now();
+  var iv = setInterval(function () {
+    var fbReady = false;
+    try { fbReady = !!(window._isFirebaseReady); } catch (_) {}
+    if (fbReady) {
+      clearInterval(iv);
+      window.__spLinkRetryScheduled = false;
+      setTimeout(function () {
+        try { if (typeof window.linkAccountUid === 'function') window.linkAccountUid('retry_after_fb_init'); } catch (_) {}
+      }, 500);
+    } else if (Date.now() - startTs > 30000) {
+      clearInterval(iv);
+      window.__spLinkRetryScheduled = false;
+      try { spDbg('[ACCOUNT_UID_LINK_DEFER]', { reason: 'firebase_init_timeout', trigger: trigger }); } catch (_) {}
+    }
+  }, 1000);
+}
+
+async function linkAccountUid(trigger) {
+  trigger = String(trigger || 'unknown');
+  // G1: token 無ければ何もしない
+  var token = '';
+  try { token = localStorage.getItem('sp_auth_token') || ''; } catch (_) {}
+  if (!token) {
+    try { spDbg('[ACCOUNT_UID_LINK_SKIP]', { reason: 'no_token', trigger: trigger }); } catch (_) {}
+    return { ok: false, reason: 'no_token' };
+  }
+  // 多重実行ガード
+  if (window.__spLinkInflight) {
+    try { spDbg('[ACCOUNT_UID_LINK_SKIP]', { reason: 'inflight', trigger: trigger }); } catch (_) {}
+    return { ok: false, reason: 'inflight' };
+  }
+  window.__spLinkInflight = true;
+  try {
+    var currentUid = '';
+    try { currentUid = (localStorage.getItem('sp_user_id') || '').toString(); } catch (_) {}
+    try { spDbg('[ACCOUNT_UID_LINK_START]', { trigger: trigger, currentUidHead: currentUid.slice(0, 8) }); } catch (_) {}
+
+    // G2: /api/auth/me で accountUid 取得
+    var meRet = null;
+    try {
+      if (typeof window.spAccountFetchMe === 'function') {
+        meRet = await window.spAccountFetchMe();
+      }
+    } catch (e) {
+      try { spDbg('[ACCOUNT_UID_LINK_ERROR]', { message: 'me_fetch_throw: ' + (e && e.message ? e.message : String(e)) }); } catch (_) {}
+      return { ok: false, reason: 'me_fetch_throw' };
+    }
+    if (!meRet || !meRet.ok || !meRet.body) {
+      // 401 → token失効 → 自動ログアウト
+      if (meRet && meRet.status === 401) {
+        try { if (typeof window.spAccountLogout === 'function') window.spAccountLogout(); } catch (_) {}
+        try { spDbg('[ACCOUNT_UID_LINK_ERROR]', { message: 'me_401_auto_logout', trigger: trigger }); } catch (_) {}
+      } else {
+        try { spDbg('[ACCOUNT_UID_LINK_ERROR]', { message: 'me_fetch_failed', status: meRet ? meRet.status : 0 }); } catch (_) {}
+      }
+      return { ok: false, reason: 'me_fetch_failed' };
+    }
+    var extracted = _spExtractAccountUid(meRet.body, token);
+    if (!extracted.uid) {
+      try { spDbg('[ACCOUNT_UID_LINK_ERROR]', { message: 'no_uid_in_me' }); } catch (_) {}
+      return { ok: false, reason: 'no_uid_in_me' };
+    }
+    try { spDbg('[ACCOUNT_ME_FIELD]', { field: extracted.field, uidHead: extracted.uid.slice(0, 8) }); } catch (_) {}
+
+    // G3: フォーマット検証（最低限：英数+ハイフン/アンダースコア・6文字以上）
+    if (!/^[A-Za-z0-9_-]{6,}$/.test(extracted.uid)) {
+      try { spDbg('[ACCOUNT_UID_LINK_ERROR]', { message: 'invalid_uid_format', uidHead: extracted.uid.slice(0, 8) }); } catch (_) {}
+      return { ok: false, reason: 'invalid_uid_format' };
+    }
+
+    var accountUid = 'acct_' + extracted.uid;
+    var linkedUid = '';
+    try { linkedUid = (localStorage.getItem('sp_linked_account_uid') || '').toString(); } catch (_) {}
+
+    // C1: 既リンク（冪等）
+    if (currentUid === accountUid) {
+      try { spDbg('[ACCOUNT_UID_LINK_SKIP]', { reason: 'already_linked', uidHead: accountUid.slice(0, 8) }); } catch (_) {}
+      if (linkedUid !== accountUid) {
+        try { localStorage.setItem('sp_linked_account_uid', accountUid); } catch (_) {}
+      }
+      return { ok: true, mode: 'skip' };
+    }
+
+    // G4: Firebase 初期化チェック
+    var fbReady = false;
+    try { fbReady = !!(window._isFirebaseReady); } catch (_) {}
+    if (!fbReady) {
+      try { spDbg('[ACCOUNT_UID_LINK_DEFER]', { reason: 'firebase_not_ready', trigger: trigger }); } catch (_) {}
+      _spScheduleLinkRetry(trigger);
+      return { ok: false, reason: 'firebase_not_ready' };
+    }
+
+    // C2/C3/C4 判定
+    var mode = '';
+    var mergeLocal = false;
+    if (!linkedUid) {
+      mode = 'first';      // 初回ログイン → 端末データをアカウントへ統合
+      mergeLocal = true;
+    } else if (linkedUid === accountUid) {
+      mode = 'relink';     // 同一アカウント再ログイン → 取得のみ
+      mergeLocal = false;
+    } else {
+      mode = 'switch';     // 別アカウント → 取得のみ（ローカルデータを別アカウントへ漏洩させない）
+      mergeLocal = false;
+    }
+    try { spDbg('[ACCOUNT_UID_LINK_MIGRATE]', { mode: mode, mergeLocal: mergeLocal, uidHead: accountUid.slice(0, 8), trigger: trigger }); } catch (_) {}
+
+    // migrateUserIdTo 呼出
+    var result = null;
+    try {
+      result = await migrateUserIdTo(accountUid, { trigger: 'login_' + trigger, mergeLocal: mergeLocal });
+    } catch (e) {
+      try { spDbg('[ACCOUNT_UID_LINK_ERROR]', { message: 'migrate_throw: ' + (e && e.message ? e.message : String(e)) }); } catch (_) {}
+      return { ok: false, reason: 'migrate_throw' };
+    }
+    if (!result || !result.ok) {
+      try { spDbg('[ACCOUNT_UID_LINK_ERROR]', { message: 'migrate_failed', detail: result ? (result.error || result.reason) : 'unknown' }); } catch (_) {}
+      return { ok: false, reason: 'migrate_failed' };
+    }
+
+    // リンク済 uid を記録
+    try { localStorage.setItem('sp_linked_account_uid', accountUid); } catch (_) {}
+    try { spDbg('[ACCOUNT_UID_LINK_DONE]', { accountUidHead: accountUid.slice(0, 8), productCount: result.productCount || 0, historyCount: result.historyCount || 0 }); } catch (_) {}
+    try { if (typeof window.spOpLog === 'function') window.spOpLog('account_uid_link', { mode: mode, mergeLocal: mergeLocal, productCount: result.productCount || 0, historyCount: result.historyCount || 0, trigger: trigger }); } catch (_) {}
+    return { ok: true, mode: mode, productCount: result.productCount || 0, historyCount: result.historyCount || 0 };
+  } finally {
+    window.__spLinkInflight = false;
+  }
+}
+window.linkAccountUid = linkAccountUid;
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // v22.7: Firebase接続テスト
