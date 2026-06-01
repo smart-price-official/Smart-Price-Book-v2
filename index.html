@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.177  BUILD_ID=2026-06-01_v177-banner-scanner-fix
+APP_VERSION=v23.9.178  BUILD_ID=2026-06-02_v178-scanner-banner-rootfix
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.177";
-  const BUILD_ID    = "2026-06-01_v177-banner-scanner-fix";
+  const APP_VERSION = "v23.9.178";
+  const BUILD_ID    = "2026-06-02_v178-scanner-banner-rootfix";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -7983,7 +7983,10 @@ function startScanner() {
     }
 
     isScanning = true;
-    document.getElementById('camera-area').style.display = 'block';
+    // v23.9.178 SP-260602-011 FIX-B: 前回 stopScanner() で pointerEvents='none' にしていた分を
+    //   今回起動時に 'auto' へ復帰させる（次回スキャンが操作不能にならないように）
+    var _caStart = document.getElementById('camera-area');
+    if (_caStart) { _caStart.style.display = 'block'; _caStart.style.pointerEvents = 'auto'; }
     ensureScanbarDom();
 
     if (scanner) {
@@ -8363,24 +8366,43 @@ return true;
   }
 
   async function stopScanner() {
-    if (_scanIdleTimer) { clearTimeout(_scanIdleTimer); _scanIdleTimer = null; }
+    // ─────────────────────────────────────────────────────────────
+    // v23.9.178 SP-260602-011 FIX-B: 同期で “閉じた状態” を確定 → 非同期で後始末
+    //   旧 v177 では await scanner.stop() の後で camera-area を隠していたため、
+    //   ✕ タップ → await 中断 → 合成 click が ⚙ へ突き抜けて open() 発火 という
+    //   古典的 tap fall-through が残っていた。v178 は同期ブロックで UI を確定させてから
+    //   await へ入る順序に組み替える（処理内容は維持・順序のみ変更）。
+    // ─────────────────────────────────────────────────────────────
+    // ① 同期：閉じた状態を即確定（await の前）
     isScanning = false;
+    if (_scanIdleTimer) { clearTimeout(_scanIdleTimer); _scanIdleTimer = null; }
+    var _ca = document.getElementById('camera-area');
+    if (_ca) { _ca.style.display = 'none'; _ca.style.pointerEvents = 'none'; }
+    var _me = document.getElementById('manual-entry');
+    if (_me) _me.style.display = 'none';
+    try {
+      document.querySelectorAll('#camera-area .scan-frame, #camera-area .scan-laser').forEach(function (el) {
+        el.classList.remove('flash');
+        el.style.display = 'none';
+      });
+    } catch (_) {}
+    // v178: 補助シールド（FIX-C）— 閉じ直後の貫通クリックを 700ms 吸収（見た目不変）
+    try { if (typeof window._spRaiseTapShield === 'function') window._spRaiseTapShield(700); } catch (_) {}
+    // v178: 旧 v177 互換のため _spScannerClosedAt は残すが、open() 側 600ms ガードは撤去済（防御は FIX-A/C に移管）
+    try { window._spScannerClosedAt = Date.now(); } catch (_) {}
+
+    // ② 非同期：カメラ/ストリーム解放（既存処理を維持・順序のみ後方へ）
     if (scanner) {
-      try { await scanner.stop(); } catch(e) {}
-      try { scanner.clear(); } catch(e) {}
+      try { await scanner.stop(); } catch (e) {}
+      try { scanner.clear(); } catch (e) {}
       scanner = null;
     }
-    // BarcodeDetector stream残留対策
     if (window._scanStream) {
-      try { window._scanStream.getTracks().forEach(t => t.stop()); } catch(e) {}
+      try { window._scanStream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
       window._scanStream = null;
     }
-    const nv = document.getElementById('scannerNativeVideo');
-    if (nv) { try { nv.srcObject = null; nv.remove(); } catch(e) {} }
-    const _ca=document.getElementById('camera-area'); if(_ca){_ca.style.display='none';_ca.style.pointerEvents='none';}
-    try { const me = document.getElementById('manual-entry'); if(me) me.style.display='none'; } catch(e) {}
-    // v23.9.177 SP-260601-010 FIX-2(1): スキャナ閉じ時刻を記録（突き抜けタップで設定が開くのを open() 側で抑止）
-    try { window._spScannerClosedAt = Date.now(); } catch (_) {}
+    var nv = document.getElementById('scannerNativeVideo');
+    if (nv) { try { nv.srcObject = null; nv.remove(); } catch (e) {} }
   }
 
   // ✅ P0-4: 店舗ごと税設定を手動変更
@@ -11970,6 +11992,72 @@ function spVisibleTrace(tag, payload, cls) {
     // v23.9.173 SP-260601-007: 起動時バナー＆⑧ボタンラベルを初回描画
     try { renderStartupBannerIfNeeded(); } catch(_) {}
     try { renderAccountPanel(); } catch(_) {}
+    // v23.9.178 SP-260602-011: スキャナ閉じ／バナー× を pointer/touch 主導に再バインド（FIX-A / FIX-D）
+    try { _spBindScannerCloseBtn(); } catch (_) {}
+    try { _spBindBannerDismissBtn(); } catch (_) {}
+  }
+
+  // v23.9.178 SP-260602-011 FIX-C: 不可視タップシールド（閉じ直後 700ms の貫通クリックを吸収）
+  //   z-index 10000・background transparent・最初の 1 タップ吸収 or 700ms で自動解除
+  //   stopScanner() ① 同期ブロック末尾から呼ばれる
+  function _spRaiseTapShield(ms) {
+    try {
+      // 既存シールドがあれば早期撤去（同時連発時の二重作成防止）
+      var prev = document.getElementById('_spTapShield');
+      if (prev) { try { prev.remove(); } catch (_) {} }
+      var s = document.createElement('div');
+      s.id = '_spTapShield';
+      s.style.cssText = 'position:fixed;inset:0;z-index:10000;background:transparent;';
+      var remove = function () { try { s.remove(); } catch (_) {} };
+      var kill = function (e) { try { e.preventDefault(); e.stopPropagation(); } catch (_) {} remove(); };
+      s.addEventListener('pointerup', kill, { passive: false, capture: true });
+      s.addEventListener('click', kill, { capture: true });
+      document.body.appendChild(s);
+      try { spDbg('[TAP_SHIELD_RAISED]', { ms: ms || 700 }); } catch (_) {}
+      setTimeout(remove, ms || 700);
+    } catch (_) {}
+  }
+  window._spRaiseTapShield = _spRaiseTapShield;
+
+  // v23.9.178 SP-260602-011 FIX-A: スキャナ閉じるボタンを pointerup/touchend 主導へ
+  //   合成 click が ⚙ へ突き抜けないよう preventDefault/stopPropagation・二重実行ガード
+  function _spBindScannerCloseBtn() {
+    var btn = document.querySelector('#camera-area > button');
+    if (!btn || btn._spV178Bound) return;
+    btn._spV178Bound = true;
+    var handler = function (e) {
+      try { e.preventDefault(); } catch (_) {}
+      try { e.stopPropagation(); } catch (_) {}
+      try { e.stopImmediatePropagation && e.stopImmediatePropagation(); } catch (_) {}
+      if (window._spScannerClosing) return;
+      window._spScannerClosing = true;
+      try { spDbg('[SCANNER_CLOSE_TAP]', { type: e.type }); } catch (_) {}
+      Promise.resolve(typeof stopScanner === 'function' ? stopScanner() : null)
+        .finally(function () { setTimeout(function () { window._spScannerClosing = false; }, 50); });
+    };
+    btn.addEventListener('pointerup', handler, { passive: false });
+    btn.addEventListener('touchend', handler, { passive: false });
+  }
+
+  // v23.9.178 SP-260602-011 FIX-D: バナー × を pointer/touch 主導 + 見た目不変のヒット是正
+  //   z-index/pointer-events/position:relative のみで最前面ヒット確保（色・サイズ・位置は不変）
+  function _spBindBannerDismissBtn() {
+    var banner = document.getElementById('startupAccountBanner');
+    if (!banner) return;
+    var x = banner.querySelector('button[aria-label="閉じる"]');
+    if (!x || x._spV178Bound) return;
+    x._spV178Bound = true;
+    x.style.position = 'relative';
+    x.style.zIndex = '5';
+    x.style.pointerEvents = 'auto';
+    var handler = function (e) {
+      try { e.preventDefault(); } catch (_) {}
+      try { e.stopPropagation(); } catch (_) {}
+      try { spDbg('[BANNER_DISMISS_TAP]', { type: e.type }); } catch (_) {}
+      try { if (typeof dismissStartupBanner === 'function') dismissStartupBanner(); } catch (_) {}
+    };
+    x.addEventListener('pointerup', handler, { passive: false });
+    x.addEventListener('touchend', handler, { passive: false });
   }
   
   function setupEventListeners() {
@@ -12022,16 +12110,7 @@ function spVisibleTrace(tag, payload, cls) {
   
   function open() {
     if (!modal) return;
-    // v23.9.177 SP-260601-010 FIX-2(2): スキャナを閉じた直後(≦600ms) の突き抜けタップで設定が開くのを抑止
-    //   stopScanner() が camera-area を display:none にした合成 click が同座標の ⚙ #settingsBtn へ
-    //   突き抜けて open() が発火する古典的 tap fall-through を防ぐ。通常の ⚙ タップ（時間経過後）は素通り
-    try {
-      if (window._spScannerClosedAt && (Date.now() - window._spScannerClosedAt) < 600) {
-        window._spScannerClosedAt = 0;
-        try { spDbg('[SETTINGS_OPEN_GUARD]', { reason: 'scanner_close_fallthrough' }); } catch (_) {}
-        return;
-      }
-    } catch (_) {}
+    // v23.9.178 SP-260602-011: v177 で入れた 600ms ガードは撤去（FIX-A/B/C で根治済・open() はクリーンに戻す）
     try { const dp = document.getElementById('debug-panel'); if (dp && dp.classList.contains('show')) { dp.classList.remove('show'); dp.style.display = 'none'; } } catch(e) {}
     try { if (typeof window.clearToasts === 'function') window.clearToasts(); } catch(e) {}
     // v23.9.166 SP-250529-002: 動作ログ件数を表示更新
@@ -12369,6 +12448,8 @@ function spVisibleTrace(tag, payload, cls) {
     // ログイン済みで email キャッシュが無ければ /me で最新化
     if (loggedIn && !email) {
       spAccountFetchMe().then(function (ret) {
+        // v23.9.178 SP-260602-011 FIX-E: /me の status を可視化（200 / 401 のどちらか判別用）
+        try { spDbg('[ME_STATUS]', { ok: !!(ret && ret.ok), status: ret && ret.status }); } catch (_) {}
         if (ret && ret.ok && ret.body && ret.body.user) {
           try { localStorage.setItem('sp_auth_email', ret.body.user.email); } catch (_) {}
           if (emailEl) emailEl.textContent = ret.body.user.email;
@@ -12481,11 +12562,14 @@ function spVisibleTrace(tag, payload, cls) {
     // v23.9.177 SP-260601-010 FIX-1B: in-memory session フラグ（belt-and-suspenders）
     //   ✕ ボタンのタップが何らかの理由（スタッキング等）でうまく届かなくても、
     //   一度 dismissStartupBanner が呼ばれたら同一セッション中は再描画で再表示しない
+    // v23.9.178 SP-260602-011 FIX-E: 判定理由ログを冒頭に追加（残留時の原因切り分け用）
+    var _tok = false; try { _tok = !!(localStorage.getItem('sp_auth_token') || ''); } catch (_) {}
+    var _logged = false; try { _logged = spAccountIsLoggedIn(); } catch (_) {}
+    var _dis = ''; try { _dis = localStorage.getItem('sp_banner_dismissed_date') || ''; } catch (_) {}
+    try { spDbg('[BANNER_DECIDE]', { token: _tok, loggedIn: _logged, dismissed: _dis, sessionHidden: !!window._spBannerHiddenSession }); } catch (_) {}
     try { if (window._spBannerHiddenSession) { banner.style.display = 'none'; return; } } catch (_) {}
-    if (spAccountIsLoggedIn()) { banner.style.display = 'none'; return; }
-    var dismissed = '';
-    try { dismissed = localStorage.getItem('sp_banner_dismissed_date') || ''; } catch (_) {}
-    if (dismissed === _spTodayStr()) { banner.style.display = 'none'; return; }
+    if (_logged) { banner.style.display = 'none'; return; }
+    if (_dis === _spTodayStr()) { banner.style.display = 'none'; return; }
     banner.style.display = 'flex';
     try { spDbg('[ACCOUNT_BANNER_SHOWN]', { date: _spTodayStr() }); } catch(_) {}
   }
@@ -12497,7 +12581,8 @@ function spVisibleTrace(tag, payload, cls) {
     try { localStorage.setItem('sp_banner_dismissed_date', _spTodayStr()); } catch (_) {}
     var banner = document.getElementById('startupAccountBanner');
     if (banner) banner.style.display = 'none';
-    try { spDbg('[ACCOUNT_BANNER_DISMISSED]', { date: _spTodayStr() }); } catch(_) {}
+    // v23.9.178 SP-260602-011 FIX-D: via フィールド追加（経路識別）
+    try { spDbg('[ACCOUNT_BANNER_DISMISSED]', { date: _spTodayStr(), via: 'dismiss' }); } catch(_) {}
   }
   window.dismissStartupBanner = dismissStartupBanner;
 
