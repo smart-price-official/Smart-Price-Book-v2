@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.171  BUILD_ID=2026-06-01_v171-user-id-display
+APP_VERSION=v23.9.172  BUILD_ID=2026-06-01_v172-user-id-ui-redesign
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.171";
-  const BUILD_ID    = "2026-06-01_v171-user-id-display";
+  const APP_VERSION = "v23.9.172";
+  const BUILD_ID    = "2026-06-01_v172-user-id-ui-redesign";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -1246,13 +1246,8 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
   <div class="modal-content">
     <h5 class="sp-text-normal mb-4 text-center" id="settingsTitle" onclick="handleSettingsTitleClick()" style="cursor: pointer;">設定</h5>
 
-    <!-- v23.9.171 SP-260601-005: 個人ID表示（PC/スマホ照合用・小さめテキスト＋コピーボタン） -->
-    <div id="settingsUserIdRow" class="mb-3 d-flex align-items-center flex-wrap" style="font-size:0.78rem; gap:6px;">
-      <span class="text-secondary">あなたのID:</span>
-      <span id="settingsUserIdValue" class="text-secondary" style="word-break:break-all; user-select:all;">-</span>
-      <button type="button" id="settingsUserIdCopyBtn" class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:0.72rem; line-height:1.4;" onclick="copyUserId()">コピー</button>
-      <span id="settingsUserIdCopyStatus" class="text-success" style="font-size:0.72rem;"></span>
-    </div>
+    <!-- v23.9.172 SP-260601-006: 旧 settingsUserIdRow（h5 直下の ID 行）は削除。
+         デバイスID表示は ⑦ デバイスID・端末照合 パネル＋ ① 友人紹介 パネル内へ移設 -->
 
     <!-- v23.9.165 SP-250528-001: 設定画面上部の生活圏セクションは非表示化。⑥生活圏設定ボタンに集約 -->
     <div class="mb-3" id="settingsCitySection" style="display:none !important;">
@@ -1271,6 +1266,8 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
           <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelTaxSettings" onclick="renderStoreTaxSettingsPanel()">④ 店舗の税設定</button>
           <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelTheme" onclick="renderThemePanel()">⑤ 🎨 テーマ設定</button>
           <button type="button" class="btn btn-outline-secondary sp-menu-btn" onclick="openHomeCityModal()">⑥ 買い物エリア設定</button>
+          <!-- v23.9.172 SP-260601-006: デバイスID・端末照合 パネル（PC/スマホ照合用） -->
+          <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelDeviceId" onclick="renderDeviceIdPanel()">⑦ デバイスID・端末照合</button>
 </div>
       </div>
 
@@ -1284,6 +1281,17 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
             <button class="btn btn-outline-light" onclick="saveHandle()">保存</button>
           </div>
           <div class="small text-secondary mt-1" style="opacity:.7;">※本名・メールアドレスは使わないでください</div>
+        </div>
+
+        <!-- v23.9.172 SP-260601-006: 紹介ID表示（友人に伝える用） -->
+        <div class="mb-3">
+          <div class="small text-secondary mb-1">あなたの紹介ID:</div>
+          <div class="d-flex gap-2 mb-1 align-items-center flex-wrap">
+            <input id="referralUserIdValue" class="form-control sp-bg-card sp-border-muted" readonly style="font-size:0.85rem; user-select:all; word-break:break-all;" value="-">
+            <button type="button" class="btn sp-btn-secondary" onclick="copyReferralUserId()">コピー</button>
+            <span id="referralUserIdCopyStatus" class="text-success" style="font-size:0.78rem;"></span>
+          </div>
+          <div class="small text-secondary" style="opacity:.8;">友人にこのIDを伝えてください。</div>
         </div>
 
         <!-- 紹介の説明 -->
@@ -1503,6 +1511,28 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
       <div id="panelTheme" class="sp-panel mt-3" style="display:none;">
         <div id="themeList"></div>
         <!-- v23.9.165 SP-250528-001: パネル末尾[戻る]を settingsCommonBack に共通化（panelTheme） -->
+      </div>
+
+      <!-- v23.9.172 SP-260601-006: デバイスID・端末照合 パネル（PC/スマホ照合用・新規） -->
+      <div id="panelDeviceId" class="sp-panel mt-3" style="display:none;">
+        <div class="small text-secondary mb-3" style="line-height:1.6;">
+          このIDはPCとスマホのデータを照合するために使います。
+        </div>
+
+        <div class="small text-secondary mb-1">あなたのID:</div>
+        <div class="d-flex gap-2 mb-3 align-items-center flex-wrap">
+          <input id="deviceIdValue" class="form-control sp-bg-card sp-border-muted" readonly style="font-size:0.85rem; user-select:all; word-break:break-all;" value="-">
+          <button type="button" class="btn sp-btn-secondary" onclick="copyDeviceIdValue()">コピー</button>
+          <span id="deviceIdCopyStatus" class="text-success" style="font-size:0.78rem;"></span>
+        </div>
+
+        <div class="small text-secondary mb-2" style="line-height:1.6;">
+          <div class="fw-bold mb-1">使い方：</div>
+          ・PCとスマホで同じIDならデータが同期されています<br>
+          ・IDが違う場合は「PC・スマホ同期統合」で統一できます<br>
+          <span class="text-secondary" style="opacity:0.8;">（設定→管理メニューから操作）</span>
+        </div>
+        <!-- v23.9.172 SP-260601-006: パネル末尾[戻る]を settingsCommonBack に共通化（panelDeviceId） -->
       </div>
 
     <!-- v23.9.165 SP-250528-001: 共通[戻る]ボタン。メインメニュー時は非表示、パネル展開時のみ表示。d-grid の !important を上書きするため setProperty で制御 -->
@@ -11837,8 +11867,9 @@ function spVisibleTrace(tag, payload, cls) {
   const state = { isOpen: false, currentPanel: 'Main', history: [], initialized: false };
   let modal = null, panels = {}, titleEl = null;
   
-  const PANELS = { Main: 'settingsMainMenu', Referral: 'panelReferral', Family: 'panelFamily', Support: 'panelSupport', Operator: 'panelOperator', TaxSettings: 'panelTaxSettings', Theme: 'panelTheme' };
-  const TITLES = { Main: '設定', Referral: '友人紹介', Family: '家族共有', Support: '運営者へ質問', Operator: '管理メニュー', TaxSettings: '店舗の税設定', Theme: 'テーマ設定' };
+  // v23.9.172 SP-260601-006: DeviceId パネル（PC/スマホ照合）を追加
+  const PANELS = { Main: 'settingsMainMenu', Referral: 'panelReferral', Family: 'panelFamily', Support: 'panelSupport', Operator: 'panelOperator', TaxSettings: 'panelTaxSettings', Theme: 'panelTheme', DeviceId: 'panelDeviceId' };
+  const TITLES = { Main: '設定', Referral: '友人紹介', Family: '家族共有', Support: '運営者へ質問', Operator: '管理メニュー', TaxSettings: '店舗の税設定', Theme: 'テーマ設定', DeviceId: 'デバイスID・端末照合' };
   
   function init() {
     if (state.initialized) return;
@@ -12019,36 +12050,54 @@ function spVisibleTrace(tag, payload, cls) {
     }
   }
   
-  // v23.9.171 SP-260601-005: 個人ID表示（設定モーダル上部）＋コピー
+  // v23.9.172 SP-260601-006: 個人ID表示ヘルパー（panelDeviceId / panelReferral 両用へリファクタ）
+  //   旧 settingsUserIdRow（h5 直下）は削除済。新規パネル 2 箇所に汎用化。
+  function _spGetUserId() {
+    var uid = '';
+    try { uid = (window.db && window.db.config && window.db.config.userId) ? String(window.db.config.userId).trim() : ''; } catch(_) {}
+    if (!uid) { try { uid = (localStorage.getItem('sp_user_id') || '').toString().trim(); } catch(_) {} }
+    return uid;
+  }
+
+  // 2 つの ID 表示インプットを最新化（panelDeviceId / panelReferral）
   function renderUserIdRow() {
     try {
-      var el = document.getElementById('settingsUserIdValue');
-      if (!el) return;
-      var uid = '';
-      try { uid = (window.db && window.db.config && window.db.config.userId) ? String(window.db.config.userId).trim() : ''; } catch(_) {}
-      if (!uid) { try { uid = (localStorage.getItem('sp_user_id') || '').toString().trim(); } catch(_) {} }
-      el.textContent = uid || '(未設定)';
-      try { spDbg('[USER_ID_DISPLAY]', { uid: uid || '' }); } catch(_) {}
+      var uid = _spGetUserId();
+      var dev = document.getElementById('deviceIdValue');
+      if (dev) dev.value = uid || '(未設定)';
+      var ref = document.getElementById('referralUserIdValue');
+      if (ref) ref.value = uid || '(未設定)';
+      try { spDbg('[USER_ID_DISPLAY]', { uid: uid || '', targets: [dev ? 'deviceIdValue' : '', ref ? 'referralUserIdValue' : ''].filter(Boolean) }); } catch(_) {}
     } catch(e) {}
   }
   window.renderUserIdRow = renderUserIdRow;
 
-  function copyUserId() {
-    var statusEl = document.getElementById('settingsUserIdCopyStatus');
+  // panelDeviceId のレンダリング（メニューから ⑦ ボタン押下時 onclick）
+  function renderDeviceIdPanel() {
+    try { renderUserIdRow(); } catch(_) {}
+  }
+  window.renderDeviceIdPanel = renderDeviceIdPanel;
+
+  // 汎用コピー（spanId 値→clipboard、statusId に成否表示）
+  function _spCopyText(valEl, statusEl, evName) {
     function showStatus(msg, ok) {
       if (!statusEl) return;
       statusEl.textContent = msg;
       statusEl.className = ok ? 'text-success' : 'text-danger';
-      statusEl.style.fontSize = '0.72rem';
+      statusEl.style.fontSize = '0.78rem';
       setTimeout(function(){ if (statusEl) statusEl.textContent = ''; }, 1500);
     }
     try {
-      var el = document.getElementById('settingsUserIdValue');
-      var uid = el ? String(el.textContent || '').trim() : '';
+      // input は .value、span は textContent
+      var uid = '';
+      if (valEl) {
+        if (typeof valEl.value === 'string' && valEl.value.length > 0) uid = String(valEl.value || '').trim();
+        else uid = String(valEl.textContent || '').trim();
+      }
       if (!uid || uid === '(未設定)') { showStatus('未設定', false); return; }
       var done = function() {
         showStatus('✓ コピーしました', true);
-        try { spDbg('[USER_ID_COPY]', { ok: true }); } catch(_) {}
+        try { spDbg(evName || '[USER_ID_COPY]', { ok: true }); } catch(_) {}
       };
       var fallback = function() {
         try {
@@ -12071,7 +12120,16 @@ function spVisibleTrace(tag, payload, cls) {
       try { spDbg('[USER_ID_COPY_ERR]', { message: e && e.message ? e.message : String(e) }); } catch(_) {}
     }
   }
-  window.copyUserId = copyUserId;
+
+  function copyDeviceIdValue() {
+    _spCopyText(document.getElementById('deviceIdValue'), document.getElementById('deviceIdCopyStatus'), '[USER_ID_COPY_DEVICE]');
+  }
+  window.copyDeviceIdValue = copyDeviceIdValue;
+
+  function copyReferralUserId() {
+    _spCopyText(document.getElementById('referralUserIdValue'), document.getElementById('referralUserIdCopyStatus'), '[USER_ID_COPY_REFERRAL]');
+  }
+  window.copyReferralUserId = copyReferralUserId;
 
   function syncSettings() {
     try {
