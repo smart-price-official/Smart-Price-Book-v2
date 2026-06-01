@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.178  BUILD_ID=2026-06-02_v178-scanner-banner-rootfix
+APP_VERSION=v23.9.179  BUILD_ID=2026-06-02_v179-banner-scanner-fix2
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.178";
-  const BUILD_ID    = "2026-06-02_v178-scanner-banner-rootfix";
+  const APP_VERSION = "v23.9.179";
+  const BUILD_ID    = "2026-06-02_v179-banner-scanner-fix2";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -8374,6 +8374,8 @@ return true;
     //   await へ入る順序に組み替える（処理内容は維持・順序のみ変更）。
     // ─────────────────────────────────────────────────────────────
     // ① 同期：閉じた状態を即確定（await の前）
+    const _sc = scanner;   // ローカルに退避
+    scanner = null;        // 即座に null → 次の startScanner が競合しない
     isScanning = false;
     if (_scanIdleTimer) { clearTimeout(_scanIdleTimer); _scanIdleTimer = null; }
     var _ca = document.getElementById('camera-area');
@@ -8387,15 +8389,14 @@ return true;
       });
     } catch (_) {}
     // v178: 補助シールド（FIX-C）— 閉じ直後の貫通クリックを 700ms 吸収（見た目不変）
-    try { if (typeof window._spRaiseTapShield === 'function') window._spRaiseTapShield(700); } catch (_) {}
+    try { if (typeof window._spRaiseTapShield === 'function') window._spRaiseTapShield(200); } catch (_) {}
     // v178: 旧 v177 互換のため _spScannerClosedAt は残すが、open() 側 600ms ガードは撤去済（防御は FIX-A/C に移管）
     try { window._spScannerClosedAt = Date.now(); } catch (_) {}
 
     // ② 非同期：カメラ/ストリーム解放（既存処理を維持・順序のみ後方へ）
-    if (scanner) {
-      try { await scanner.stop(); } catch (e) {}
-      try { scanner.clear(); } catch (e) {}
-      scanner = null;
+    if (_sc) {
+      try { await _sc.stop(); } catch (e) {}
+      try { _sc.clear(); } catch (e) {}
     }
     if (window._scanStream) {
       try { window._scanStream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
@@ -12567,9 +12568,9 @@ function spVisibleTrace(tag, payload, cls) {
     var _logged = false; try { _logged = spAccountIsLoggedIn(); } catch (_) {}
     var _dis = ''; try { _dis = localStorage.getItem('sp_banner_dismissed_date') || ''; } catch (_) {}
     try { spDbg('[BANNER_DECIDE]', { token: _tok, loggedIn: _logged, dismissed: _dis, sessionHidden: !!window._spBannerHiddenSession }); } catch (_) {}
-    try { if (window._spBannerHiddenSession) { banner.style.display = 'none'; return; } } catch (_) {}
-    if (_logged) { banner.style.display = 'none'; return; }
-    if (_dis === _spTodayStr()) { banner.style.display = 'none'; return; }
+    try { if (window._spBannerHiddenSession) { banner.style.setProperty('display', 'none', 'important'); return; } } catch (_) {}
+    if (_logged) { banner.style.setProperty('display', 'none', 'important'); return; }
+    if (_dis === _spTodayStr()) { banner.style.setProperty('display', 'none', 'important'); return; }
     banner.style.display = 'flex';
     try { spDbg('[ACCOUNT_BANNER_SHOWN]', { date: _spTodayStr() }); } catch(_) {}
   }
@@ -12580,7 +12581,7 @@ function spVisibleTrace(tag, payload, cls) {
     try { window._spBannerHiddenSession = true; } catch (_) {}
     try { localStorage.setItem('sp_banner_dismissed_date', _spTodayStr()); } catch (_) {}
     var banner = document.getElementById('startupAccountBanner');
-    if (banner) banner.style.display = 'none';
+    if (banner) banner.style.setProperty('display', 'none', 'important');
     // v23.9.178 SP-260602-011 FIX-D: via フィールド追加（経路識別）
     try { spDbg('[ACCOUNT_BANNER_DISMISSED]', { date: _spTodayStr(), via: 'dismiss' }); } catch(_) {}
   }
