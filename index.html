@@ -20,8 +20,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.168";
-  const BUILD_ID    = "2026-05-31_v168-product-name-fix";
+  const APP_VERSION = "v23.9.169";
+  const BUILD_ID    = "2026-06-01_v169-barcode-progress-toast";
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -15219,6 +15219,56 @@ function clearLookupProgressToastChain() {
   }
 }
 
+// v23.9.169 SP-260601-001: バーコード進行状況トースト（置換更新方式・append禁止）
+//   - 単一の sticky トースト要素を window.__lookupStageToastEl で保持
+//   - 同じ要素の textContent を差し替えて段階を更新（ユーザーが追跡しやすい）
+//   - 終端ステージ（8=表示完了 / 9=未検出 / timeout / failed）のみ TTL で消去
+//   - opts:
+//     - jan       : ログ用 JAN
+//     - elapsedMs : 経過 ms
+//     - result    : 'hit' / 'miss' / 'ok' 等
+//     - source    : 採用ソース名
+//     - ev        : spOpLog の event 名（既定 'barcode_lookup_stage_start'）
+//     - final     : true で TTL 後に DOM 削除＋参照クリア
+//     - ms        : final 時の消去待ち（既定 3500ms）
+window.__lookupStageToastEl = window.__lookupStageToastEl || null;
+function showLookupStageToast(stage, message, opts) {
+  opts = opts || {};
+  var text = '(' + stage + '/9) ' + message;
+  var el = window.__lookupStageToastEl;
+  try {
+    if (el && document.body.contains(el)) {
+      // 置換更新（append しない）
+      el.textContent = text;
+    } else {
+      // 既存要素が無い／削除済み → 新規 sticky 作成して参照保持
+      el = showToast(text, 0, { sticky: true });
+      window.__lookupStageToastEl = el;
+    }
+  } catch (_e) {}
+  if (opts.final) {
+    var _doneEl = el;
+    setTimeout(function () {
+      try { if (_doneEl && _doneEl.parentNode) _doneEl.remove(); } catch (_) {}
+      if (window.__lookupStageToastEl === _doneEl) window.__lookupStageToastEl = null;
+    }, opts.ms || 3500);
+  }
+  // spOpLog（指示書通り 10 種類のイベント・slow は commit③ で追加配線）
+  try {
+    if (typeof window.spOpLog === 'function') {
+      window.spOpLog(opts.ev || 'barcode_lookup_stage_start', {
+        jan: opts.jan || '',
+        stage: stage,
+        elapsedMs: (opts.elapsedMs != null) ? Number(opts.elapsedMs) : 0,
+        result: opts.result || '',
+        source: opts.source || ''
+      });
+    }
+  } catch (_e2) {}
+  try { spDbg('[LOOKUP_STAGE_TOAST]', { stage: stage, message: message, final: !!opts.final, ev: opts.ev || 'barcode_lookup_stage_start' }); } catch (_e3) {}
+}
+window.showLookupStageToast = showLookupStageToast;
+
 function showLookupProgressToast() {
   try {
     showToast('商品情報を検索しています…', 6000);
@@ -15239,6 +15289,12 @@ function markLookupTraceComplete() {
   window.__lookupTraceComplete = true;
   clearProductLookupSlowTimers();
   clearLookupProgressToastChain();
+  // v23.9.169 SP-260601-001: 進行ステージトーストが残っていれば（明示 final なし完了時のため）参照だけ解放
+  //   実 DOM は段階配線側で final=true 経由で削除されるためここでは触らない
+  // （万一段階配線が final を打ち忘れた場合の保険として参照だけ落とす）
+  if (window.__lookupStageToastEl && !document.body.contains(window.__lookupStageToastEl)) {
+    window.__lookupStageToastEl = null;
+  }
 }
 
 function markLookupPipelineStepStart(jan, step) {
