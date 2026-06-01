@@ -13,15 +13,18 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.172  BUILD_ID=2026-06-01_v172-user-id-ui-redesign
+APP_VERSION=v23.9.173  BUILD_ID=2026-06-01_v173-login-ui
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.172";
-  const BUILD_ID    = "2026-06-01_v172-user-id-ui-redesign";
+  const APP_VERSION = "v23.9.173";
+  const BUILD_ID    = "2026-06-01_v173-login-ui";
+  // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
+  const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
+  window.SP_API_URL = SP_API_URL;
   // ===================================
   window.APP_VERSION = APP_VERSION;
   window.BUILD_ID    = BUILD_ID;
@@ -1112,6 +1115,12 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 
 <div class="container p-3">
   <div id="mainView">
+    <!-- v23.9.173 SP-260601-007: 起動時アカウント連携バナー（C案・未ログイン時のみ・×で当日非表示） -->
+    <div id="startupAccountBanner" class="mb-3 p-2 d-flex align-items-center" style="display:none; background:rgba(13,110,253,0.15); border:1px solid rgba(13,110,253,0.4); border-radius:8px; font-size:0.82rem; gap:8px;">
+      <span style="flex:1; line-height:1.4;">アカウントを作成するとPCとスマホのデータが同期されます</span>
+      <button type="button" class="btn btn-sm btn-primary py-1 px-2" style="font-size:0.78rem; white-space:nowrap;" onclick="openAccountFromBanner()">登録する</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2" style="font-size:0.78rem; line-height:1;" onclick="dismissStartupBanner()" aria-label="閉じる">×</button>
+    </div>
     <div class="row g-2 mb-4">
       <div class="col-7"><button id="scanBtnTop" class="btn sp-btn-primary w-100 py-3 rounded-4 shadow" onclick="startScanner()"><i class="bi bi-upc-scan fs-1"></i><br>スキャン</button></div>
       <div class="col-5"><button class="btn sp-btn-secondary w-100 py-3 rounded-4 shadow" onclick="window.openBarcodeManual && window.openBarcodeManual()"><i class="bi bi-keyboard fs-1"></i><br>手入力</button></div>
@@ -1268,6 +1277,8 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
           <button type="button" class="btn btn-outline-secondary sp-menu-btn" onclick="openHomeCityModal()">⑥ 買い物エリア設定</button>
           <!-- v23.9.172 SP-260601-006: デバイスID・端末照合 パネル（PC/スマホ照合用） -->
           <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelDeviceId" onclick="renderDeviceIdPanel()">⑦ デバイスID・端末照合</button>
+          <!-- v23.9.173 SP-260601-007: アカウント連携（ログイン状態でラベル切替） -->
+          <button id="accountMenuBtn" type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelAccount" onclick="renderAccountPanel()">⑧ アカウント連携（ログイン）</button>
 </div>
       </div>
 
@@ -1533,6 +1544,43 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
           <span class="text-secondary" style="opacity:0.8;">（設定→管理メニューから操作）</span>
         </div>
         <!-- v23.9.172 SP-260601-006: パネル末尾[戻る]を settingsCommonBack に共通化（panelDeviceId） -->
+      </div>
+
+      <!-- v23.9.173 SP-260601-007: アカウント連携パネル（B案・未ログイン/ログイン済の2状態切替） -->
+      <div id="panelAccount" class="sp-panel mt-3" style="display:none;">
+        <!-- 未ログイン時 -->
+        <div id="panelAccountLoggedOut">
+          <div class="small text-secondary mb-3" style="line-height:1.6;">
+            PCとスマホのデータを同期するにはアカウントの登録が必要です。
+          </div>
+          <div class="mb-2">
+            <label class="small text-secondary mb-1 d-block" for="accountEmailInput">メールアドレス</label>
+            <input id="accountEmailInput" type="email" class="form-control sp-bg-card sp-border-muted" placeholder="example@mail.com" autocomplete="email">
+          </div>
+          <div class="mb-3">
+            <label class="small text-secondary mb-1 d-block" for="accountPasswordInput">パスワード</label>
+            <input id="accountPasswordInput" type="password" class="form-control sp-bg-card sp-border-muted" placeholder="8文字以上" autocomplete="current-password">
+          </div>
+          <div class="d-grid gap-2 mb-2">
+            <button type="button" class="btn sp-btn-primary py-2" onclick="handleAccountLoginClick()">ログイン</button>
+            <button type="button" class="btn btn-outline-light py-2" onclick="handleAccountRegisterClick()">新規登録</button>
+          </div>
+          <div class="small text-secondary" style="opacity:.7;">※パスワードは8文字以上</div>
+          <div id="accountStatusMsg" class="small mt-2" style="min-height:1.2em;"></div>
+        </div>
+
+        <!-- ログイン済 時 -->
+        <div id="panelAccountLoggedIn" style="display:none;">
+          <div class="small text-secondary mb-1">ログイン中:</div>
+          <div class="mb-3" style="font-size:0.95rem; user-select:all; word-break:break-all;">
+            <span id="accountLoggedInEmail" class="sp-text-normal fw-bold">-</span>
+          </div>
+          <div class="d-grid gap-2 mb-2">
+            <button type="button" class="btn btn-outline-warning py-2" onclick="handleAccountLogoutClick()">ログアウト</button>
+          </div>
+          <div id="accountStatusMsgLoggedIn" class="small mt-2" style="min-height:1.2em;"></div>
+        </div>
+        <!-- v23.9.173 SP-260601-007: パネル末尾[戻る]を settingsCommonBack に共通化（panelAccount） -->
       </div>
 
     <!-- v23.9.165 SP-250528-001: 共通[戻る]ボタン。メインメニュー時は非表示、パネル展開時のみ表示。d-grid の !important を上書きするため setProperty で制御 -->
@@ -11868,8 +11916,9 @@ function spVisibleTrace(tag, payload, cls) {
   let modal = null, panels = {}, titleEl = null;
   
   // v23.9.172 SP-260601-006: DeviceId パネル（PC/スマホ照合）を追加
-  const PANELS = { Main: 'settingsMainMenu', Referral: 'panelReferral', Family: 'panelFamily', Support: 'panelSupport', Operator: 'panelOperator', TaxSettings: 'panelTaxSettings', Theme: 'panelTheme', DeviceId: 'panelDeviceId' };
-  const TITLES = { Main: '設定', Referral: '友人紹介', Family: '家族共有', Support: '運営者へ質問', Operator: '管理メニュー', TaxSettings: '店舗の税設定', Theme: 'テーマ設定', DeviceId: 'デバイスID・端末照合' };
+  // v23.9.173 SP-260601-007: Account パネル（アカウント連携・ログイン）を追加
+  const PANELS = { Main: 'settingsMainMenu', Referral: 'panelReferral', Family: 'panelFamily', Support: 'panelSupport', Operator: 'panelOperator', TaxSettings: 'panelTaxSettings', Theme: 'panelTheme', DeviceId: 'panelDeviceId', Account: 'panelAccount' };
+  const TITLES = { Main: '設定', Referral: '友人紹介', Family: '家族共有', Support: '運営者へ質問', Operator: '管理メニュー', TaxSettings: '店舗の税設定', Theme: 'テーマ設定', DeviceId: 'デバイスID・端末照合', Account: 'アカウント連携' };
   
   function init() {
     if (state.initialized) return;
@@ -11893,6 +11942,9 @@ function spVisibleTrace(tag, payload, cls) {
     navigate('Main');
     state.initialized = true;
     console.log('[Modal] COMPLETE FIX Loaded');
+    // v23.9.173 SP-260601-007: 起動時バナー＆⑧ボタンラベルを初回描画
+    try { renderStartupBannerIfNeeded(); } catch(_) {}
+    try { renderAccountPanel(); } catch(_) {}
   }
   
   function setupEventListeners() {
@@ -12131,6 +12183,225 @@ function spVisibleTrace(tag, payload, cls) {
   }
   window.copyReferralUserId = copyReferralUserId;
 
+  // ============================================================
+  // v23.9.173 SP-260601-007: アカウント連携（B+C案 / Railway+Supabase API）
+  // ============================================================
+  // 保存先: localStorage.sp_auth_token（JWT・access_token）
+  //         localStorage.sp_auth_email（表示用キャッシュ）
+  //         localStorage.sp_banner_dismissed_date（YYYY-MM-DD・当日中バナー非表示）
+
+  function _spTodayStr() {
+    var d = new Date();
+    return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+  }
+
+  async function _spApiCall(path, method, body, token) {
+    var url = (window.SP_API_URL || '') + path;
+    var headers = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    var opts = { method: method || 'GET', headers: headers };
+    if (body && method !== 'GET') opts.body = JSON.stringify(body);
+    var status = 0, ok = false, json = null;
+    try {
+      var res = await fetch(url, opts);
+      status = res.status; ok = res.ok;
+      try { json = await res.json(); } catch (_) {}
+    } catch (e) {
+      try { spDbg('[ACCOUNT_API_FETCH_ERR]', { path: path, message: e && e.message ? e.message : String(e) }); } catch(_) {}
+      return { status: 0, ok: false, body: null, networkError: e && e.message ? e.message : String(e) };
+    }
+    try { spDbg('[ACCOUNT_API_CALL]', { path: path, method: method, status: status, ok: ok }); } catch(_) {}
+    return { status: status, ok: ok, body: json };
+  }
+
+  function spAccountIsLoggedIn() {
+    try { return !!(localStorage.getItem('sp_auth_token') || ''); } catch (_) { return false; }
+  }
+  window.spAccountIsLoggedIn = spAccountIsLoggedIn;
+
+  async function spAccountRegister(email, password) {
+    return await _spApiCall('/api/auth/register', 'POST', { email: email, password: password });
+  }
+
+  async function spAccountLogin(email, password) {
+    var ret = await _spApiCall('/api/auth/login', 'POST', { email: email, password: password });
+    if (ret.ok && ret.body && ret.body.session && ret.body.session.access_token) {
+      try { localStorage.setItem('sp_auth_token', ret.body.session.access_token); } catch (_) {}
+      try { localStorage.setItem('sp_auth_email', (ret.body.user && ret.body.user.email) || email); } catch (_) {}
+    }
+    return ret;
+  }
+
+  async function spAccountFetchMe() {
+    var token = '';
+    try { token = localStorage.getItem('sp_auth_token') || ''; } catch (_) {}
+    if (!token) return { status: 0, ok: false, body: null, noToken: true };
+    return await _spApiCall('/api/auth/me', 'GET', null, token);
+  }
+  window.spAccountFetchMe = spAccountFetchMe;
+
+  function spAccountLogout() {
+    try { localStorage.removeItem('sp_auth_token'); } catch (_) {}
+    try { localStorage.removeItem('sp_auth_email'); } catch (_) {}
+    try { spDbg('[ACCOUNT_LOGOUT]', {}); } catch(_) {}
+  }
+  window.spAccountLogout = spAccountLogout;
+
+  // パネル描画（未ログイン/ログイン済の切替・⑧ボタンラベル更新）
+  function renderAccountPanel() {
+    var loggedIn = spAccountIsLoggedIn();
+    var email = '';
+    try { email = localStorage.getItem('sp_auth_email') || ''; } catch (_) {}
+
+    var inEl = document.getElementById('panelAccountLoggedIn');
+    var outEl = document.getElementById('panelAccountLoggedOut');
+    if (inEl) inEl.style.display = loggedIn ? 'block' : 'none';
+    if (outEl) outEl.style.display = loggedIn ? 'none' : 'block';
+
+    var emailEl = document.getElementById('accountLoggedInEmail');
+    if (emailEl) emailEl.textContent = email || '(取得中)';
+
+    // ⑧ ボタンのラベル更新
+    var btn = document.getElementById('accountMenuBtn');
+    if (btn) btn.textContent = loggedIn ? '⑧ アカウント設定' : '⑧ アカウント連携（ログイン）';
+
+    // ステータス領域クリア
+    var s1 = document.getElementById('accountStatusMsg'); if (s1) { s1.textContent = ''; s1.className = 'small mt-2'; }
+    var s2 = document.getElementById('accountStatusMsgLoggedIn'); if (s2) { s2.textContent = ''; s2.className = 'small mt-2'; }
+
+    // ログイン済みで email キャッシュが無ければ /me で最新化
+    if (loggedIn && !email) {
+      spAccountFetchMe().then(function (ret) {
+        if (ret && ret.ok && ret.body && ret.body.user) {
+          try { localStorage.setItem('sp_auth_email', ret.body.user.email); } catch (_) {}
+          if (emailEl) emailEl.textContent = ret.body.user.email;
+        } else if (ret && ret.status === 401) {
+          // token 失効 → 強制ログアウト
+          spAccountLogout();
+          renderAccountPanel();
+          renderStartupBannerIfNeeded();
+        }
+      }).catch(function(){});
+    }
+    try { spDbg('[ACCOUNT_PANEL_RENDER]', { loggedIn: loggedIn, hasEmail: !!email }); } catch(_) {}
+  }
+  window.renderAccountPanel = renderAccountPanel;
+
+  // ログイン ボタン
+  async function handleAccountLoginClick() {
+    var emailEl = document.getElementById('accountEmailInput');
+    var passEl = document.getElementById('accountPasswordInput');
+    var msg = document.getElementById('accountStatusMsg');
+    var email = emailEl ? String(emailEl.value || '').trim() : '';
+    var password = passEl ? String(passEl.value || '') : '';
+    function setMsg(t, cls) { if (msg) { msg.textContent = t; msg.className = 'small mt-2 ' + cls; } }
+    if (!email || !password) { setMsg('メールアドレスとパスワードを入力してください', 'text-warning'); return; }
+    if (password.length < 8) { setMsg('パスワードは8文字以上にしてください', 'text-warning'); return; }
+    setMsg('ログイン中…', 'text-secondary');
+    try {
+      var ret = await spAccountLogin(email, password);
+      if (ret.ok) {
+        setMsg('✓ ログインしました', 'text-success');
+        try { spDbg('[ACCOUNT_LOGIN_OK]', { email: email }); } catch(_) {}
+        renderAccountPanel();
+        renderStartupBannerIfNeeded();
+      } else if (ret.networkError) {
+        setMsg('✗ 通信エラー: ' + ret.networkError, 'text-danger');
+      } else {
+        var detail = (ret.body && (ret.body.detail || ret.body.error)) || ('HTTP ' + ret.status);
+        setMsg('✗ ログイン失敗: ' + detail, 'text-danger');
+        try { spDbg('[ACCOUNT_LOGIN_ERR]', { status: ret.status, detail: detail }); } catch(_) {}
+      }
+    } catch (e) {
+      setMsg('✗ 通信エラー: ' + (e && e.message ? e.message : String(e)), 'text-danger');
+    }
+  }
+  window.handleAccountLoginClick = handleAccountLoginClick;
+
+  // 新規登録 ボタン
+  async function handleAccountRegisterClick() {
+    var emailEl = document.getElementById('accountEmailInput');
+    var passEl = document.getElementById('accountPasswordInput');
+    var msg = document.getElementById('accountStatusMsg');
+    var email = emailEl ? String(emailEl.value || '').trim() : '';
+    var password = passEl ? String(passEl.value || '') : '';
+    function setMsg(t, cls) { if (msg) { msg.textContent = t; msg.className = 'small mt-2 ' + cls; } }
+    if (!email || !password) { setMsg('メールアドレスとパスワードを入力してください', 'text-warning'); return; }
+    if (password.length < 8) { setMsg('パスワードは8文字以上にしてください', 'text-warning'); return; }
+    setMsg('登録中…', 'text-secondary');
+    try {
+      var ret = await spAccountRegister(email, password);
+      if (ret.ok) {
+        // 自動ログインを試行（session が register レスポンスに含まれていれば即ログイン状態へ）
+        if (ret.body && ret.body.session && ret.body.session.access_token) {
+          try { localStorage.setItem('sp_auth_token', ret.body.session.access_token); } catch (_) {}
+          try { localStorage.setItem('sp_auth_email', (ret.body.user && ret.body.user.email) || email); } catch (_) {}
+          setMsg('✓ 登録完了（自動ログイン済）', 'text-success');
+          renderAccountPanel();
+          renderStartupBannerIfNeeded();
+        } else {
+          // メール確認待ちの場合
+          setMsg('✓ 登録完了（メール内リンクをクリック後、ログインしてください）', 'text-success');
+        }
+        try { spDbg('[ACCOUNT_REGISTER_OK]', { email: email, autoLogin: !!(ret.body && ret.body.session) }); } catch(_) {}
+      } else if (ret.networkError) {
+        setMsg('✗ 通信エラー: ' + ret.networkError, 'text-danger');
+      } else {
+        var detail = (ret.body && (ret.body.detail || ret.body.error)) || ('HTTP ' + ret.status);
+        setMsg('✗ 登録失敗: ' + detail, 'text-danger');
+        try { spDbg('[ACCOUNT_REGISTER_ERR]', { status: ret.status, detail: detail }); } catch(_) {}
+      }
+    } catch (e) {
+      setMsg('✗ 通信エラー: ' + (e && e.message ? e.message : String(e)), 'text-danger');
+    }
+  }
+  window.handleAccountRegisterClick = handleAccountRegisterClick;
+
+  // ログアウト ボタン
+  function handleAccountLogoutClick() {
+    spAccountLogout();
+    var msg = document.getElementById('accountStatusMsgLoggedIn');
+    if (msg) { msg.textContent = '✓ ログアウトしました'; msg.className = 'small mt-2 text-success'; }
+    renderAccountPanel();
+    renderStartupBannerIfNeeded();
+  }
+  window.handleAccountLogoutClick = handleAccountLogoutClick;
+
+  // 起動時バナー（C案）
+  function renderStartupBannerIfNeeded() {
+    var banner = document.getElementById('startupAccountBanner');
+    if (!banner) return;
+    if (spAccountIsLoggedIn()) { banner.style.display = 'none'; return; }
+    var dismissed = '';
+    try { dismissed = localStorage.getItem('sp_banner_dismissed_date') || ''; } catch (_) {}
+    if (dismissed === _spTodayStr()) { banner.style.display = 'none'; return; }
+    banner.style.display = 'flex';
+    try { spDbg('[ACCOUNT_BANNER_SHOWN]', { date: _spTodayStr() }); } catch(_) {}
+  }
+  window.renderStartupBannerIfNeeded = renderStartupBannerIfNeeded;
+
+  function dismissStartupBanner() {
+    try { localStorage.setItem('sp_banner_dismissed_date', _spTodayStr()); } catch (_) {}
+    var banner = document.getElementById('startupAccountBanner');
+    if (banner) banner.style.display = 'none';
+    try { spDbg('[ACCOUNT_BANNER_DISMISSED]', { date: _spTodayStr() }); } catch(_) {}
+  }
+  window.dismissStartupBanner = dismissStartupBanner;
+
+  function openAccountFromBanner() {
+    dismissStartupBanner();
+    try {
+      if (typeof window.openSettings === 'function') window.openSettings();
+      setTimeout(function () {
+        try { if (window.SmartPriceModal && window.SmartPriceModal.navigate) window.SmartPriceModal.navigate('Account'); } catch (_) {}
+        try { renderAccountPanel(); } catch (_) {}
+      }, 120);
+    } catch (e) {
+      try { spDbg('[ACCOUNT_BANNER_OPEN_ERR]', { message: e && e.message ? e.message : String(e) }); } catch(_) {}
+    }
+  }
+  window.openAccountFromBanner = openAccountFromBanner;
+
   function syncSettings() {
     try {
       if (typeof window.db !== 'undefined' && typeof window.normalizeDb === 'function') window.db = window.normalizeDb(window.db);
@@ -12150,6 +12421,8 @@ function spVisibleTrace(tag, payload, cls) {
 
       // v23.9.171 SP-260601-005: 個人ID表示を最新化
       try { renderUserIdRow(); } catch(_) {}
+      // v23.9.173 SP-260601-007: アカウントパネル状態を最新化（⑧ ボタンラベル切替）
+      try { renderAccountPanel(); } catch(_) {}
     } catch(e) {}
   }
   
