@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.180  BUILD_ID=2026-06-02_v180-scanner-interactive-clear
+APP_VERSION=v23.9.181  BUILD_ID=2026-06-02_v181-scanner-ready-flag
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.180";
-  const BUILD_ID    = "2026-06-02_v180-scanner-interactive-clear";
+  const APP_VERSION = "v23.9.181";
+  const BUILD_ID    = "2026-06-02_v181-scanner-ready-flag";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -7975,6 +7975,7 @@ function openManualEntryOnly(){
 
 function startScanner() {
     if (isScanning) return;
+    if (window._spScannerReady === false) { setTimeout(startScanner, 200); return; }
     try { if (typeof window.spOpLog === 'function') window.spOpLog('state', { to: 'scan' }); } catch (_) {}
 
     if (typeof Html5Qrcode === 'undefined') {
@@ -8378,6 +8379,7 @@ return true;
     const _sc = scanner;   // ローカルに退避
     scanner = null;        // 即座に null → 次の startScanner が競合しない
     isScanning = false;
+    window._spScannerReady = false;   // 新しいスキャナ起動をブロック（cleanup完了まで）
     if (_scanIdleTimer) { clearTimeout(_scanIdleTimer); _scanIdleTimer = null; }
     var _ca = document.getElementById('camera-area');
     if (_ca) { _ca.style.display = 'none'; _ca.style.pointerEvents = 'none'; }
@@ -8389,8 +8391,7 @@ return true;
         el.style.display = 'none';
       });
     } catch (_) {}
-    // v178: 補助シールド（FIX-C）— 閉じ直後の貫通クリックを 700ms 吸収（見た目不変）
-    try { if (typeof window._spRaiseTapShield === 'function') window._spRaiseTapShield(200); } catch (_) {}
+    // v181: タップシールド削除（FIX-A が主修正、シールドが再起動ボタンを誤吸収していた）
     // v178: 旧 v177 互換のため _spScannerClosedAt は残すが、open() 側 600ms ガードは撤去済（防御は FIX-A/C に移管）
     try { window._spScannerClosedAt = Date.now(); } catch (_) {}
 
@@ -8405,6 +8406,7 @@ return true;
     }
     var nv = document.getElementById('scannerNativeVideo');
     if (nv) { try { nv.srcObject = null; nv.remove(); } catch (e) {} }
+    window._spScannerReady = true;   // cleanup完了、新スキャナOK
   }
 
   // ✅ P0-4: 店舗ごと税設定を手動変更
