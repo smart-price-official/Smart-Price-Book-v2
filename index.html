@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.181  BUILD_ID=2026-06-02_v181-scanner-ready-flag
+APP_VERSION=v23.9.182  BUILD_ID=2026-06-02_v182-scanner-rebuild
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.181";
-  const BUILD_ID    = "2026-06-02_v181-scanner-ready-flag";
+  const APP_VERSION = "v23.9.182";
+  const BUILD_ID    = "2026-06-02_v182-scanner-rebuild";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -7974,7 +7974,19 @@ function openManualEntryOnly(){
   }
 
 function startScanner() {
-    if (isScanning) return;
+    // isScanning=true でも camera-area が非表示なら固着と判断してリカバリ
+    if (isScanning) {
+      var _caCheck = document.getElementById('camera-area');
+      var _caVisible = _caCheck && _caCheck.style.display === 'block';
+      if (!_caVisible) {
+        // scanner.start() がハングして isScanning が固着 → 強制リセット
+        isScanning = false;
+        scanner = null;
+        try { window._spScannerReady = true; } catch(_) {}
+      } else {
+        return; // 正常にスキャン中
+      }
+    }
     if (window._spScannerReady === false) { setTimeout(startScanner, 200); return; }
     try { if (typeof window.spOpLog === 'function') window.spOpLog('state', { to: 'scan' }); } catch (_) {}
 
@@ -7996,7 +8008,16 @@ function startScanner() {
     }
 
     try {
-      try { var _intEl = document.getElementById('interactive'); if (_intEl) _intEl.innerHTML = ''; } catch(_) {}
+      try {
+        var _caEl = document.getElementById('camera-area');
+        var _oldEl = document.getElementById('interactive');
+        if (_caEl && _oldEl) {
+          _caEl.removeChild(_oldEl);
+          var _newEl = document.createElement('div');
+          _newEl.id = 'interactive';
+          _caEl.appendChild(_newEl);
+        }
+      } catch(_) {}
       scanner = new Html5Qrcode("interactive", { verbose: false });
     } catch(e) {
       showToast(`スキャナー初期化失敗: ${e.message}`, 8000);
@@ -8397,7 +8418,12 @@ return true;
 
     // ② 非同期：カメラ/ストリーム解放（既存処理を維持・順序のみ後方へ）
     if (_sc) {
-      try { await _sc.stop(); } catch (e) {}
+      try {
+        await Promise.race([
+          _sc.stop(),
+          new Promise(function(resolve) { setTimeout(resolve, 1500); })
+        ]);
+      } catch (e) {}
       try { _sc.clear(); } catch (e) {}
     }
     if (window._scanStream) {
