@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.185  BUILD_ID=2026-06-02_v185-scanner-restore-async
+APP_VERSION=v23.9.186  BUILD_ID=2026-06-02_v186-camera-area-race-fix
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.185";
-  const BUILD_ID    = "2026-06-02_v185-scanner-restore-async";
+  const APP_VERSION = "v23.9.186";
+  const BUILD_ID    = "2026-06-02_v186-camera-area-race-fix";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -7987,6 +7987,16 @@ function startScanner() {
         return; // 正常にスキャン中
       }
     }
+    // v186: camera-area を最優先で強制表示（非同期 stopScanner による上書きより先に確定）
+    try {
+      var _caShow = document.getElementById('camera-area');
+      if (_caShow) {
+        _caShow.style.display = 'block';
+        _caShow.style.pointerEvents = 'auto';
+      }
+      spDbg('[SCANNER_UI_SHOW]', {});
+    } catch(_) {}
+
     try { if (typeof window.spOpLog === 'function') window.spOpLog('state', { to: 'scan' }); } catch (_) {}
 
     if (typeof Html5Qrcode === 'undefined') {
@@ -8429,16 +8439,20 @@ return true;
     var nv = document.getElementById('scannerNativeVideo');
     if (nv) { try { nv.srcObject = null; nv.remove(); } catch (e) {} }
 
-    // ★ camera-area を _sc.stop() 完了後に隠す（競合解消）
-    try { spDbg('[SCANNER_UI_HIDE]', {}); } catch(_) {}
-    var _ca2 = document.getElementById('camera-area');
-    if (_ca2) { _ca2.style.display = 'none'; _ca2.style.pointerEvents = 'none'; }
-    var _me2 = document.getElementById('manual-entry');
-    if (_me2) _me2.style.display = 'none';
-    try {
-      document.querySelectorAll('#camera-area .scan-frame, #camera-area .scan-laser')
-        .forEach(function(el) { el.classList.remove('flash'); el.style.display = 'none'; });
-    } catch(_) {}
+    // v186: 新しいスキャンがすでに開始されていたら camera-area を隠さない
+    if (isScanning) {
+      try { spDbg('[SCANNER_UI_HIDE_SKIPPED]', { reason: 'new_scan_started' }); } catch(_) {}
+    } else {
+      try { spDbg('[SCANNER_UI_HIDE]', {}); } catch(_) {}
+      var _ca2 = document.getElementById('camera-area');
+      if (_ca2) { _ca2.style.display = 'none'; _ca2.style.pointerEvents = 'none'; }
+      var _me2 = document.getElementById('manual-entry');
+      if (_me2) _me2.style.display = 'none';
+      try {
+        document.querySelectorAll('#camera-area .scan-frame, #camera-area .scan-laser')
+          .forEach(function(el) { el.classList.remove('flash'); el.style.display = 'none'; });
+      } catch(_) {}
+    }
   }
 
   // ✅ P0-4: 店舗ごと税設定を手動変更
