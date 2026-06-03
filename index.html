@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.192  BUILD_ID=2026-06-03_v192-theme-no-flash-definitive
+APP_VERSION=v23.9.193  BUILD_ID=2026-06-03_v193-startup-latency
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.192";
-  const BUILD_ID    = "2026-06-03_v192-theme-no-flash-definitive";
+  const APP_VERSION = "v23.9.193";
+  const BUILD_ID    = "2026-06-03_v193-startup-latency";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -1206,6 +1206,11 @@ try {
 </div>
 
 <div id="camera-area">
+<!-- v193: カメラ起動中インジケータ -->
+<div id="camera-loading" style="display:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;z-index:10;pointer-events:none;">
+  <div style="font-size:2.5rem;margin-bottom:8px;">📷</div>
+  <div style="color:var(--sp-text);font-size:0.95rem;">カメラ起動中…</div>
+</div>
   <div id="interactive">
     <!-- scan-frame と scan-laser は動的生成（ensureScanbarDom()で生成） -->
   </div>
@@ -3269,6 +3274,12 @@ try {
       try { spDbg('[BOOT_STEP_ERROR]', { step: 'normalizeDb', message: String(e && e.message) }); } catch (_) {}
     }
 
+    // v193: ローカルデータで即時描画（マイグレーション待ち不要）
+    try {
+      renderStoreList();
+      await renderHistory();
+    } catch(e) {}
+
     // v23.9.168 SP-250531-002 r2: P0-1 起動時マイグレーション（loadLocal+normalizeDb の後で db.products が確実にロード済みのタイミングで実行）
     try {
       if (typeof applyManualMasterPatches === 'function') {
@@ -3350,6 +3361,7 @@ try {
       migrateHistoryCandidatesToStoreLocations();  // [v23.9.128] history移行
       const _ns = await fetchNearbyStores();
       nearbyStores = Array.isArray(_ns) ? _ns : [];
+      window._spGpsFetched = true;  // v193: GPS取得完了フラグ
       if (nearbyStores.length > 0) {
         window.nearbyStoreNames = nearbyStores;
         renderStoreList();
@@ -4663,6 +4675,14 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     if(!list) {
       try { spDbg('[STORE_RENDER_ERROR]', { reason: 'store-list_dom_missing' }); } catch (_s1) {}
       return;
+    }
+
+    // v193: GPS取得前のプレースホルダー
+    if ((!nearbyStores || nearbyStores.length === 0) && !window._spGpsFetched) {
+      var _sl = document.getElementById('store-list');
+      if (_sl && !_sl.hasChildNodes()) {
+        _sl.innerHTML = '<span style="color:var(--sp-text-muted);font-size:0.85rem;padding:4px 8px;">📍 近くの店舗を取得中...</span>';
+      }
     }
 
     const freq = {};
@@ -8005,6 +8025,8 @@ function startScanner() {
       }
       spDbg('[SCANNER_UI_SHOW]', {});
     } catch(_) {}
+    // v193: カメラ起動中インジケータ表示
+    try { var _cl=document.getElementById('camera-loading'); if(_cl) _cl.style.display='block'; } catch(_) {}
 
     try { if (typeof window.spOpLog === 'function') window.spOpLog('state', { to: 'scan' }); } catch (_) {}
 
@@ -8055,6 +8077,7 @@ function startScanner() {
         try { await processBarcodeData(code, 'scan', fmt); } catch(e) { showToast(`エラー: ${e.message}`, 8000); }
       }
     ).then(() => {
+      try { var _cl=document.getElementById('camera-loading'); if(_cl) _cl.style.display='none'; } catch(_) {}
       setTimeout(() => {
         try { suppressQrcodeGuides(); } catch(e) {}
         if (isDebug()) displayScanbarDebugInfo();
@@ -8068,6 +8091,7 @@ function startScanner() {
         }
       }, 30000);
     }).catch(function(err) {
+      try { var _cl=document.getElementById('camera-loading'); if(_cl) _cl.style.display='none'; } catch(_) {}
       // v183: エラー内容をログで確認（NotReadableError等の仮説検証用）
       try { spDbg('[SCANNER_START_ERROR]', { err: err && (err.message || String(err)) }); } catch(_) {}
       showToast(`カメラ起動失敗: ${err && (err.message || String(err))}`, 8000);
