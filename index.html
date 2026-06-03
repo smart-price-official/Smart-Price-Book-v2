@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.207  BUILD_ID=2026-06-03_v207-imgdiag-clamp
+APP_VERSION=v23.9.208  BUILD_ID=2026-06-03_v208-imgdiag-clamp2
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.207";
-  const BUILD_ID    = "2026-06-03_v207-imgdiag-clamp";
+  const APP_VERSION = "v23.9.208";
+  const BUILD_ID    = "2026-06-03_v208-imgdiag-clamp2";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -11127,9 +11127,9 @@ function spVisibleTrace(tag, payload, cls) {
     function moveDrag(clientX, clientY) {
       const dx = clientX - startX;
       const dy = clientY - startY;
-      // v207: 左右はパネルの半分まで画面外に出られる（耳タブ化のため緩める）
       const half = modal.offsetWidth / 2;
-      const newLeft = Math.max(-half, Math.min(origLeft + dx, window.innerWidth - half));
+      // v208: 右方向はクランプなし（画面外まで自由に移動可）、左は半分まで
+      const newLeft = Math.max(-half, origLeft + dx);
       const newTop  = Math.max(0, Math.min(origTop + dy, window.innerHeight - modal.offsetHeight));
       modal.style.left = newLeft + 'px';
       modal.style.top  = newTop  + 'px';
@@ -11138,10 +11138,9 @@ function spVisibleTrace(tag, payload, cls) {
     function endDrag() {
       modal.style.opacity = '1';
       handle.style.cursor = 'grab';
-      // v207: パネルが半分以上画面外に出たら耳タブ化
+      // v208: 右端から40px以内に来たら耳タブ化
       const rect = modal.getBoundingClientRect();
-      const half = modal.offsetWidth / 2;
-      if (rect.right < half || rect.left > window.innerWidth - half) {
+      if (rect.left > window.innerWidth - 40) {
         collapseToTab();
       }
     }
