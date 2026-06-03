@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.209  BUILD_ID=2026-06-03_v209-imgdiag-swipe
+APP_VERSION=v23.9.210  BUILD_ID=2026-06-03_v210-imgdiag-left
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.209";
-  const BUILD_ID    = "2026-06-03_v209-imgdiag-swipe";
+  const APP_VERSION = "v23.9.210";
+  const BUILD_ID    = "2026-06-03_v210-imgdiag-left";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -11128,8 +11128,8 @@ function spVisibleTrace(tag, payload, cls) {
     function moveDrag(clientX, clientY) {
       const dx = clientX - startX;
       const dy = clientY - startY;
-      // v209: 左はクランプ（0以下禁止）、右は自由（耳タブ化のため）
-      const newLeft = Math.max(0, origLeft + dx);
+      // v210: 左はパネル幅の3/4まで画面外に出られる・耳タブ化なし
+      const newLeft = Math.max(-(modal.offsetWidth * 3 / 4), origLeft + dx);
       const newTop  = Math.max(0, Math.min(origTop + dy, window.innerHeight - modal.offsetHeight));
       modal.style.left = newLeft + 'px';
       modal.style.top  = newTop  + 'px';
