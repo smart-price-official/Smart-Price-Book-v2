@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.204  BUILD_ID=2026-06-03_v204-drag-fix
+APP_VERSION=v23.9.205  BUILD_ID=2026-06-03_v205-drag-smooth
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.204";
-  const BUILD_ID    = "2026-06-03_v204-drag-fix";
+  const APP_VERSION = "v23.9.205";
+  const BUILD_ID    = "2026-06-03_v205-drag-smooth";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -923,6 +923,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   overflow-y: auto;
   z-index: 99600;
   box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  touch-action: none; /* v205: ドラッグ時のスクロール競合防止 */
 }
 #img-diag-panel.visible { display: block; }
 #img-diag-title {
@@ -11088,49 +11089,70 @@ function spVisibleTrace(tag, payload, cls) {
     } catch(e) {}
   }
 
-  // v203: 画像診断ダイアログをドラッグ移動可能にする
+  // v205: 画像診断ダイアログをドラッグ移動可能にする（getBoundingClientRect対応・mouse/touch統合）
   function initImgDiagDraggable() {
-    try {
-      const modal = document.getElementById('img-diag-panel');
-      const handle = document.getElementById('img-diag-title');
-      if (!modal || !handle || modal._dragInit) return;
-      modal._dragInit = true;
+    const modal = document.getElementById('img-diag-panel');
+    const handle = modal.querySelector('#img-diag-title') || modal.querySelector('.img-diag-title');
+    if (!modal || !handle || modal._dragInit) return;
+    modal._dragInit = true;
+
+    handle.style.cursor = 'grab';
+
+    let startX, startY, origLeft, origTop;
+
+    function beginDrag(clientX, clientY) {
+      const rect = modal.getBoundingClientRect();
       modal.style.position = 'fixed';
+      modal.style.left   = rect.left + 'px';
+      modal.style.top    = rect.top  + 'px';
+      modal.style.right  = 'auto';
+      modal.style.bottom = 'auto';
+      origLeft = rect.left;
+      origTop  = rect.top;
+      startX   = clientX;
+      startY   = clientY;
+      modal.style.opacity = '0.95';
+      handle.style.cursor = 'grabbing';
+    }
+
+    function moveDrag(clientX, clientY) {
+      const dx = clientX - startX;
+      const dy = clientY - startY;
+      const newLeft = Math.max(0, Math.min(origLeft + dx, window.innerWidth  - modal.offsetWidth));
+      const newTop  = Math.max(0, Math.min(origTop  + dy, window.innerHeight - modal.offsetHeight));
+      modal.style.left = newLeft + 'px';
+      modal.style.top  = newTop  + 'px';
+    }
+
+    function endDrag() {
+      modal.style.opacity = '1';
       handle.style.cursor = 'grab';
-      let startX, startY, origLeft, origTop;
-      handle.addEventListener('mousedown', function(e) {
-        startX = e.clientX; startY = e.clientY;
-        origLeft = modal.offsetLeft; origTop = modal.offsetTop;
-        handle.style.cursor = 'grabbing';
-        modal.style.opacity = '0.95';
-        function onMove(e) {
-          const dx = e.clientX - startX, dy = e.clientY - startY;
-          modal.style.left = Math.max(0, Math.min(origLeft + dx, window.innerWidth - modal.offsetWidth)) + 'px';
-          modal.style.top = Math.max(0, Math.min(origTop + dy, window.innerHeight - modal.offsetHeight)) + 'px';
-        }
-        function onUp() {
-          handle.style.cursor = 'grab'; modal.style.opacity = '1';
-          document.removeEventListener('mousemove', onMove);
-          document.removeEventListener('mouseup', onUp);
-        }
-        document.addEventListener('mousemove', onMove);
-        document.addEventListener('mouseup', onUp);
-      });
-      handle.addEventListener('touchstart', function(e) {
-        const t = e.touches[0];
-        startX = t.clientX; startY = t.clientY;
-        origLeft = modal.offsetLeft; origTop = modal.offsetTop;
-        modal.style.opacity = '0.95';
-      }, { passive: true });
-      handle.addEventListener('touchmove', function(e) {
-        e.preventDefault(); // v204: スクロール競合を防ぐ
-        const t = e.touches[0];
-        const dx = t.clientX - startX, dy = t.clientY - startY;
-        modal.style.left = Math.max(0, Math.min(origLeft + dx, window.innerWidth - modal.offsetWidth)) + 'px';
-        modal.style.top = Math.max(0, Math.min(origTop + dy, window.innerHeight - modal.offsetHeight)) + 'px';
-      }, { passive: false }); // v204: false に変更（preventDefault有効化）
-      handle.addEventListener('touchend', function() { modal.style.opacity = '1'; });
-    } catch(e) {}
+    }
+
+    // Desktop
+    handle.addEventListener('mousedown', (e) => {
+      beginDrag(e.clientX, e.clientY);
+      function onMove(e) { moveDrag(e.clientX, e.clientY); }
+      function onUp()   { endDrag(); document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); }
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup',   onUp);
+    });
+
+    // Mobile
+    handle.addEventListener('touchstart', (e) => {
+      const t = e.touches[0];
+      beginDrag(t.clientX, t.clientY);
+    }, { passive: true });
+
+    handle.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      const t = e.touches[0];
+      moveDrag(t.clientX, t.clientY);
+    }, { passive: false });
+
+    handle.addEventListener('touchend', () => {
+      endDrag();
+    });
   }
   
   // v23.9.101: 診断パネルを非表示にする
