@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.208  BUILD_ID=2026-06-03_v208-imgdiag-clamp2
+APP_VERSION=v23.9.209  BUILD_ID=2026-06-03_v209-imgdiag-swipe
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.208";
-  const BUILD_ID    = "2026-06-03_v208-imgdiag-clamp2";
+  const APP_VERSION = "v23.9.209";
+  const BUILD_ID    = "2026-06-03_v209-imgdiag-swipe";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -1688,9 +1688,9 @@ document.addEventListener('DOMContentLoaded', function() {
 <!-- v206: 画像診断浮きタブ（パネルを画面外にドラッグしたとき表示） -->
 <div id="img-diag-float-tab" onclick="expandFromTab()"
   style="display:none; position:fixed; right:0; top:120px;
-         background:#2a2a4a; color:#88f; padding:8px 4px;
-         border-radius:8px 0 0 8px; z-index:1502;
-         writing-mode:vertical-rl; font-size:12px; cursor:pointer;">
+         background:#2a2a4a; color:#88f; padding:24px 6px;
+         border-radius:12px 0 0 12px; z-index:1502;
+         writing-mode:vertical-rl; font-size:13px; letter-spacing:2px; cursor:pointer;">
   🔬
 </div>
 
@@ -11122,23 +11122,24 @@ function spVisibleTrace(tag, payload, cls) {
       startY   = clientY;
       modal.style.opacity = '0.95';
       handle.style.cursor = 'grabbing';
+      document.body.style.touchAction = 'none'; // v209: スワイプ競合防止
     }
 
     function moveDrag(clientX, clientY) {
       const dx = clientX - startX;
       const dy = clientY - startY;
-      const half = modal.offsetWidth / 2;
-      // v208: 右方向はクランプなし（画面外まで自由に移動可）、左は半分まで
-      const newLeft = Math.max(-half, origLeft + dx);
+      // v209: 左はクランプ（0以下禁止）、右は自由（耳タブ化のため）
+      const newLeft = Math.max(0, origLeft + dx);
       const newTop  = Math.max(0, Math.min(origTop + dy, window.innerHeight - modal.offsetHeight));
       modal.style.left = newLeft + 'px';
       modal.style.top  = newTop  + 'px';
     }
 
     function endDrag() {
+      document.body.style.touchAction = ''; // v209: ドラッグ終了後に解除
       modal.style.opacity = '1';
       handle.style.cursor = 'grab';
-      // v208: 右端から40px以内に来たら耳タブ化
+      // 右端40px以内なら耳タブ化
       const rect = modal.getBoundingClientRect();
       if (rect.left > window.innerWidth - 40) {
         collapseToTab();
