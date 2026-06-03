@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.187  BUILD_ID=2026-06-03_v187-sync-clear-before-null
+APP_VERSION=v23.9.188  BUILD_ID=2026-06-03_v188-stream-stop-display-reset
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.187";
-  const BUILD_ID    = "2026-06-03_v187-sync-clear-before-null";
+  const APP_VERSION = "v23.9.188";
+  const BUILD_ID    = "2026-06-03_v188-stream-stop-display-reset";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -8100,6 +8100,7 @@ function startScanner() {
     scanFrame.style.height = '180px';
     scanFrame.style.zIndex = '2001'; // videoより前面
     scanFrame.style.pointerEvents = 'none';
+    scanFrame.style.display = 'block';   // v188: inline display:none をリセット
     
     // ✅ (2) scan-laser を確保（なければ作成）
     let scanLaser = scanFrame.querySelector('.scan-laser');
@@ -8121,6 +8122,7 @@ function startScanner() {
     scanLaser.style.zIndex = '9999'; // 最前面（確実に表示）
     scanLaser.style.pointerEvents = 'none';
     scanLaser.style.top = '15%'; // 初期位置
+    scanLaser.style.display = 'block';   // v188: inline display:none をリセット
     
     // CSSアニメーションはCSSクラスで適用されているので、ここでは設定不要
     
@@ -8408,9 +8410,17 @@ return true;
     //   await へ入る順序に組み替える（処理内容は維持・順序のみ変更）。
     // ─────────────────────────────────────────────────────────────
     // ① 同期：スキャナ状態フラグだけ即確定（UI は _sc.stop() 完了後に隠す）
-    // v187: scanner.clear()を同期で呼ぶ（nullより前）
-    // → Html5Qrcodeの内部レジストリを即時クリア
-    // → startScanner側でのnew Html5Qrcode()のthrowを防ぐ
+    // v188: clear()が<video>をDOMから削除する前にカメラストリームを停止
+    // 理由: clear()後はvideoがDOMから消えるためsrcObjectにアクセス不可
+    try {
+      var _oldV = document.querySelector('#interactive video');
+      if (_oldV && _oldV.srcObject) {
+        _oldV.srcObject.getTracks().forEach(function(t) { try { t.stop(); } catch(_){} });
+        _oldV.srcObject = null;
+        try { spDbg('[STREAM_TRACK_STOPPED]', {}); } catch(_) {}
+      }
+    } catch(_) {}
+    // v187の既存行（順序変更なし）:
     try { if (scanner) { scanner.clear(); } } catch(_) {}
     const _sc = scanner;   // ローカルに退避
     scanner = null;        // 即座に null → 次の startScanner が競合しない
