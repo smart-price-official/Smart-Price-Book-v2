@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.188  BUILD_ID=2026-06-03_v188-stream-stop-display-reset
+APP_VERSION=v23.9.189  BUILD_ID=2026-06-03_v189-session-refresh
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.188";
-  const BUILD_ID    = "2026-06-03_v188-stream-stop-display-reset";
+  const APP_VERSION = "v23.9.189";
+  const BUILD_ID    = "2026-06-03_v189-session-refresh";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -12399,6 +12399,12 @@ function spVisibleTrace(tag, payload, cls) {
     if (ret.ok && ret.body && ret.body.session && ret.body.session.access_token) {
       try { localStorage.setItem('sp_auth_token', ret.body.session.access_token); } catch (_) {}
       try { localStorage.setItem('sp_auth_email', (ret.body.user && ret.body.user.email) || email); } catch (_) {}
+      // v189: refresh_token を保存（401時の自動更新に使用）
+      try {
+        if (ret.body.session.refresh_token) {
+          localStorage.setItem('sp_refresh_token', ret.body.session.refresh_token);
+        }
+      } catch (_) {}
       // v23.9.176 SP-260601-009: public_code をローカルにキャッシュ（個人ID表示用）
       try { _spStorePublicCodeFromUser(ret.body.user); } catch (_) {}
     }
@@ -12418,9 +12424,29 @@ function spVisibleTrace(tag, payload, cls) {
   }
   window.spAccountFetchMe = spAccountFetchMe;
 
+  // v189: リフレッシュトークンでアクセストークンを更新
+  async function spAccountRefreshToken() {
+    var refreshToken = '';
+    try { refreshToken = localStorage.getItem('sp_refresh_token') || ''; } catch (_) {}
+    if (!refreshToken) return { ok: false };
+    var ret = await _spApiCall('/api/auth/refresh', 'POST', { refresh_token: refreshToken });
+    if (ret.ok && ret.body && ret.body.session && ret.body.session.access_token) {
+      try { localStorage.setItem('sp_auth_token', ret.body.session.access_token); } catch (_) {}
+      if (ret.body.session.refresh_token) {
+        try { localStorage.setItem('sp_refresh_token', ret.body.session.refresh_token); } catch (_) {}
+      }
+      try { spDbg('[SESSION_REFRESHED]', {}); } catch (_) {}
+      return { ok: true };
+    }
+    try { spDbg('[SESSION_REFRESH_FAILED]', { status: ret.status }); } catch (_) {}
+    return { ok: false };
+  }
+  window.spAccountRefreshToken = spAccountRefreshToken;
+
   function spAccountLogout() {
     try { localStorage.removeItem('sp_auth_token'); } catch (_) {}
     try { localStorage.removeItem('sp_auth_email'); } catch (_) {}
+    try { localStorage.removeItem('sp_refresh_token'); } catch (_) {}  // v189追加
     // v23.9.176 SP-260601-009: public_code キャッシュもクリア（個人ID表示は未ログイン案内へ）
     try { localStorage.removeItem('sp_public_code'); } catch (_) {}
     try { window._spPublicCode = ''; } catch (_) {}
@@ -12521,10 +12547,33 @@ function spVisibleTrace(tag, payload, cls) {
           //   起動時にトークンがあるのにバナーが残るケース（成功分岐で呼出漏れ）の修正
           try { renderStartupBannerIfNeeded(); } catch (_) {}
         } else if (ret && ret.status === 401) {
-          // token 失効 → 強制ログアウト
-          spAccountLogout();
-          renderAccountPanel();
-          renderStartupBannerIfNeeded();
+          // v189: まずリフレッシュを試みる
+          spAccountRefreshToken().then(function(refreshRet) {
+            if (refreshRet.ok) {
+              // リフレッシュ成功 → /me を再試行
+              spAccountFetchMe().then(function(ret2) {
+                if (ret2 && ret2.ok && ret2.body && ret2.body.user) {
+                  try { localStorage.setItem('sp_auth_email', ret2.body.user.email); } catch (_) {}
+                  if (emailEl) emailEl.textContent = ret2.body.user.email;
+                  try { renderStartupBannerIfNeeded(); } catch (_) {}
+                } else {
+                  // リフレッシュ後も失敗 → ログアウト
+                  spAccountLogout();
+                  renderAccountPanel();
+                  renderStartupBannerIfNeeded();
+                }
+              }).catch(function(){});
+            } else {
+              // リフレッシュ失敗 → ログアウト
+              spAccountLogout();
+              renderAccountPanel();
+              renderStartupBannerIfNeeded();
+            }
+          }).catch(function(){
+            spAccountLogout();
+            renderAccountPanel();
+            renderStartupBannerIfNeeded();
+          });
         }
       }).catch(function(){});
     }
