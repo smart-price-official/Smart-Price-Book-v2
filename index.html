@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.190  BUILD_ID=2026-06-03_v190-theme-no-flash
+APP_VERSION=v23.9.191  BUILD_ID=2026-06-03_v191-theme-no-flash-fix
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.190";
-  const BUILD_ID    = "2026-06-03_v190-theme-no-flash";
+  const APP_VERSION = "v23.9.191";
+  const BUILD_ID    = "2026-06-03_v191-theme-no-flash-fix";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -1082,11 +1082,12 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 };
 </script>
 
+<!-- v191: テーマちらつき完全防止 — head段階からbodyを非表示 -->
+<style id="_spThemeInit">body{visibility:hidden}</style>
 </head>
 
 <body>
 <!-- P0-6: テーマフラッシュ防止 — CSS描画前に保存済みテーマを即時適用 -->
-<style>body{visibility:hidden}</style>
 <script>
 (function(){
   try {
@@ -1095,7 +1096,8 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
       document.body.setAttribute('data-theme', _t);
     }
   } catch(e) {}
-  document.body.style.visibility = '';  // v190: テーマ適用後に表示
+  // v191: CSSルールごと削除（''クリアではCSSルールが残るため）
+  try { var _si=document.getElementById('_spThemeInit'); if(_si) _si.parentNode.removeChild(_si); } catch(_) {}
 })();
 </script>
 <header class="header d-flex justify-content-between align-items-center">
