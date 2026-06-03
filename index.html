@@ -3,7 +3,7 @@
 AUTHOR: Claude
 POLICY: UI_FREEZE / 単一HTML / VERSION SSOT
 NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-->
-<html lang="ja">
+<html lang="ja" style="visibility:hidden">
 <head>
 <!-- SW GUARD: prevent old Service Worker from serving stale index.html -->
 
@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.195  BUILD_ID=2026-06-03_v195-theme-script-order-fix
+APP_VERSION=v23.9.196  BUILD_ID=2026-06-03_v196-theme-html-hidden
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.195";
-  const BUILD_ID    = "2026-06-03_v195-theme-script-order-fix";
+  const APP_VERSION = "v23.9.196";
+  const BUILD_ID    = "2026-06-03_v196-theme-html-hidden";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -1069,6 +1069,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 .modal-content { background:var(--sp-card); color:var(--sp-text); }
 .modal-header  { background:var(--sp-card-alt); border-color:var(--sp-border); }
 </style>
+<script>document.documentElement.style.visibility='';</script>
 
 <script>
 // === SAFETY WRAPPERS (keep onclick working) ===
@@ -1096,6 +1097,8 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
       document.body.setAttribute('data-theme', _t);
     }
   } catch(e) {}
+  // v196: フォールバック（上のスクリプトが万一失敗した場合の保険）
+  try { document.documentElement.style.visibility = ''; } catch(_) {}
 })();
 </script>
 <header class="header d-flex justify-content-between align-items-center">
