@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.186  BUILD_ID=2026-06-02_v186-camera-area-race-fix
+APP_VERSION=v23.9.187  BUILD_ID=2026-06-03_v187-sync-clear-before-null
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.186";
-  const BUILD_ID    = "2026-06-02_v186-camera-area-race-fix";
+  const APP_VERSION = "v23.9.187";
+  const BUILD_ID    = "2026-06-03_v187-sync-clear-before-null";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -8408,6 +8408,10 @@ return true;
     //   await へ入る順序に組み替える（処理内容は維持・順序のみ変更）。
     // ─────────────────────────────────────────────────────────────
     // ① 同期：スキャナ状態フラグだけ即確定（UI は _sc.stop() 完了後に隠す）
+    // v187: scanner.clear()を同期で呼ぶ（nullより前）
+    // → Html5Qrcodeの内部レジストリを即時クリア
+    // → startScanner側でのnew Html5Qrcode()のthrowを防ぐ
+    try { if (scanner) { scanner.clear(); } } catch(_) {}
     const _sc = scanner;   // ローカルに退避
     scanner = null;        // 即座に null → 次の startScanner が競合しない
     isScanning = false;
