@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.197  BUILD_ID=2026-06-03_v197-branded-splash
+APP_VERSION=v23.9.198  BUILD_ID=2026-06-03_v198-ai-image-select
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.197";
-  const BUILD_ID    = "2026-06-03_v197-branded-splash";
+  const APP_VERSION = "v23.9.198";
+  const BUILD_ID    = "2026-06-03_v198-ai-image-select";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -11649,6 +11649,14 @@ function spVisibleTrace(tag, payload, cls) {
         imgDiagSaveLog(window._imgDiagData);
 
         if (result.ok) {
+          // v198: AI自動選択フラグ（管理者確認用）
+          try {
+            const _p = db && db.products && db.products[jan || curBarcode];
+            if (_p && !_p.imageConfirmed) {
+              _p.imageSource = 'auto';
+              spDbg('[IMAGE_SOURCE_FLAGGED]', { jan: jan || curBarcode, source: 'auto' });
+            }
+          } catch(_) {}
           // v23.9.100: 保存成功時のみ正式反映
           if (prevImg) {
             prevImg.style.opacity = '1';
@@ -11695,6 +11703,14 @@ function spVisibleTrace(tag, payload, cls) {
         const result = await diagnoseAndSaveImage(url, jan, diagCandidate);
         
         if (result.ok) {
+          // v198: AI自動選択フラグ（管理者確認用）
+          try {
+            const _p = db && db.products && db.products[jan || curBarcode];
+            if (_p && !_p.imageConfirmed) {
+              _p.imageSource = 'auto';
+              spDbg('[IMAGE_SOURCE_FLAGGED]', { jan: jan || curBarcode, source: 'auto' });
+            }
+          } catch(_) {}
           // v23.9.100: 保存成功時のみ正式反映
           if (prevImg) {
             prevImg.style.opacity = '1';
@@ -11790,6 +11806,21 @@ function spVisibleTrace(tag, payload, cls) {
       spDbg('[IMG_DIAG_CANDIDATES_FILTERED]', { jan, beforeCount: beforeFilterCount, afterCount: candidates.length, removed: beforeFilterCount - candidates.length });
     }
 
+    // v198: 0件の場合、商品名でリトライ
+    if (candidates.length === 0) {
+      const _p = db && db.products && db.products[curBarcode];
+      const _name = _p && _p.name ? _p.name : '';
+      if (_name) {
+        spDbg('[IMAGE_RETRY_BY_NAME]', { jan: curBarcode, name: _name });
+        try {
+          const retryYahoo = await lookupYahooByJan(null, _name);
+          if (retryYahoo && retryYahoo.imageUrl) candidates.push(retryYahoo.imageUrl);
+          const retryRakuten = await lookupRakutenByJan(null, _name);
+          if (retryRakuten && retryRakuten.imageUrl) candidates.push(retryRakuten.imageUrl);
+        } catch(_) {}
+      }
+    }
+
     // debug=1時: 候補リストをdiagDataに登録（preview/fetch等は選択時に実行）
     if (isDebug() && window._imgDiagData) {
       window._imgDiagData.candidateCount = candidates.length;
@@ -11815,25 +11846,47 @@ function spVisibleTrace(tag, payload, cls) {
       return;
     }
 
-    // 候補を最大6件に絞る
-    const displayCandidates = candidates.slice(0, 6);
+    // v198: AIスコアリングで最適候補を自動選択（候補数問わず）
+    const displayCandidates = candidates.slice(0, 8);
 
-    // v23.9.102: 候補1件 → 内部保存ルートを通す（Androidダウンロード排除）
-    if (displayCandidates.length === 1) {
-      const autoUrl = displayCandidates[0];
-      spDbg('[IMAGE_PICKER_AUTO_APPLY]', { jan: curBarcode, url: autoUrl });
-      // v23.9.102: downloadImageWithJan() を削除し、selectImageCandidate() を呼ぶ
-      selectImageCandidate(autoUrl);
-      return;
+    function scoreImageCandidate(url) {
+      if (!url) return 0;
+      // ソース信頼度スコア（日本の食品・日用品精度）
+      if (url.includes('rakuten')) return 90;
+      if (url.includes('titem.net') || url.includes('r10s.jp')) return 88;
+      if (url.includes('yimg.jp') || url.includes('yahoo.co.jp')) return 80;
+      if (url.includes('openfoodfacts')) return 60;
+      if (url.includes('s3.') || url.includes('cloudfront')) return 50;
+      return 30;
     }
 
-    grid.innerHTML = displayCandidates.map(url => `
+    const bestUrl = displayCandidates.reduce((best, url) =>
+      scoreImageCandidate(url) > scoreImageCandidate(best) ? url : best,
+      displayCandidates[0]
+    );
+
+    spDbg('[IMAGE_AI_SELECT]', {
+      jan: curBarcode,
+      selected: bestUrl,
+      score: scoreImageCandidate(bestUrl),
+      totalCandidates: displayCandidates.length
+    });
+
+    selectImageCandidate(bestUrl);
+    return;
+
+    // 以下はグリッド表示コード（手動選択モード用・将来利用）
+    grid.innerHTML = `<div id="imgZoomOverlay" onclick="this.style.display='none'" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;align-items:center;justify-content:center;"><img id="imgZoomTarget" style="max-width:95vw;max-height:95vh;object-fit:contain;border-radius:8px;" /></div>` +
+    displayCandidates.map(url => `
       <button type="button"
            onclick="event.preventDefault();event.stopPropagation();selectImageCandidate('${url.replace(/'/g, "&#39;")}')"
-           style="cursor:pointer; border-radius:8px; overflow:hidden; background:#333; aspect-ratio:1; display:flex; align-items:center; justify-content:center; border:none; padding:0; width:100%;">
+           style="cursor:pointer; border-radius:8px; overflow:hidden; background:#333; aspect-ratio:1; display:flex; align-items:center; justify-content:center; border:none; padding:0; width:100%; position:relative;">
         <img src="${url}" loading="lazy" referrerpolicy="no-referrer" draggable="false"
              style="width:100%; height:100%; object-fit:contain; pointer-events:none;"
              onerror="this.parentElement.style.display='none'; if(typeof imgDiagMarkPreviewNg==='function') imgDiagMarkPreviewNg('${url.replace(/'/g, "&#39;")}')">
+        <button type="button"
+          onclick="event.stopPropagation(); document.getElementById('imgZoomTarget').src='${url.replace(/'/g, "&#39;")}'; var o=document.getElementById('imgZoomOverlay'); if(o){o.style.display='flex';}"
+          style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,.6);color:white;border:none;border-radius:4px;padding:2px 5px;font-size:0.7rem;z-index:10">🔍</button>
       </button>
     `).join('');
 
