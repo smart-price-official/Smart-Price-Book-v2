@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.212  BUILD_ID=2026-06-03_v212-image-picker
+APP_VERSION=v23.9.213  BUILD_ID=2026-06-03_v213-longpress-fix
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.212";
-  const BUILD_ID    = "2026-06-03_v212-image-picker";
+  const APP_VERSION = "v23.9.213";
+  const BUILD_ID    = "2026-06-03_v213-longpress-fix";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -12079,18 +12079,22 @@ function spVisibleTrace(tag, payload, cls) {
       card.setAttribute('data-img-card', '1');
 
       let pressTimer = null;
+      let fired = false;
       const progress = card.querySelector('.img-pick-progress');
 
       const startPress = () => {
+        fired = false;
         progress.style.transition = 'width 500ms linear';
         progress.style.width = '100%';
         pressTimer = setTimeout(() => {
+          fired = true;
           selectImageCandidate(url);
           closeImagePickerModal();
           showToast('✅ 画像を適用しました', 2000);
         }, 500);
       };
       const cancelPress = () => {
+        if (fired) return; // v213: 既に発火済みならキャンセルしない
         clearTimeout(pressTimer);
         progress.style.transition = 'none';
         progress.style.width = '0%';
