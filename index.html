@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.201  BUILD_ID=2026-06-03_v201-script-error-silent
+APP_VERSION=v23.9.202  BUILD_ID=2026-06-03_v202-script-error-fix
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.201";
-  const BUILD_ID    = "2026-06-03_v201-script-error-silent";
+  const APP_VERSION = "v23.9.202";
+  const BUILD_ID    = "2026-06-03_v202-script-error-fix";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -2111,8 +2111,8 @@ document.addEventListener('DOMContentLoaded', function() {
       const errorDetail = `${errorName}: ${errorMsg}`;
       const fullMsg = `JSエラー: ${errorDetail}`;
       // v200: デバッグモード時のみ赤帯表示（通常ユーザーには非表示）
-      // v201: Script error. は情報価値なし → 赤帯表示をスキップ（ログには記録継続）
-      if (isDebug() && errorMsg !== 'Script error.' && errorMsg !== 'Script error') {
+      // v202: startsWith で書き換え後の文字列にも対応（v201の条件式バグ修正）
+      if (isDebug() && !errorMsg.startsWith('Script error')) {
         showToast(fullMsg, 10000);
         setLastError(fullMsg);
       }
