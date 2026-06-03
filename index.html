@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.205  BUILD_ID=2026-06-03_v205-drag-smooth
+APP_VERSION=v23.9.206  BUILD_ID=2026-06-03_v206-imgdiag-tab
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.205";
-  const BUILD_ID    = "2026-06-03_v205-drag-smooth";
+  const APP_VERSION = "v23.9.206";
+  const BUILD_ID    = "2026-06-03_v206-imgdiag-tab";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -1685,9 +1685,18 @@ document.addEventListener('DOMContentLoaded', function() {
   </div>
 </div>
 
+<!-- v206: 画像診断浮きタブ（パネルを画面外にドラッグしたとき表示） -->
+<div id="img-diag-float-tab" onclick="expandFromTab()"
+  style="display:none; position:fixed; right:0; top:120px;
+         background:#2a2a4a; color:#88f; padding:8px 4px;
+         border-radius:8px 0 0 8px; z-index:1502;
+         writing-mode:vertical-rl; font-size:12px; cursor:pointer;">
+  🔬
+</div>
+
 <!-- v23.9.101: 画像診断パネル（モーダルの外に独立配置・ログ固定化） -->
 <div id="img-diag-panel">
-  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; border-bottom:1px solid #2a2a4a; padding-bottom:4px;">
+  <div id="img-diag-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; border-bottom:1px solid #2a2a4a; padding-bottom:4px; cursor:grab;">
     <div id="img-diag-title" style="color:#88f; font-weight:bold; font-size:12px;">🔬 画像診断</div>
     <button onclick="imgDiagHide()" style="background:#2a2a4a; border:none; color:#aaf; padding:2px 8px; border-radius:4px; font-size:10px; cursor:pointer;">✕</button>
   </div>
@@ -11092,7 +11101,7 @@ function spVisibleTrace(tag, payload, cls) {
   // v205: 画像診断ダイアログをドラッグ移動可能にする（getBoundingClientRect対応・mouse/touch統合）
   function initImgDiagDraggable() {
     const modal = document.getElementById('img-diag-panel');
-    const handle = modal.querySelector('#img-diag-title') || modal.querySelector('.img-diag-title');
+    const handle = document.getElementById('img-diag-header'); // v206: ヘッダー全体をハンドルに
     if (!modal || !handle || modal._dragInit) return;
     modal._dragInit = true;
 
@@ -11127,7 +11136,26 @@ function spVisibleTrace(tag, payload, cls) {
     function endDrag() {
       modal.style.opacity = '1';
       handle.style.cursor = 'grab';
+      // v206: 画面外判定 → 耳タブ化
+      const rect = modal.getBoundingClientRect();
+      if (rect.right > window.innerWidth || rect.left < 0) {
+        collapseToTab();
+      }
     }
+
+    function collapseToTab() {
+      modal.style.display = 'none';
+      const tab = document.getElementById('img-diag-float-tab');
+      if (tab) tab.style.display = 'block';
+    }
+
+    window.expandFromTab = function() {
+      const tab = document.getElementById('img-diag-float-tab');
+      if (tab) tab.style.display = 'none';
+      modal.style.display = 'block';
+      modal.style.left = (window.innerWidth - modal.offsetWidth - 8) + 'px';
+      modal.style.top  = '120px';
+    };
 
     // Desktop
     handle.addEventListener('mousedown', (e) => {
