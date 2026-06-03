@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.211  BUILD_ID=2026-06-03_v211-image-select
+APP_VERSION=v23.9.212  BUILD_ID=2026-06-03_v212-image-picker
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.211";
-  const BUILD_ID    = "2026-06-03_v211-image-select";
+  const APP_VERSION = "v23.9.212";
+  const BUILD_ID    = "2026-06-03_v212-image-picker";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -926,58 +926,6 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   touch-action: none; /* v205: ドラッグ時のスクロール競合防止 */
 }
 #img-diag-panel.visible { display: block; }
-
-/* v211: 画像選択カード */
-.img-select-card {
-  position: relative;
-  border-radius: 8px;
-  overflow: hidden;
-  border: 2px solid var(--sp-border);
-  cursor: pointer;
-  background: var(--sp-card-alt);
-  user-select: none;
-  -webkit-user-select: none;
-}
-.img-select-card.current {
-  border-color: var(--sp-primary);
-}
-.img-select-card img {
-  width: 100%;
-  aspect-ratio: 1;
-  object-fit: contain;
-  display: block;
-  background: #fff;
-}
-.img-select-badge {
-  position: absolute;
-  bottom: 0; left: 0; right: 0;
-  background: rgba(0,0,0,0.6);
-  color: #fff;
-  font-size: 9px;
-  text-align: center;
-  padding: 2px;
-}
-.img-select-card.current::after {
-  content: '✔ 使用中';
-  position: absolute;
-  top: 4px; right: 4px;
-  background: var(--sp-primary);
-  color: #fff;
-  font-size: 9px;
-  padding: 2px 5px;
-  border-radius: 4px;
-}
-.img-select-progress {
-  position: absolute;
-  bottom: 0; left: 0;
-  height: 3px;
-  background: var(--sp-primary);
-  width: 0%;
-  transition: width 500ms linear;
-}
-.img-select-card.pressing .img-select-progress {
-  width: 100%;
-}
 #img-diag-title {
   color: #88f; font-weight: bold; font-size: 12px;
   margin-bottom: 6px; border-bottom: 1px solid #2a2a4a; padding-bottom: 4px;
@@ -11655,7 +11603,35 @@ function spVisibleTrace(tag, payload, cls) {
 
   function openImagePickerModal() {
     const modal = document.getElementById('imagePickerModal');
-    if (modal) modal.classList.add('show-modal');
+    if (!modal) return;
+    modal.classList.add('show-modal');
+
+    // v212: 下スワイプで閉じる（1回だけ登録）
+    if (!modal._swipeInit) {
+      modal._swipeInit = true;
+      const modalContent = modal.querySelector('.modal-content');
+      if (modalContent) {
+        let swipeStartY = 0;
+        modalContent.addEventListener('touchstart', (e) => {
+          swipeStartY = e.touches[0].clientY;
+        }, { passive: true });
+        modalContent.addEventListener('touchend', (e) => {
+          const dy = e.changedTouches[0].clientY - swipeStartY;
+          if (dy > 80) closeImagePickerModal();
+        }, { passive: true });
+      }
+    }
+
+    // v212: Android戻るボタン対応
+    history.pushState({ imgPicker: true }, '');
+    const onPopState = () => {
+      const m = document.getElementById('imagePickerModal');
+      if (m && m.classList.contains('show-modal')) {
+        closeImagePickerModal();
+      }
+      window.removeEventListener('popstate', onPopState);
+    };
+    window.addEventListener('popstate', onPopState);
   }
 
   function closeImagePickerModal() {
@@ -11937,80 +11913,6 @@ function spVisibleTrace(tag, payload, cls) {
   }
   window.selectImageCandidate = selectImageCandidate;
 
-  // v211: 画像適用ラッパー（imgSelectApplyから呼ばれる）
-  window.applySelectedImageUrl = function(jan, url) {
-    if (jan !== curBarcode) { showToast('バーコードが変わりました', 3000); return; }
-    selectImageCandidate(url);
-  };
-
-  // v211: 画像選択モーダル
-  let _imgSelectCandidates = [];
-  let _imgSelectCurrent = '';
-  let _imgSelectJan = '';
-  let _pressTimer = null;
-
-  function imgSelectOpen(jan, candidates, currentUrl) {
-    _imgSelectJan = jan;
-    _imgSelectCandidates = candidates;
-    _imgSelectCurrent = currentUrl || '';
-
-    const grid = document.getElementById('img-select-grid');
-    grid.innerHTML = '';
-
-    candidates.forEach((c) => {
-      const card = document.createElement('div');
-      card.className = 'img-select-card' + (c.url === _imgSelectCurrent ? ' current' : '');
-      card.innerHTML = `
-        <img src="${c.url}" onerror="this.src=''">
-        <div class="img-select-badge">${c.source || ''}</div>
-        <div class="img-select-progress"></div>
-      `;
-
-      card.addEventListener('click', () => {
-        document.querySelectorAll('.img-select-card').forEach(el => el.classList.remove('current'));
-        card.classList.add('current');
-        _imgSelectCurrent = c.url;
-      });
-
-      const startPress = () => {
-        card.classList.add('pressing');
-        _pressTimer = setTimeout(() => { imgSelectApply(c.url); }, 500);
-      };
-      const cancelPress = () => {
-        card.classList.remove('pressing');
-        clearTimeout(_pressTimer);
-      };
-
-      card.addEventListener('mousedown', startPress);
-      card.addEventListener('touchstart', startPress, { passive: true });
-      card.addEventListener('mouseup', cancelPress);
-      card.addEventListener('mouseleave', cancelPress);
-      card.addEventListener('touchend', cancelPress);
-
-      grid.appendChild(card);
-    });
-
-    document.getElementById('img-select-overlay').style.display = 'block';
-    document.getElementById('img-select-sheet').style.display = 'block';
-  }
-
-  function imgSelectClose() {
-    document.getElementById('img-select-overlay').style.display = 'none';
-    document.getElementById('img-select-sheet').style.display = 'none';
-    clearTimeout(_pressTimer);
-  }
-
-  function imgSelectApply(url) {
-    if (typeof applySelectedImageUrl === 'function') {
-      applySelectedImageUrl(_imgSelectJan, url);
-    }
-    imgSelectClose();
-    showToast('✅ 画像を適用しました', 2000);
-  }
-
-  window.imgSelectOpen  = imgSelectOpen;
-  window.imgSelectClose = imgSelectClose;
-
   // 虫メガネ → 画像ピッカーモーダルを開く（v23.9.98: 診断初期化対応）
   async function searchImageWeb() {
     spDbg('[IMAGE_PICKER_OPEN]', { jan: curBarcode });
@@ -12139,7 +12041,7 @@ function spVisibleTrace(tag, payload, cls) {
       totalCandidates: displayCandidates.length
     });
 
-    // v211: 自動適用→bottom-sheetモーダルで選択確定に変更
+    // v212: 旧モーダルのグリッドに候補を表示（長押し確定）
     const _currentImgUrl = (db && db.products && db.products[curBarcode]) ? (db.products[curBarcode].imageUrl || '') : '';
     const _candidatesForSelect = displayCandidates.map(url => {
       let source = 'unknown';
@@ -12149,23 +12051,65 @@ function spVisibleTrace(tag, payload, cls) {
       else if (url.includes('s3.') || url.includes('cloudfront')) source = 'aws';
       return { url, source };
     });
-    imgSelectOpen(curBarcode, _candidatesForSelect, _currentImgUrl);
-    return;
 
-    // 以下はグリッド表示コード（手動選択モード用・将来利用）
-    grid.innerHTML = `<div id="imgZoomOverlay" onclick="this.style.display='none'" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;align-items:center;justify-content:center;"><img id="imgZoomTarget" style="max-width:95vw;max-height:95vh;object-fit:contain;border-radius:8px;" /></div>` +
-    displayCandidates.map(url => `
-      <button type="button"
-           onclick="event.preventDefault();event.stopPropagation();selectImageCandidate('${url.replace(/'/g, "&#39;")}')"
-           style="cursor:pointer; border-radius:8px; overflow:hidden; background:#333; aspect-ratio:1; display:flex; align-items:center; justify-content:center; border:none; padding:0; width:100%; position:relative;">
-        <img src="${url}" loading="lazy" referrerpolicy="no-referrer" draggable="false"
-             style="width:100%; height:100%; object-fit:contain; pointer-events:none;"
-             onerror="this.parentElement.style.display='none'; if(typeof imgDiagMarkPreviewNg==='function') imgDiagMarkPreviewNg('${url.replace(/'/g, "&#39;")}')">
-        <button type="button"
-          onclick="event.stopPropagation(); document.getElementById('imgZoomTarget').src='${url.replace(/'/g, "&#39;")}'; var o=document.getElementById('imgZoomOverlay'); if(o){o.style.display='flex';}"
-          style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,.6);color:white;border:none;border-radius:4px;padding:2px 5px;font-size:0.7rem;z-index:10">🔍</button>
-      </button>
-    `).join('');
+    grid.innerHTML = '';
+    _candidatesForSelect.forEach((c) => {
+      const url = typeof c === 'string' ? c : c.url;
+      const source = typeof c === 'object' ? (c.source || '') : '';
+      const isCurrent = url === _currentImgUrl;
+
+      const card = document.createElement('div');
+      card.style.cssText = `
+        position:relative; border-radius:8px; overflow:hidden;
+        border:2px solid ${isCurrent ? 'var(--sp-primary)' : 'var(--sp-border)'};
+        cursor:pointer; background:var(--sp-card-alt);
+        user-select:none; -webkit-user-select:none;
+      `;
+      card.innerHTML = `
+        <img src="${url}" onerror="this.src=''" style="width:100%;aspect-ratio:1;object-fit:contain;background:#fff;display:block;">
+        <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.6);color:#fff;font-size:9px;text-align:center;padding:2px;">${source}</div>
+        ${isCurrent ? '<div style="position:absolute;top:4px;right:4px;background:var(--sp-primary);color:#fff;font-size:9px;padding:2px 5px;border-radius:4px;">✔ 使用中</div>' : ''}
+        <div class="img-pick-progress" style="position:absolute;bottom:0;left:0;height:3px;background:var(--sp-primary);width:0%;"></div>
+      `;
+
+      card.addEventListener('click', () => {
+        grid.querySelectorAll('[data-img-card]').forEach(el => el.style.borderColor = 'var(--sp-border)');
+        card.style.borderColor = 'var(--sp-primary)';
+      });
+      card.setAttribute('data-img-card', '1');
+
+      let pressTimer = null;
+      const progress = card.querySelector('.img-pick-progress');
+
+      const startPress = () => {
+        progress.style.transition = 'width 500ms linear';
+        progress.style.width = '100%';
+        pressTimer = setTimeout(() => {
+          selectImageCandidate(url);
+          closeImagePickerModal();
+          showToast('✅ 画像を適用しました', 2000);
+        }, 500);
+      };
+      const cancelPress = () => {
+        clearTimeout(pressTimer);
+        progress.style.transition = 'none';
+        progress.style.width = '0%';
+      };
+
+      card.addEventListener('mousedown', startPress);
+      card.addEventListener('touchstart', startPress, { passive: true });
+      card.addEventListener('mouseup', cancelPress);
+      card.addEventListener('mouseleave', cancelPress);
+      card.addEventListener('touchend', cancelPress);
+      card.addEventListener('touchmove', cancelPress, { passive: true });
+
+      grid.appendChild(card);
+    });
+
+    const hint = document.createElement('p');
+    hint.style.cssText = 'grid-column:1/-1;font-size:11px;color:var(--sp-text-muted);text-align:center;margin-top:8px;';
+    hint.textContent = '長押しで選択確定';
+    grid.appendChild(hint);
 
     // debug=1時: 全候補のpreviewテストをバックグラウンドで実行
     if (isDebug()) {
@@ -17378,17 +17322,6 @@ window.spSetReportPeriod = spSetReportPeriod;
 
 })();
 </script>
-
-<!-- v211: 画像選択モーダル -->
-<div id="img-select-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:2000;" onclick="imgSelectClose()"></div>
-<div id="img-select-sheet" style="display:none; position:fixed; bottom:0; left:0; right:0; background:var(--sp-card); border-radius:20px 20px 0 0; z-index:2001; max-height:70vh; overflow-y:auto; padding:16px;">
-  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-    <span style="font-weight:bold; color:var(--sp-text);">🖼 画像を選ぶ</span>
-    <button onclick="imgSelectClose()" style="background:none; border:none; color:var(--sp-text-muted); font-size:1.2rem; cursor:pointer;">✕</button>
-  </div>
-  <div id="img-select-grid" style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px;"></div>
-  <p style="font-size:11px; color:var(--sp-text-muted); text-align:center; margin-top:12px;">長押しで選択確定</p>
-</div>
 
 </body>
 </html>
