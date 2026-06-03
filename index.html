@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.202  BUILD_ID=2026-06-03_v202-script-error-fix
+APP_VERSION=v23.9.203  BUILD_ID=2026-06-03_v203-diag-ui
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.202";
-  const BUILD_ID    = "2026-06-03_v202-script-error-fix";
+  const APP_VERSION = "v23.9.203";
+  const BUILD_ID    = "2026-06-03_v203-diag-ui";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -823,19 +823,47 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   border-radius: 4px 4px 0 0; cursor: pointer;
 }
 
-/* === GPS診断パネル (debug=1のみ表示) === */
+/* === GPS診断パネル (debug=1のみ表示) v203: 右下耳UI === */
 #gps-debug-panel {
   display: none;
+  position: fixed;
+  right: 0;
+  bottom: 88px;
+  width: 300px;
+  max-height: 45vh;
+  overflow-y: auto;
+  transform: translateX(100%);
+  transition: transform 180ms ease;
+  z-index: 1500;
   background: #0a1a0a;
   border: 1px solid #2a4a2a;
-  border-radius: 10px;
+  border-radius: 8px 0 0 8px;
   padding: 10px 12px;
-  margin: 6px 10px 0 10px;
   font-size: 11px;
   font-family: monospace;
   color: #8f8;
 }
 #gps-debug-panel.visible { display: block; }
+#gps-debug-panel.open { transform: translateX(0); }
+/* 耳タブ */
+#gps-diag-tab {
+  display: none;
+  position: fixed;
+  right: 0;
+  bottom: 88px;
+  width: 28px;
+  padding: 8px 4px;
+  background: #1a1a2e;
+  color: #4fc3f7;
+  border-radius: 8px 0 0 8px;
+  cursor: pointer;
+  z-index: 1501;
+  writing-mode: vertical-rl;
+  font-size: 11px;
+  text-align: center;
+  user-select: none;
+}
+#gps-diag-tab.visible { display: block; }
 #gps-debug-title {
   color: #4f4; font-weight: bold; font-size: 12px;
   margin-bottom: 6px; border-bottom: 1px solid #2a4a2a; padding-bottom: 4px;
@@ -1130,7 +1158,8 @@ document.addEventListener('DOMContentLoaded', function() {
 <!-- ✅ P0-4: 店舗ごと税設定UI（store-listと同階層に配置してformView依存を解消） -->
 
 
-<!-- GPS診断パネル (debug=1のみ表示) -->
+<!-- GPS診断パネル (debug=1のみ表示) v203: 右下耳UI -->
+<div id="gps-diag-tab" onclick="toggleGpsDiagPanel()">📡GPS</div>
 <div id="gps-debug-panel">
   <div id="gps-debug-title">📡 GPS診断ログ</div>
   <div id="gps-debug-content"><span class="dbg-warn">GPS未実行</span></div>
@@ -6101,6 +6130,9 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       if (!panel || !content) return;
 
       panel.classList.add('visible');
+      // v203: 耳タブも表示
+      const tab = document.getElementById('gps-diag-tab');
+      if (tab) tab.classList.add('visible');
       window._gpsDebugData = data;
 
       let html = '';
@@ -6156,6 +6188,12 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         try { showToast('📋 コピーしました', 2000); } catch(e) {}
       }
     } catch(e) {}
+  };
+
+  // v203: GPS診断パネル耳タブのトグル
+  window.toggleGpsDiagPanel = function() {
+    const panel = document.getElementById('gps-debug-panel');
+    if (panel) panel.classList.toggle('open');
   };
 
   // GPS診断ログをlocalStorageに保存（最新10件）
@@ -8422,13 +8460,7 @@ return true;
     
     console.log('[ScanbarDebug]', debugInfo);
     
-    // 画面の右上ログエリアに表示
-    const errorDisplay = document.getElementById('debug-error-display');
-    if (errorDisplay) {
-      const debugText = `[Scanbar] Mode:${scanbarMode} | Found:${elementFound} | Visible:${scanbarVisible} | LaserZ:${laserZIndex} | FrameZ:${frameZIndex} | Parent:${parentElId}`;
-      errorDisplay.textContent = debugText;
-      errorDisplay.style.display = 'block';
-    }
+    // v203: debug-error-display への表示削除（赤帯が⚙ボタンに重なる問題を解消）
     
     // 定期的に更新（1秒ごと）
     const updateInterval = setInterval(() => {
@@ -8450,10 +8482,7 @@ return true;
         
         const debugText = `[Scanbar] Mode:DOM | Visible:${isVisible} | LaserZ:${laserStyle.zIndex} | FrameZ:${frameZIndex} | Top:${rect.top.toFixed(1)}px`;
         
-        if (errorDisplay) {
-          errorDisplay.textContent = debugText;
-        }
-        
+        // v203: errorDisplay への書き込み削除（console.logのみ継続）
         console.log('[ScanbarDebug Update]', {
           visible: isVisible,
           top: rect.top.toFixed(1),
@@ -11055,7 +11084,51 @@ function spVisibleTrace(tag, payload, cls) {
     if (!isDebug()) return;
     try {
       const p = document.getElementById('img-diag-panel');
-      if (p) p.classList.add('visible');
+      if (p) { p.classList.add('visible'); initImgDiagDraggable(); }
+    } catch(e) {}
+  }
+
+  // v203: 画像診断ダイアログをドラッグ移動可能にする
+  function initImgDiagDraggable() {
+    try {
+      const modal = document.getElementById('img-diag-panel');
+      const handle = document.getElementById('img-diag-title');
+      if (!modal || !handle || modal._dragInit) return;
+      modal._dragInit = true;
+      modal.style.position = 'fixed';
+      handle.style.cursor = 'grab';
+      let startX, startY, origLeft, origTop;
+      handle.addEventListener('mousedown', function(e) {
+        startX = e.clientX; startY = e.clientY;
+        origLeft = modal.offsetLeft; origTop = modal.offsetTop;
+        handle.style.cursor = 'grabbing';
+        modal.style.opacity = '0.95';
+        function onMove(e) {
+          const dx = e.clientX - startX, dy = e.clientY - startY;
+          modal.style.left = Math.max(0, Math.min(origLeft + dx, window.innerWidth - modal.offsetWidth)) + 'px';
+          modal.style.top = Math.max(0, Math.min(origTop + dy, window.innerHeight - modal.offsetHeight)) + 'px';
+        }
+        function onUp() {
+          handle.style.cursor = 'grab'; modal.style.opacity = '1';
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onUp);
+        }
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+      });
+      handle.addEventListener('touchstart', function(e) {
+        const t = e.touches[0];
+        startX = t.clientX; startY = t.clientY;
+        origLeft = modal.offsetLeft; origTop = modal.offsetTop;
+        modal.style.opacity = '0.95';
+      }, { passive: true });
+      handle.addEventListener('touchmove', function(e) {
+        const t = e.touches[0];
+        const dx = t.clientX - startX, dy = t.clientY - startY;
+        modal.style.left = Math.max(0, Math.min(origLeft + dx, window.innerWidth - modal.offsetWidth)) + 'px';
+        modal.style.top = Math.max(0, Math.min(origTop + dy, window.innerHeight - modal.offsetHeight)) + 'px';
+      }, { passive: true });
+      handle.addEventListener('touchend', function() { modal.style.opacity = '1'; });
     } catch(e) {}
   }
   
