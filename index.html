@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.193  BUILD_ID=2026-06-03_v193-startup-latency
+APP_VERSION=v23.9.194  BUILD_ID=2026-06-03_v194-gps-placeholder-scan-diag
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.193";
-  const BUILD_ID    = "2026-06-03_v193-startup-latency";
+  const APP_VERSION = "v23.9.194";
+  const BUILD_ID    = "2026-06-03_v194-gps-placeholder-scan-diag";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -1110,7 +1110,7 @@ try {
   <button class="btn btn-sm btn-outline-light" id="settingsBtn" onclick="window.openSettings && window.openSettings()"><i class="bi bi-gear-fill"></i></button>
 </header>
 
-<div class="store-area"><div id="store-list" class="store-list"></div></div>
+<div class="store-area"><div id="store-list" class="store-list"><!-- v194: JS実行前の静的GPS仮表示 --><span id="store-gps-init" class="store-tag gps-btn" style="opacity:0.65;pointer-events:none;">📍 GPS取得中...</span></div></div>
 <!-- ✅ P0-4: 店舗ごと税設定UI（store-listと同階層に配置してformView依存を解消） -->
 
 
@@ -8003,6 +8003,8 @@ function openManualEntryOnly(){
   }
 
 function startScanner() {
+    // v194: [START_CLICK] タイムスタンプ（ユーザーのタップ瞬間を計測）
+    try { spDbg('[START_CLICK]', { ts: Date.now() }); } catch(_) {}
     // isScanning=true でも camera-area が非表示なら固着と判断してリカバリ
     if (isScanning) {
       var _caCheck = document.getElementById('camera-area');
@@ -8066,6 +8068,8 @@ function startScanner() {
       return;
     }
 
+    // v194: [START_CALL] タイムスタンプ（getUserMedia開始）
+    try { spDbg('[START_CALL]', { ts: Date.now() }); } catch(_) {}
     scanner.start(
       { facingMode: "environment" },
       { fps: 10 },
@@ -8077,6 +8081,8 @@ function startScanner() {
         try { await processBarcodeData(code, 'scan', fmt); } catch(e) { showToast(`エラー: ${e.message}`, 8000); }
       }
     ).then(() => {
+      // v194: [CAMERA_READY] タイムスタンプ（カメラ映像取得完了）
+      try { spDbg('[CAMERA_READY]', { ts: Date.now() }); } catch(_) {}
       try { var _cl=document.getElementById('camera-loading'); if(_cl) _cl.style.display='none'; } catch(_) {}
       setTimeout(() => {
         try { suppressQrcodeGuides(); } catch(e) {}
