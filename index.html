@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.210  BUILD_ID=2026-06-03_v210-imgdiag-left
+APP_VERSION=v23.9.211  BUILD_ID=2026-06-03_v211-image-select
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.210";
-  const BUILD_ID    = "2026-06-03_v210-imgdiag-left";
+  const APP_VERSION = "v23.9.211";
+  const BUILD_ID    = "2026-06-03_v211-image-select";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -926,6 +926,58 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
   touch-action: none; /* v205: ドラッグ時のスクロール競合防止 */
 }
 #img-diag-panel.visible { display: block; }
+
+/* v211: 画像選択カード */
+.img-select-card {
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid var(--sp-border);
+  cursor: pointer;
+  background: var(--sp-card-alt);
+  user-select: none;
+  -webkit-user-select: none;
+}
+.img-select-card.current {
+  border-color: var(--sp-primary);
+}
+.img-select-card img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: contain;
+  display: block;
+  background: #fff;
+}
+.img-select-badge {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  font-size: 9px;
+  text-align: center;
+  padding: 2px;
+}
+.img-select-card.current::after {
+  content: '✔ 使用中';
+  position: absolute;
+  top: 4px; right: 4px;
+  background: var(--sp-primary);
+  color: #fff;
+  font-size: 9px;
+  padding: 2px 5px;
+  border-radius: 4px;
+}
+.img-select-progress {
+  position: absolute;
+  bottom: 0; left: 0;
+  height: 3px;
+  background: var(--sp-primary);
+  width: 0%;
+  transition: width 500ms linear;
+}
+.img-select-card.pressing .img-select-progress {
+  width: 100%;
+}
 #img-diag-title {
   color: #88f; font-weight: bold; font-size: 12px;
   margin-bottom: 6px; border-bottom: 1px solid #2a2a4a; padding-bottom: 4px;
@@ -11885,6 +11937,80 @@ function spVisibleTrace(tag, payload, cls) {
   }
   window.selectImageCandidate = selectImageCandidate;
 
+  // v211: 画像適用ラッパー（imgSelectApplyから呼ばれる）
+  window.applySelectedImageUrl = function(jan, url) {
+    if (jan !== curBarcode) { showToast('バーコードが変わりました', 3000); return; }
+    selectImageCandidate(url);
+  };
+
+  // v211: 画像選択モーダル
+  let _imgSelectCandidates = [];
+  let _imgSelectCurrent = '';
+  let _imgSelectJan = '';
+  let _pressTimer = null;
+
+  function imgSelectOpen(jan, candidates, currentUrl) {
+    _imgSelectJan = jan;
+    _imgSelectCandidates = candidates;
+    _imgSelectCurrent = currentUrl || '';
+
+    const grid = document.getElementById('img-select-grid');
+    grid.innerHTML = '';
+
+    candidates.forEach((c) => {
+      const card = document.createElement('div');
+      card.className = 'img-select-card' + (c.url === _imgSelectCurrent ? ' current' : '');
+      card.innerHTML = `
+        <img src="${c.url}" onerror="this.src=''">
+        <div class="img-select-badge">${c.source || ''}</div>
+        <div class="img-select-progress"></div>
+      `;
+
+      card.addEventListener('click', () => {
+        document.querySelectorAll('.img-select-card').forEach(el => el.classList.remove('current'));
+        card.classList.add('current');
+        _imgSelectCurrent = c.url;
+      });
+
+      const startPress = () => {
+        card.classList.add('pressing');
+        _pressTimer = setTimeout(() => { imgSelectApply(c.url); }, 500);
+      };
+      const cancelPress = () => {
+        card.classList.remove('pressing');
+        clearTimeout(_pressTimer);
+      };
+
+      card.addEventListener('mousedown', startPress);
+      card.addEventListener('touchstart', startPress, { passive: true });
+      card.addEventListener('mouseup', cancelPress);
+      card.addEventListener('mouseleave', cancelPress);
+      card.addEventListener('touchend', cancelPress);
+
+      grid.appendChild(card);
+    });
+
+    document.getElementById('img-select-overlay').style.display = 'block';
+    document.getElementById('img-select-sheet').style.display = 'block';
+  }
+
+  function imgSelectClose() {
+    document.getElementById('img-select-overlay').style.display = 'none';
+    document.getElementById('img-select-sheet').style.display = 'none';
+    clearTimeout(_pressTimer);
+  }
+
+  function imgSelectApply(url) {
+    if (typeof applySelectedImageUrl === 'function') {
+      applySelectedImageUrl(_imgSelectJan, url);
+    }
+    imgSelectClose();
+    showToast('✅ 画像を適用しました', 2000);
+  }
+
+  window.imgSelectOpen  = imgSelectOpen;
+  window.imgSelectClose = imgSelectClose;
+
   // 虫メガネ → 画像ピッカーモーダルを開く（v23.9.98: 診断初期化対応）
   async function searchImageWeb() {
     spDbg('[IMAGE_PICKER_OPEN]', { jan: curBarcode });
@@ -12013,7 +12139,17 @@ function spVisibleTrace(tag, payload, cls) {
       totalCandidates: displayCandidates.length
     });
 
-    selectImageCandidate(bestUrl);
+    // v211: 自動適用→bottom-sheetモーダルで選択確定に変更
+    const _currentImgUrl = (db && db.products && db.products[curBarcode]) ? (db.products[curBarcode].imageUrl || '') : '';
+    const _candidatesForSelect = displayCandidates.map(url => {
+      let source = 'unknown';
+      if (url.includes('rakuten') || url.includes('titem.net') || url.includes('r10s.jp')) source = 'rakuten';
+      else if (url.includes('yimg.jp') || url.includes('yahoo')) source = 'yahoo';
+      else if (url.includes('openfoodfacts')) source = 'openfoodfacts';
+      else if (url.includes('s3.') || url.includes('cloudfront')) source = 'aws';
+      return { url, source };
+    });
+    imgSelectOpen(curBarcode, _candidatesForSelect, _currentImgUrl);
     return;
 
     // 以下はグリッド表示コード（手動選択モード用・将来利用）
@@ -17242,6 +17378,17 @@ window.spSetReportPeriod = spSetReportPeriod;
 
 })();
 </script>
+
+<!-- v211: 画像選択モーダル -->
+<div id="img-select-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:2000;" onclick="imgSelectClose()"></div>
+<div id="img-select-sheet" style="display:none; position:fixed; bottom:0; left:0; right:0; background:var(--sp-card); border-radius:20px 20px 0 0; z-index:2001; max-height:70vh; overflow-y:auto; padding:16px;">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+    <span style="font-weight:bold; color:var(--sp-text);">🖼 画像を選ぶ</span>
+    <button onclick="imgSelectClose()" style="background:none; border:none; color:var(--sp-text-muted); font-size:1.2rem; cursor:pointer;">✕</button>
+  </div>
+  <div id="img-select-grid" style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px;"></div>
+  <p style="font-size:11px; color:var(--sp-text-muted); text-align:center; margin-top:12px;">長押しで選択確定</p>
+</div>
 
 </body>
 </html>
