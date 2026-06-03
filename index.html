@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.198  BUILD_ID=2026-06-03_v198-ai-image-select
+APP_VERSION=v23.9.199  BUILD_ID=2026-06-03_v199-yahoo-image-fix
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.198";
-  const BUILD_ID    = "2026-06-03_v198-ai-image-select";
+  const APP_VERSION = "v23.9.199";
+  const BUILD_ID    = "2026-06-03_v199-yahoo-image-fix";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -10290,6 +10290,12 @@ function spVisibleTrace(tag, payload, cls) {
             if (isDebug()) showToast(`[Yahoo] スコア低 (${yahooTrustScore}) → 楽天検討`, 3000);
           }
           if (yahooInfo.category) candidateCategory = String(yahooInfo.category).trim();
+          // v199: Yahoo imageUrl を candidateImageUrl に反映（抜け修正）
+          if (yahooInfo.imageUrl && typeof yahooInfo.imageUrl === 'string' &&
+              yahooInfo.imageUrl.startsWith('http') && !candidateImageUrl) {
+            candidateImageUrl = yahooInfo.imageUrl;
+            spDbg('[YAHOO_IMAGE_ASSIGNED]', { jan, url: yahooInfo.imageUrl });
+          }
 
           spDbg('[ROUTE] after clean', {
             jan: jan,
