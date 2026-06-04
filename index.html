@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.215  BUILD_ID=2026-06-04_v215-modal-overlay
+APP_VERSION=v23.9.216  BUILD_ID=2026-06-04_v216-multi-image
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.215";
-  const BUILD_ID    = "2026-06-04_v215-modal-overlay";
+  const APP_VERSION = "v23.9.216";
+  const BUILD_ID    = "2026-06-04_v216-multi-image";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -6495,6 +6495,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       name: info.name,
       maker: info.maker || '',
       imageUrl: info.imageUrl || '',
+      imageUrls: Array.isArray(info.imageUrls) ? info.imageUrls : [],
       category: rawCategory
     };
     
@@ -6666,6 +6667,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       name: name || original.name, // 空になった場合は元に戻す
       maker: maker || original.maker,
       imageUrl: original.imageUrl,
+      imageUrls: original.imageUrls,
       category: original.category || '',
       packHint: packHint, // まとめ買いフラグ
       packCount: packCount, // まとめ買い個数
@@ -7035,6 +7037,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
                 name: json.name,
                 maker: json.maker || '',
                 imageUrl: json.imageUrl || '',
+                imageUrls: Array.isArray(json.imageUrls) ? json.imageUrls : [],
                 category: json.category || json.genreName || json.genreCategory || ''
               });
               if (isDebug()) showToast(`[Yahoo] プロキシOK: ${json.name.substring(0,20)}`, 3000);
@@ -11701,8 +11704,18 @@ function spVisibleTrace(tag, payload, cls) {
     // ④ Yahoo API（プロキシ経由）
     try {
       const yahoo = await lookupYahooByJan(jan);
-      if (yahoo && yahoo.imageUrl && typeof yahoo.imageUrl === 'string' && yahoo.imageUrl.startsWith('http')) {
-        yahooCandidates.push(yahoo.imageUrl);
+      if (yahoo) {
+        if (Array.isArray(yahoo.imageUrls) && yahoo.imageUrls.length > 0) {
+          yahoo.imageUrls.forEach(function(u) {
+            if (u && typeof u === 'string' && u.startsWith('http') &&
+                yahooCandidates.indexOf(u) === -1) {
+              yahooCandidates.push(u);
+            }
+          });
+        } else if (yahoo.imageUrl && typeof yahoo.imageUrl === 'string' &&
+                   yahoo.imageUrl.startsWith('http')) {
+          yahooCandidates.push(yahoo.imageUrl);
+        }
       }
     } catch(e) { spDbg('[IMAGE_SOURCE_YAHOO_ERR]', { jan, err: String(e) }); }
     spDbg('[IMAGE_SOURCE_YAHOO]', { jan, count: yahooCandidates.length, candidates: yahooCandidates });
