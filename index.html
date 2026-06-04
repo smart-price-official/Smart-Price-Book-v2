@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.218  BUILD_ID=2026-06-04_v218-imageUrls-fix
+APP_VERSION=v23.9.219  BUILD_ID=2026-06-04_v219-cache-empty-fix
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.218";
-  const BUILD_ID    = "2026-06-04_v218-imageUrls-fix";
+  const APP_VERSION = "v23.9.219";
+  const BUILD_ID    = "2026-06-04_v219-cache-empty-fix";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -7006,7 +7006,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
             const cacheData = JSON.parse(cached);
             if (cacheData && cacheData.ts && (Date.now() - cacheData.ts < cacheTtl)) {
               // v217: imageUrlsが欠落している古いキャッシュは再取得
-              if (cacheData.data && !Array.isArray(cacheData.data.imageUrls)) {
+              if (cacheData.data && (!Array.isArray(cacheData.data.imageUrls) || cacheData.data.imageUrls.length === 0)) {
                 if (isDebug()) console.log('[Yahoo] cache refresh: imageUrls missing', jan);
                 // fall through to API call
               } else {
