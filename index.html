@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.217  BUILD_ID=2026-06-04_v217-cache-schema
+APP_VERSION=v23.9.218  BUILD_ID=2026-06-04_v218-imageUrls-fix
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.217";
-  const BUILD_ID    = "2026-06-04_v217-cache-schema";
+  const APP_VERSION = "v23.9.218";
+  const BUILD_ID    = "2026-06-04_v218-imageUrls-fix";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -7084,7 +7084,19 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
                   const g0 = item.genreCategory && item.genreCategory[0];
                   yCat = (g0 && (g0.name || g0.title)) ? String(g0.name || g0.title).trim() : '';
                 } catch (_yg) {}
-                result = normalizeYahooProductInfo({ name, maker, imageUrl, category: yCat });
+                // v218: 直接API側も imageUrls を収集して渡す
+                const directImageUrls = [];
+                try {
+                  if (Array.isArray(json2 && json2.hits)) {
+                    json2.hits.slice(0, 5).forEach(function(h) {
+                      const u = (h.image && h.image.medium) || (h.image && h.image.small) || '';
+                      if (u && u.startsWith('http') && directImageUrls.indexOf(u) === -1) {
+                        directImageUrls.push(u);
+                      }
+                    });
+                  }
+                } catch(_) {}
+                result = normalizeYahooProductInfo({ name, maker, imageUrl, imageUrls: directImageUrls, category: yCat });
                 if (isDebug()) showToast(`[Yahoo] 直接APIok: ${name.substring(0,20)}`, 3000);
               }
             }
