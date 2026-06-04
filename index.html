@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.213  BUILD_ID=2026-06-03_v213-longpress-fix
+APP_VERSION=v23.9.214  BUILD_ID=2026-06-04_v214-image-debug
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.213";
-  const BUILD_ID    = "2026-06-03_v213-longpress-fix";
+  const APP_VERSION = "v23.9.214";
+  const BUILD_ID    = "2026-06-04_v214-image-debug";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -11710,6 +11710,24 @@ function spVisibleTrace(tag, payload, cls) {
     } catch(e) { spDbg('[IMAGE_SOURCE_OFF_ERR]', { jan, err: String(e) }); }
     spDbg('[IMAGE_SOURCE_OFF]', { jan, count: offCandidates.length, candidates: offCandidates });
 
+    // ⑦ 商品名検索（補完）— v214
+    try {
+      const productName = (window.latestProductHints && window.latestProductHints.productName) || '';
+      if (productName && yahooCandidates.length === 0) {
+        const _yahooByNameFn = (typeof lookupYahooByName === 'function')
+          ? lookupYahooByName
+          : (typeof lookupYahooByJan === 'function' ? (name) => lookupYahooByJan(null, name) : null);
+        if (_yahooByNameFn) {
+          const yahooByName = await _yahooByNameFn(productName);
+          if (yahooByName && yahooByName.imageUrl && typeof yahooByName.imageUrl === 'string' &&
+              yahooByName.imageUrl.startsWith('http')) {
+            yahooCandidates.push(yahooByName.imageUrl);
+            spDbg('[IMAGE_SOURCE_YAHOO_NAME]', { productName, url: yahooByName.imageUrl });
+          }
+        }
+      }
+    } catch(e) { spDbg('[IMAGE_SOURCE_YAHOO_NAME_ERR]', { err: String(e) }); }
+
     // 全候補を結合（DB/キャッシュ優先）
     const rawCandidates = [
       ...cacheCandidates,
@@ -11756,9 +11774,17 @@ function spVisibleTrace(tag, payload, cls) {
 
       const finalCandidates = [...new Set(fallbacks)];
       spDbg('[IMAGE_FALLBACK_FINAL]', { jan, count: finalCandidates.length, candidates: finalCandidates });
+      if (isDebug()) {
+        console.log('[IMAGE] candidate count:', finalCandidates.length);
+        finalCandidates.forEach((u, i) => console.log(`[IMAGE] candidate url[${i}]:`, u));
+      }
       return finalCandidates;
     }
 
+    if (isDebug()) {
+      console.log('[IMAGE] candidate count:', unique.length);
+      unique.forEach((u, i) => console.log(`[IMAGE] candidate url[${i}]:`, u));
+    }
     return unique;
   }
 
@@ -11818,6 +11844,10 @@ function spVisibleTrace(tag, payload, cls) {
         imgDiagSaveLog(window._imgDiagData);
 
         if (result.ok) {
+          if (isDebug()) {
+            console.log('[IMAGE] selected url:', url);
+            console.log('[IMAGE] save result: ok');
+          }
           // v198: AI自動選択フラグ（管理者確認用）
           try {
             const _p = db && db.products && db.products[jan || curBarcode];
@@ -11846,6 +11876,9 @@ function spVisibleTrace(tag, payload, cls) {
           // モーダルは開いたまま（別画像を選べるよう）
         }
       } catch(e) {
+        if (isDebug()) {
+          console.log('[IMAGE] save error:', e);
+        }
         spDbg('[IMG_DIAG_APPLY_NG]', { jan, reason: String(e) });
         // v23.9.100: エラー時も元に戻す
         if (prevImg) {
@@ -11920,6 +11953,15 @@ function spVisibleTrace(tag, payload, cls) {
       spDbg('[IMAGE_PICKER_RETURN]', { reason: 'no_jan', jan: curBarcode });
       showToast('バーコードがありません', 4000);
       return;
+    }
+    if (isDebug()) {
+      const _pDbg = db && db.products && db.products[curBarcode];
+      const currentProductName = (_pDbg && _pDbg.name) || (window.latestProductHints && window.latestProductHints.productName) || '';
+      console.log('[IMAGE] modal open');
+      console.log('[IMAGE] jan:', curBarcode);
+      console.log('[IMAGE] productName:', currentProductName);
+      console.log('[DEBUG] appVersion:', APP_VERSION);
+      console.log('[DEBUG] buildId:', BUILD_ID);
     }
     openImagePickerModal();
     const grid = document.getElementById('imagePickerGrid');
@@ -12053,6 +12095,17 @@ function spVisibleTrace(tag, payload, cls) {
     });
 
     grid.innerHTML = '';
+    grid.style.cssText = 'display:flex;flex-direction:column;gap:8px;min-height:80px;';
+    const scrollRow = document.createElement('div');
+    scrollRow.style.cssText = `
+      display: flex;
+      flex-direction: row;
+      gap: 8px;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      padding-bottom: 8px;
+      min-height: 80px;
+    `;
     _candidatesForSelect.forEach((c) => {
       const url = typeof c === 'string' ? c : c.url;
       const source = typeof c === 'object' ? (c.source || '') : '';
@@ -12064,6 +12117,8 @@ function spVisibleTrace(tag, payload, cls) {
         border:2px solid ${isCurrent ? 'var(--sp-primary)' : 'var(--sp-border)'};
         cursor:pointer; background:var(--sp-card-alt);
         user-select:none; -webkit-user-select:none;
+        flex: 0 0 120px;
+        width: 120px;
       `;
       card.innerHTML = `
         <img src="${url}" onerror="this.src=''" style="width:100%;aspect-ratio:1;object-fit:contain;background:#fff;display:block;">
@@ -12107,11 +12162,12 @@ function spVisibleTrace(tag, payload, cls) {
       card.addEventListener('touchend', cancelPress);
       card.addEventListener('touchmove', cancelPress, { passive: true });
 
-      grid.appendChild(card);
+      scrollRow.appendChild(card);
     });
 
+    grid.appendChild(scrollRow);
     const hint = document.createElement('p');
-    hint.style.cssText = 'grid-column:1/-1;font-size:11px;color:var(--sp-text-muted);text-align:center;margin-top:8px;';
+    hint.style.cssText = 'width:100%;font-size:11px;color:var(--sp-text-muted);text-align:center;margin-top:8px;';
     hint.textContent = '長押しで選択確定';
     grid.appendChild(hint);
 
