@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.219  BUILD_ID=2026-06-04_v219-cache-empty-fix
+APP_VERSION=v23.9.220  BUILD_ID=2026-06-04_v220-shared-img-fix
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.219";
-  const BUILD_ID    = "2026-06-04_v219-cache-empty-fix";
+  const APP_VERSION = "v23.9.220";
+  const BUILD_ID    = "2026-06-04_v220-shared-img-fix";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -5122,12 +5122,12 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         imgSrc = placeholderImg();
         hasMyImage = true;
       } else if (it.imageUrl && typeof it.imageUrl === 'string' && 
-                 (it.imageUrl.startsWith('http://') || it.imageUrl.startsWith('https://') || it.imageUrl.startsWith('data:'))) {
-        imgSrc = it.imageUrl;
+                 (it.imageUrl.startsWith('http://') || it.imageUrl.startsWith('https://') || it.imageUrl.startsWith('data:') || it.imageUrl.startsWith('shared:'))) {
+        imgSrc = it.imageUrl.startsWith('shared:') ? placeholderImg() : it.imageUrl;
         hasMyImage = true;
       } else if (last && last.imageUrl && typeof last.imageUrl === 'string' && 
-                 (last.imageUrl.startsWith('http://') || last.imageUrl.startsWith('https://') || last.imageUrl.startsWith('data:'))) {
-        imgSrc = last.imageUrl;
+                 (last.imageUrl.startsWith('http://') || last.imageUrl.startsWith('https://') || last.imageUrl.startsWith('data:') || last.imageUrl.startsWith('shared:'))) {
+        imgSrc = last.imageUrl.startsWith('shared:') ? placeholderImg() : last.imageUrl;
         hasMyImage = true;
       }
 
@@ -5181,10 +5181,10 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         // 自分の画像がある場合
         if (hasMyImage) {
           const fallbackUrl = (last && last.imageUrl && typeof last.imageUrl === 'string' && 
-                              (last.imageUrl.startsWith('http://') || last.imageUrl.startsWith('https://') || last.imageUrl.startsWith('data:'))) 
+                              (last.imageUrl.startsWith('http://') || last.imageUrl.startsWith('https://') || last.imageUrl.startsWith('data:') || last.imageUrl.startsWith('shared:'))) 
                               ? last.imageUrl 
                               : (it.imageUrl && typeof it.imageUrl === 'string' && 
-                                 (it.imageUrl.startsWith('http://') || it.imageUrl.startsWith('https://') || it.imageUrl.startsWith('data:'))) 
+                                 (it.imageUrl.startsWith('http://') || it.imageUrl.startsWith('https://') || it.imageUrl.startsWith('data:') || it.imageUrl.startsWith('shared:'))) 
                                  ? it.imageUrl 
                                  : null;
           
