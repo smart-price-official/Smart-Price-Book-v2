@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.220  BUILD_ID=2026-06-04_v220-shared-img-fix
+APP_VERSION=v23.9.221  BUILD_ID=2026-06-04_v221-google-image-search
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.220";
-  const BUILD_ID    = "2026-06-04_v220-shared-img-fix";
+  const APP_VERSION = "v23.9.221";
+  const BUILD_ID    = "2026-06-04_v221-google-image-search";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -11778,6 +11778,34 @@ function spVisibleTrace(tag, payload, cls) {
         }
       }
     } catch(e) { spDbg('[IMAGE_SOURCE_YAHOO_NAME_ERR]', { err: String(e) }); }
+
+    // ⑧ Google Custom Search 画像検索（v221）
+    try {
+      const proxyUrl = (window.SP_CONFIG && window.SP_CONFIG.yahooProxyExecUrl)
+        ? window.SP_CONFIG.yahooProxyExecUrl.trim() : '';
+      if (proxyUrl) {
+        const productName = (window.latestProductHints && window.latestProductHints.productName) || '';
+        const searchQuery = productName ? (productName + ' ' + jan) : jan;
+        const googleRes = await fetch(
+          `${proxyUrl}?action=google_image_search&q=${encodeURIComponent(searchQuery)}&num=5`,
+          { cache: 'no-store' }
+        );
+        if (googleRes.ok) {
+          const googleJson = await googleRes.json();
+          if (googleJson && Array.isArray(googleJson.images)) {
+            googleJson.images.forEach(function(img) {
+              if (img.url && img.url.startsWith('http')) {
+                const allExisting = [...cacheCandidates, ...yahooCandidates, ...rakutenCandidates, ...offCandidates];
+                if (!allExisting.includes(img.url)) {
+                  yahooCandidates.push(img.url);
+                }
+              }
+            });
+            spDbg('[IMAGE_SOURCE_GOOGLE]', { jan, count: googleJson.images.length });
+          }
+        }
+      }
+    } catch(e) { spDbg('[IMAGE_SOURCE_GOOGLE_ERR]', { jan, err: String(e) }); }
 
     // 全候補を結合（DB/キャッシュ優先）
     const rawCandidates = [
