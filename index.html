@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.223  BUILD_ID=2026-06-05_v223-swipe-guard-store-persist
+APP_VERSION=v23.9.224  BUILD_ID=2026-06-05_v224-history-guard-store-restore
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.223";
-  const BUILD_ID    = "2026-06-05_v223-swipe-guard-store-persist";
+  const APP_VERSION = "v23.9.224";
+  const BUILD_ID    = "2026-06-05_v224-history-guard-store-restore";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -3457,6 +3457,41 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     try { spDbg('[APP_BOOT_DONE]', { productCount: Object.keys((db && db.products) || {}).length }); } catch (_) {}
+
+    // v23.9.224 SP-250605-018 P0-01/02: history.pushState + popstate で OS 戻るナビゲーション自体を無効化
+    //   touch preventDefault（v223）だけでは Android の OS バックジェスチャ（history back）を止められず
+    //   ページがリロード/リセットされ curStore が "未設定" に戻る根本原因を断つ。
+    //   imgPicker の popstate（L11721 {imgPicker:true}）と共存：
+    //     imgPicker は自分の onPopState でモーダルを閉じて listener を remove する。
+    //     本ガードは常に re-pushState するだけなので imgPicker 動作を妨げない。
+    if (!window._spHistoryGuard) {
+      window._spHistoryGuard = true;
+      try { history.pushState({ sp: true }, ''); } catch (_) {}
+      window.addEventListener('popstate', function (e) {
+        try { history.pushState({ sp: true }, ''); } catch (_) {}
+        try { spDbg('[HISTORY_GUARD]', { state: e.state ? JSON.stringify(e.state) : 'null' }); } catch (_) {}
+      });
+      try { spDbg('[HISTORY_GUARD_INIT]', {}); } catch (_) {}
+    }
+
+    // v23.9.224 SP-250605-018 P0-04: 起動シーケンス末尾で確定的に店舗復元
+    //   renderStoreList のタイミング依存（v223 D-1/D-3）を排除し、APP_BOOT_DONE 後に決定論的に実行。
+    //   window._spStoreRestored を true にして renderStoreList 内の復元ブロックが二重実行しないよう保護。
+    try {
+      var _spBootStore = '';
+      try { _spBootStore = localStorage.getItem('sp_last_store') || ''; } catch (_) {}
+      if (_spBootStore && _spBootStore !== '未設定') {
+        curStore = _spBootStore;
+        window._spStoreRestored = true;
+        try {
+          var _ind = document.getElementById('curStoreIndicator');
+          if (_ind) _ind.innerText = `【 ${curStore} 】で保存します`;
+        } catch (_) {}
+        try { spDbg('[STORE_RESTORE_BOOT]', { store: _spBootStore }); } catch (_) {}
+      } else {
+        try { spDbg('[STORE_RESTORE_BOOT_SKIP]', { saved: _spBootStore, curStore: String(curStore || '') }); } catch (_) {}
+      }
+    } catch (_) {}
 
     // v23.9.174 SP-260601-008: 起動時アカウントUID統合（token あり時のみ・冪等・C1で no-op）
     //   - Firebase 未初期化なら linkAccountUid 内で G4 deferred → 1 秒間隔で最大 30 秒監視・準備完了で 1 回再試行
