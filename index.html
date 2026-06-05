@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.221  BUILD_ID=2026-06-04_v221-google-image-search
+APP_VERSION=v23.9.222  BUILD_ID=2026-06-05_v222-login-persist-fix
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.221";
-  const BUILD_ID    = "2026-06-04_v221-google-image-search";
+  const APP_VERSION = "v23.9.222";
+  const BUILD_ID    = "2026-06-05_v222-login-persist-fix";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -1630,7 +1630,11 @@ document.addEventListener('DOMContentLoaded', function() {
           </div>
           <div class="mb-3">
             <label class="small text-secondary mb-1 d-block" for="accountPasswordInput">パスワード</label>
-            <input id="accountPasswordInput" type="password" class="form-control sp-bg-card sp-border-muted" placeholder="8文字以上" autocomplete="current-password">
+            <!-- v23.9.222 SP-250605-013 P0-03: パスワード表示切替 👁（ログイン/新規登録共用の単一欄） -->
+            <div style="position:relative;">
+              <input id="accountPasswordInput" type="password" class="form-control sp-bg-card sp-border-muted" placeholder="8文字以上" autocomplete="current-password" style="padding-right:2.8rem;">
+              <button type="button" id="accountPasswordToggle" onclick="togglePasswordVisibility('accountPasswordInput', this)" aria-label="パスワード表示切替" title="パスワード表示切替" style="position:absolute; right:6px; top:50%; transform:translateY(-50%); background:transparent; border:none; cursor:pointer; font-size:1.1rem; line-height:1; padding:4px 6px;">👁</button>
+            </div>
           </div>
           <div class="d-grid gap-2 mb-2">
             <button type="button" class="btn sp-btn-primary py-2" onclick="handleAccountLoginClick()">ログイン</button>
@@ -3457,12 +3461,31 @@ document.addEventListener('DOMContentLoaded', function() {
     // v23.9.174 SP-260601-008: 起動時アカウントUID統合（token あり時のみ・冪等・C1で no-op）
     //   - Firebase 未初期化なら linkAccountUid 内で G4 deferred → 1 秒間隔で最大 30 秒監視・準備完了で 1 回再試行
     //   - C1 (sp_user_id === accountUid) で no-op return するため起動毎の負荷は最小
+    // v23.9.222 SP-250605-013 P0-01/02: 起動時にまずアクセストークンをリフレッシュしてから linkAccountUid を呼ぶ。
+    //   旧不具合: アクセストークン期限切れ → linkAccountUid('boot') の /me が 401 →
+    //            linkAccountUid 内で即 spAccountLogout()（有効な refresh_token ごと破棄）
+    //            → 「ログイン済みなのに頻繁にログアウト＋登録バナー表示」
+    //   修正: boot 時に refresh_token で access_token を先行更新し 401 自体を起こさない。
+    //         linkAccountUid（v174 同期コア・禁止ゾーン F1）本体は無変更。
+    //         リフレッシュ失敗（refresh_token も失効＝真にログアウト）時のみ後続でバナー表示。
     try {
       var _hasToken = false;
       try { _hasToken = !!(localStorage.getItem('sp_auth_token') || ''); } catch (_) {}
       if (_hasToken && typeof window.linkAccountUid === 'function') {
         // 起動直後の同期処理と競合しないよう少し遅延させて発火
-        setTimeout(function () { try { window.linkAccountUid('boot'); } catch (_) {} }, 1500);
+        setTimeout(function () {
+          (async function () {
+            try {
+              if (typeof window.spAccountRefreshToken === 'function') {
+                var _rr = await window.spAccountRefreshToken();
+                try { spDbg('[BOOT_SESSION_REFRESH]', { ok: !!(_rr && _rr.ok) }); } catch (_) {}
+              }
+            } catch (_) {}
+            try { window.linkAccountUid('boot'); } catch (_) {}
+            // リフレッシュ＆ /me 後の確定状態でバナーを再判定（トークンが残っていれば非表示・真の失効時のみ表示）
+            try { if (typeof window.renderStartupBannerIfNeeded === 'function') window.renderStartupBannerIfNeeded(); } catch (_) {}
+          })();
+        }, 1500);
       }
     } catch (_) {}
 
@@ -12922,6 +12945,24 @@ function spVisibleTrace(tag, payload, cls) {
     try { spDbg('[ACCOUNT_LOGOUT]', {}); } catch(_) {}
   }
   window.spAccountLogout = spAccountLogout;
+
+  // v23.9.222 SP-250605-013 P0-03: パスワード表示/マスク切替（👁 / 🙈）
+  //   inputId の type を password ⇄ text でトグル。ログイン/新規登録共用の単一欄に対応。
+  function togglePasswordVisibility(inputId, btn) {
+    try {
+      var el = document.getElementById(inputId);
+      if (!el) return;
+      if (el.type === 'password') {
+        el.type = 'text';
+        if (btn) { btn.textContent = '🙈'; btn.setAttribute('aria-label', 'パスワードを隠す'); }
+      } else {
+        el.type = 'password';
+        if (btn) { btn.textContent = '👁'; btn.setAttribute('aria-label', 'パスワードを表示'); }
+      }
+      try { spDbg('[PASSWORD_VISIBILITY_TOGGLE]', { inputId: inputId, shown: el.type === 'text' }); } catch (_) {}
+    } catch (_) {}
+  }
+  window.togglePasswordVisibility = togglePasswordVisibility;
 
   // v23.9.176 SP-260601-009: 公開コード（8 桁・XXXX-XXXX 表示）系ヘルパー
   //   - DB 保存はハイフン無しの 8 文字
