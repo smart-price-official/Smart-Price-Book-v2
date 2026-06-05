@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.222  BUILD_ID=2026-06-05_v222-login-persist-fix
+APP_VERSION=v23.9.223  BUILD_ID=2026-06-05_v223-swipe-guard-store-persist
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.222";
-  const BUILD_ID    = "2026-06-05_v222-login-persist-fix";
+  const APP_VERSION = "v23.9.223";
+  const BUILD_ID    = "2026-06-05_v223-swipe-guard-store-persist";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -4736,6 +4736,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       curStore = s;
       const ind = document.getElementById('curStoreIndicator');
       if(ind) ind.innerText = `【 ${curStore} 】で保存します`;
+      // v23.9.223 SP-250605-017 B案/D-2: 手入力追加も店舗変更イベントとして永続化
+      try { _spPersistStore(s); } catch (_) {}
       renderStoreList();
       showToast("店名を追加しました", 3000);
     }
@@ -4767,6 +4769,19 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     return nearbyScore * 0.7 + freqScore * 0.3 + distanceBoost;
   }
   // ===== [v23.9.129] GPS chip display score ここまで =====
+
+  // v23.9.223 SP-250605-017 B案/D-2: 店舗選択を localStorage へ永続化（店舗変更イベント時のみ・定期保存しない）
+  //   curStore は JS 変数のため、エッジスワイプ→ブラウザ戻る→再読込で "未設定" に戻り選択店舗が消える。
+  //   選択のたびに sp_last_store（＋GPS時 sp_last_gps_store）へ保存し、起動時に復元する（D-1/D-3）。
+  function _spPersistStore(name) {
+    try {
+      var v = String(name == null ? '' : name);
+      localStorage.setItem('sp_last_store', v);
+      // GPS が ON のときは GPS 由来候補として別キーにも記録（誤登録調査・将来の優先表示用）
+      try { if (typeof isGpsOn !== 'undefined' && isGpsOn && v && v !== '未設定') localStorage.setItem('sp_last_gps_store', v); } catch (_) {}
+      try { spDbg('[STORE_PERSIST]', { store: v, gpsOn: (typeof isGpsOn !== 'undefined' ? !!isGpsOn : false) }); } catch (_) {}
+    } catch (_) {}
+  }
 
   function renderStoreList(manualPriority = []) {
     try { spDbg('[STORE_RENDER_START]', {}); } catch (_s0) {}
@@ -4925,10 +4940,24 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       });
     } catch (_s2) {}
 
-    // ✅ 起動直後は「未設定」固定（前回選択を引きずらない）
-    if (window.SP_BOOT_RESET_STORE) {
-      curStore = '未設定';
-      window.SP_BOOT_RESET_STORE = false;
+    // v23.9.223 SP-250605-017 D-1/D-3: 起動時に前回選択店舗を localStorage から復元（旧「未設定固定」を置換）
+    //   - 初回 renderStoreList のみ実行（window._spStoreRestored ガード）
+    //   - 現在 curStore がまだ初期値 '未設定' のときだけ復元（セッション中のユーザー選択は上書きしない）
+    //   - 復元成功時は '未設定' に戻さない（D-3）
+    if (!window._spStoreRestored) {
+      window._spStoreRestored = true;
+      try {
+        var _saved = '';
+        try { _saved = localStorage.getItem('sp_last_store') || ''; } catch (_) {}
+        if (_saved && _saved !== '未設定' && (!curStore || curStore === '未設定')) {
+          curStore = _saved;
+          var _ind0 = document.getElementById('curStoreIndicator');
+          if (_ind0) _ind0.innerText = `【 ${curStore} 】で保存します`;
+          try { spDbg('[STORE_RESTORE]', { store: _saved }); } catch (_) {}
+        } else {
+          try { spDbg('[STORE_RESTORE_SKIP]', { saved: _saved, curStore: String(curStore || '') }); } catch (_) {}
+        }
+      } catch (_) {}
     }
 
     const gpsTxt = isGpsOn ? `GPS<span class="gps-status">●${lastGpsTime}</span>` : `GPS<span class="gps-status">OFF</span>`;
@@ -4961,7 +4990,9 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         curStore = name;
         const ind = document.getElementById('curStoreIndicator');
         if(ind) ind.innerText = `【 ${curStore} 】で保存します`;
-        
+        // v23.9.223 SP-250605-017 B案/D-2: 店舗選択イベント時に永続化
+        try { _spPersistStore(name); } catch (_) {}
+
         // ✅ ストアの税別/税込既定値を自動反映
         const storeTaxMode = db.config.storeTaxModes && db.config.storeTaxModes[curStore];
         if (storeTaxMode) {
@@ -12641,18 +12672,29 @@ function spVisibleTrace(tag, payload, cls) {
       document.addEventListener('keydown', window._spEscListener);
     }
     // P0-5: アプリ全体サイドスワイプ誤爆防止（設定モーダル含む全画面対象）
+    // v23.9.223 SP-250605-017 A案: 既存ガードを強化（重複登録しない・エッジ起点を touchstart で記録し
+    //   エッジ由来の横スワイプは閾値を 50→12px に下げて早期 preventDefault。Android のエッジ戻るを早く止める）
     if (!window._spGlobalSwipeGuard) {
-      var _swipeStartX = 0, _swipeStartY = 0;
+      var _swipeStartX = 0, _swipeStartY = 0, _swipeFromEdge = false;
       window._spGlobalSwipeGuard = true;
-      document.addEventListener('touchstart', function(e){ _swipeStartX = e.touches[0].clientX; _swipeStartY = e.touches[0].clientY; }, { passive: true });
+      document.addEventListener('touchstart', function(e){
+        _swipeStartX = e.touches[0].clientX;
+        _swipeStartY = e.touches[0].clientY;
+        _swipeFromEdge = (_swipeStartX < 24 || _swipeStartX > window.innerWidth - 24);
+      }, { passive: true });
       document.addEventListener('touchmove', function(e){
         var dx = e.touches[0].clientX - _swipeStartX;
         var dy = e.touches[0].clientY - _swipeStartY;
-        var fromEdge = _swipeStartX < 20 || _swipeStartX > window.innerWidth - 20;
-        var isHorizontal = Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 2;
+        var fromEdge = _swipeFromEdge || _swipeStartX < 24 || _swipeStartX > window.innerWidth - 24;
+        // エッジ起点は早期（12px）・非エッジは従来どおり 50px で横スワイプ判定
+        var threshold = fromEdge ? 12 : 50;
+        var isHorizontal = Math.abs(dx) > threshold && Math.abs(dx) > Math.abs(dy) * 1.5;
         var tag = document.activeElement ? document.activeElement.tagName : '';
         var isInputting = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
-        if (fromEdge && isHorizontal && !isInputting) { e.preventDefault(); }
+        if (fromEdge && isHorizontal && !isInputting) {
+          e.preventDefault();
+          try { spDbg('[EDGE_SWIPE_BLOCKED]', { startX: Math.round(_swipeStartX), dx: Math.round(dx) }); } catch (_) {}
+        }
       }, { passive: false });
     }
     
