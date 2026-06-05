@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.224  BUILD_ID=2026-06-05_v224-history-guard-store-restore
+APP_VERSION=v23.9.225  BUILD_ID=2026-06-05_v225-store-color-restore
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.224";
-  const BUILD_ID    = "2026-06-05_v224-history-guard-store-restore";
+  const APP_VERSION = "v23.9.225";
+  const BUILD_ID    = "2026-06-05_v225-store-color-restore";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -3487,7 +3487,16 @@ document.addEventListener('DOMContentLoaded', function() {
           var _ind = document.getElementById('curStoreIndicator');
           if (_ind) _ind.innerText = `【 ${curStore} 】で保存します`;
         } catch (_) {}
-        try { spDbg('[STORE_RESTORE_BOOT]', { store: _spBootStore }); } catch (_) {}
+        // v23.9.225 SP-250605-019 P0-01: boot 時 renderStoreList は curStore 復元前に実行済のため
+        //   active クラスが付かない。curStore 確定後に store-tag チップへ active を再適用する。
+        try {
+          document.querySelectorAll('.store-tag').forEach(function(s) {
+            if (s.innerText && s.innerText.trim() === curStore) {
+              s.classList.add('active');
+            }
+          });
+        } catch (_) {}
+        try { spDbg('[STORE_RESTORE_BOOT]', { store: _spBootStore, chipApplied: true }); } catch (_) {}
       } else {
         try { spDbg('[STORE_RESTORE_BOOT_SKIP]', { saved: _spBootStore, curStore: String(curStore || '') }); } catch (_) {}
       }
@@ -4812,6 +4821,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     try {
       var v = String(name == null ? '' : name);
       localStorage.setItem('sp_last_store', v);
+      // v23.9.225 SP-250605-019 P0-02: 保存時刻を記録（デバッグ・復元タイミング調査用）
+      try { localStorage.setItem('sp_last_store_ts', String(new Date().toISOString())); } catch (_) {}
       // GPS が ON のときは GPS 由来候補として別キーにも記録（誤登録調査・将来の優先表示用）
       try { if (typeof isGpsOn !== 'undefined' && isGpsOn && v && v !== '未設定') localStorage.setItem('sp_last_gps_store', v); } catch (_) {}
       try { spDbg('[STORE_PERSIST]', { store: v, gpsOn: (typeof isGpsOn !== 'undefined' ? !!isGpsOn : false) }); } catch (_) {}
