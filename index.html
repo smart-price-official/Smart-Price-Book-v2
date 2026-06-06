@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.228  BUILD_ID=2026-06-06_v228-session-fix
+APP_VERSION=v23.9.229  BUILD_ID=2026-06-06_v229-img-log-investigation
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.228";
-  const BUILD_ID    = "2026-06-06_v228-session-fix";
+  const APP_VERSION = "v23.9.229";
+  const BUILD_ID    = "2026-06-06_v229-img-log-investigation";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -2097,6 +2097,31 @@ document.addEventListener('DOMContentLoaded', function() {
   }
   try { window.isDebug = isDebug; } catch (_isd) {}
 
+  // v229: 画像消失調査ログ（debug=1 のみ・UI変更なし）
+  function spJanFromImageKey(key) {
+    if (!key) return '';
+    const m = String(key).match(/^img_(\d+)/);
+    return m ? m[1] : '';
+  }
+  function spProductNameFromJan(jan) {
+    try {
+      const p = db && db.products && db.products[jan];
+      return p && p.name ? String(p.name) : '';
+    } catch (_) { return ''; }
+  }
+  function spImgInvestigationLog(tag, jan, productName, imageUrl, extra) {
+    if (!isDebug()) return;
+    const payload = {
+      JAN: jan || '',
+      productName: productName || '',
+      imageUrl: imageUrl != null ? String(imageUrl) : ''
+    };
+    if (extra && typeof extra === 'object') {
+      Object.keys(extra).forEach(function(k) { payload[k] = extra[k]; });
+    }
+    console.log(tag, payload);
+  }
+
   // ✅ デバッグログ関数（トーストで表示）
   function debugLog(message, type = 'info') {
     if (!isDebug()) return;
@@ -2551,9 +2576,15 @@ document.addEventListener('DOMContentLoaded', function() {
         const tx = dbi.transaction(IMG_STORE, "readwrite");
         const store = tx.objectStore(IMG_STORE);
         store.put(blob, key);
-        tx.oncomplete = () => res(true);
+        tx.oncomplete = () => {
+          const jan = spJanFromImageKey(key);
+          spImgInvestigationLog('[IMG-IDB-SAVE]', jan, spProductNameFromJan(jan), '', { imageKey: key, ok: true });
+          res(true);
+        };
         tx.onerror = (e) => {
           console.warn('[IDB] put failed:', e);
+          const jan = spJanFromImageKey(key);
+          spImgInvestigationLog('[IMG-IDB-SAVE]', jan, spProductNameFromJan(jan), '', { imageKey: key, ok: false });
           res(false);
         };
       } catch (err) {
@@ -2576,7 +2607,16 @@ document.addEventListener('DOMContentLoaded', function() {
         const tx = dbi.transaction(IMG_STORE, "readonly");
         const store = tx.objectStore(IMG_STORE);
         const req = store.get(key);
-        req.onsuccess = () => res(req.result || null);
+        req.onsuccess = () => {
+          const result = req.result || null;
+          const jan = spJanFromImageKey(key);
+          spImgInvestigationLog('[IMG-IDB-LOAD]', jan, spProductNameFromJan(jan), '', {
+            imageKey: key,
+            found: !!result,
+            blobSize: result && result.size != null ? result.size : 0
+          });
+          res(result);
+        };
         req.onerror = (e) => {
           console.warn('[IDB] get failed:', e);
           res(null);
@@ -5252,6 +5292,16 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         hasMyImage = true;
       }
 
+      spImgInvestigationLog('[IMG-RENDER]', it.code, spGetDisplayName(it.name, it.code),
+        (last && last.imageUrl) || it.imageUrl || imgSrc || '', {
+          hasMyImage: hasMyImage,
+          itImageUrl: it.imageUrl || '',
+          lastImageUrl: last && last.imageUrl ? last.imageUrl : '',
+          itImageKey: it.imageKey || '',
+          lastImageKey: last && last.imageKey ? last.imageKey : '',
+          imgSrc: imgSrc || ''
+        });
+
       // ✅ 統計計算（平均・最安・前回）
       const allPrices = hlist.map(h => Number(calcDisplayPrice(h))).filter(p => !isNaN(p) && p > 0);
       const avgP = allPrices.length ? Math.round(allPrices.reduce((a,b)=>a+b,0)/allPrices.length) : null;
@@ -6063,6 +6113,14 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       } else if (tempImgData && tempImgData.type === 'url') {
         p.imageUrl = tempImgData.url;
         delete p.image;
+      }
+
+      if (tempImgData) {
+        spImgInvestigationLog('[IMG-SAVE]', jan, safeName || p.name || '', p.imageUrl || '', {
+          phase: 'saveData',
+          imageKey: p.imageKey || '',
+          tempType: tempImgData.type || typeof tempImgData
+        });
       }
 
       const rawNameTrim = String(rawName || '').trim();
@@ -11493,6 +11551,8 @@ function spVisibleTrace(tag, payload, cls) {
     const p = db && db.products && db.products[jan];
     const productName = p ? (p.name || '') : '';
 
+    spImgInvestigationLog('[IMG-SAVE]', jan, productName, url, { phase: 'start' });
+
     // v23.9.101: 画像取得開始ログ
     spDbg('[IMAGE_PICK_START]', { jan, url, productName });
 
@@ -11714,6 +11774,14 @@ function spVisibleTrace(tag, payload, cls) {
 
       if (imageRef) {
         saveLocalOnly();
+        spImgInvestigationLog('[IMG-SAVE]', jan, prod.name || productName, prod.imageUrl || '', {
+          phase: 'apply_ok',
+          imageKey: prod.imageKey || '',
+          imageRef: imageRef,
+          sourceUrl: url,
+          idbOk: idbOk,
+          firebaseOk: firebaseOk
+        });
         spDbg('[IMG_DIAG_APPLY_OK]', { jan, imageRef });
         spDbg('[IMAGE_SAVE_STEP]', { step: 'apply', result: 'ok' });
         // v23.9.101: 適用成功ログ
