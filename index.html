@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.225  BUILD_ID=2026-06-05_v225-store-color-restore
+APP_VERSION=v23.9.226  BUILD_ID=2026-06-06_v226-swipeguard-layer
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.225";
-  const BUILD_ID    = "2026-06-05_v225-store-color-restore";
+  const APP_VERSION = "v23.9.226";
+  const BUILD_ID    = "2026-06-06_v226-swipeguard-layer";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -17588,6 +17588,111 @@ window.spSetReportPeriod = spSetReportPeriod;
     spDbgLog('TAP ' + fn.slice(0,30) + (topSame ? ' ✅' : ' ⚠️top=' + (top?top.tagName+top.id:'?')), topSame?'ok':'w');
   }, true);
 
+})();
+</script>
+
+
+<!-- v23.9.226 SP-250606-SWIPEGUARD-001: 透明スワイプガードレイヤー実験 -->
+<!-- 削除方法: このscriptブロックごと削除する -->
+<script>
+(function() {
+  // [v226] スワイプガード幅定数（1/2/3mm切替可）
+  const SWIPE_GUARD_MM = 2;
+
+  // 統計カウンター
+  var _spGuardStats = { left: 0, right: 0, total: 0 };
+
+  // debug=1 時のみ画面UI更新
+  function _spUpdateGuardDebugUI() {
+    var el = document.getElementById('sp-swipe-guard-debug');
+    if (!el) return;
+    el.textContent = [
+      'SwipeGuard',
+      'L:' + _spGuardStats.left,
+      'R:' + _spGuardStats.right,
+      'T:' + _spGuardStats.total
+    ].join(' | ');
+  }
+
+  // ログ記録（debug=1 時のみ画面表示）
+  function _spSwipeGuardLog(side, x) {
+    _spGuardStats[side]++;
+    _spGuardStats.total++;
+    if (window.location.search.includes('debug=1')) {
+      console.log('[SWIPE_GUARD] side=' + side + ' x=' + x + ' total=' + _spGuardStats.total);
+      _spUpdateGuardDebugUI();
+    }
+  }
+
+  // debug=1 用オーバーレイUI生成
+  function _spCreateGuardDebugUI() {
+    if (!window.location.search.includes('debug=1')) return;
+    var el = document.createElement('div');
+    el.id = 'sp-swipe-guard-debug';
+    el.style.cssText = [
+      'position:fixed',
+      'top:4px',
+      'left:50%',
+      'transform:translateX(-50%)',
+      'background:rgba(0,0,0,0.7)',
+      'color:#0f0',
+      'font:10px monospace',
+      'padding:3px 8px',
+      'border-radius:4px',
+      'z-index:999998',
+      'pointer-events:none'
+    ].join(';');
+    el.textContent = 'SwipeGuard | L:0 | R:0 | T:0';
+    document.body.appendChild(el);
+  }
+
+  // 左右透明ガードレイヤー生成
+  function _spCreateSwipeGuardLayers() {
+    // 重複生成防止
+    if (document.getElementById('sp-swipe-guard-left')) return;
+
+    // mm → CSS px 変換（指示書仕様準拠）
+    var pxPerMm = window.devicePixelRatio || 2;
+    var widthPx = Math.round(SWIPE_GUARD_MM * pxPerMm * 3);
+
+    ['left', 'right'].forEach(function(side) {
+      var layer = document.createElement('div');
+      layer.id = 'sp-swipe-guard-' + side;
+      layer.style.cssText = [
+        'position:fixed',
+        'top:0',
+        side + ':0',
+        'width:' + widthPx + 'px',
+        'height:100%',
+        'z-index:99999',
+        'background:transparent',
+        'pointer-events:auto',
+        'touch-action:none'
+      ].join(';');
+
+      // [v226] touchstart/pointerdown のみ取得・中央操作に干渉しない
+      layer.addEventListener('touchstart', function(e) {
+        _spSwipeGuardLog(side, e.touches[0].clientX);
+        e.preventDefault();
+      }, { passive: false });
+
+      layer.addEventListener('pointerdown', function(e) {
+        _spSwipeGuardLog(side, e.clientX);
+        e.preventDefault();
+      });
+
+      document.body.appendChild(layer);
+    });
+
+    _spCreateGuardDebugUI();
+  }
+
+  // DOMContentLoaded 後に生成
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _spCreateSwipeGuardLayers);
+  } else {
+    _spCreateSwipeGuardLayers();
+  }
 })();
 </script>
 
