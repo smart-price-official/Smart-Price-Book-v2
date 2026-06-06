@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.226  BUILD_ID=2026-06-06_v226-swipeguard-layer
+APP_VERSION=v23.9.227  BUILD_ID=2026-06-06_v227-shopping-session
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.226";
-  const BUILD_ID    = "2026-06-06_v226-swipeguard-layer";
+  const APP_VERSION = "v23.9.227";
+  const BUILD_ID    = "2026-06-06_v227-shopping-session";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -1170,6 +1170,18 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <div class="container p-3">
   <div id="mainView">
+    <!-- v23.9.227 SP-250606-SESSION-001: セッション帯（買い物中のみ表示） -->
+    <div id="sp-session-banner" style="display:none; background:rgba(0,128,0,0.1); border:1px solid rgba(0,128,0,0.3); border-radius:8px; padding:8px 12px; margin-bottom:10px;">
+      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        <span id="sp-session-banner-text" style="flex:1; font-size:0.85rem; font-weight:600;">🛒</span>
+        <button onclick="try{window._spSessionEnd&&window._spSessionEnd()}catch(_){}" style="font-size:0.78rem; padding:3px 10px; border:1px solid rgba(200,0,0,0.5); border-radius:6px; background:transparent; color:var(--sp-danger,#dc3545); cursor:pointer; white-space:nowrap;">買い物を終わる</button>
+      </div>
+      <div id="sp-session-banner-sub" style="font-size:0.78rem; color:var(--sp-text-muted,#888); margin-top:2px;"></div>
+    </div>
+    <!-- v23.9.227: セッション復帰ダイアログ（5分超過用・5分以内はトースト） -->
+    <div id="sp-session-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.65); z-index:99990; align-items:center; justify-content:center; padding:16px;">
+      <div id="sp-session-modal-inner" style="background:var(--sp-card,#1e1e1e); border-radius:12px; padding:20px; max-width:320px; width:100%; color:var(--sp-text,#fff);"></div>
+    </div>
     <!-- v23.9.173 SP-260601-007: 起動時アカウント連携バナー（C案・未ログイン時のみ・×で当日非表示） -->
     <div id="startupAccountBanner" class="mb-3 p-2 d-flex align-items-center" style="display:none; background:rgba(13,110,253,0.15); border:1px solid rgba(13,110,253,0.4); border-radius:8px; font-size:0.82rem; gap:8px;">
       <span style="flex:1; line-height:1.4;">アカウントを作成するとPCとスマホのデータが同期されます</span>
@@ -3502,6 +3514,9 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     } catch (_) {}
 
+    // [v227] セッション: 起動時チェック（ストア復元後に実行）
+    try { if (typeof window._spSessionBootCheck==='function') window._spSessionBootCheck(); } catch(_) {}
+
     // v23.9.174 SP-260601-008: 起動時アカウントUID統合（token あり時のみ・冪等・C1で no-op）
     //   - Firebase 未初期化なら linkAccountUid 内で G4 deferred → 1 秒間隔で最大 30 秒監視・準備完了で 1 回再試行
     //   - C1 (sp_user_id === accountUid) で no-op return するため起動毎の負荷は最小
@@ -4830,6 +4845,10 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
   }
 
   function renderStoreList(manualPriority = []) {
+    // [v227] セッション: GPSオフ時は前回ストアを先頭に（session lastStoreName を優先）
+    if (!manualPriority.length && !isGpsOn && window._spSessionLastStore) {
+      manualPriority = [window._spSessionLastStore];
+    }
     try { spDbg('[STORE_RENDER_START]', {}); } catch (_s0) {}
     try {
     db = normalizeDb(db);
@@ -5038,6 +5057,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         if(ind) ind.innerText = `【 ${curStore} 】で保存します`;
         // v23.9.223 SP-250605-017 B案/D-2: 店舗選択イベント時に永続化
         try { _spPersistStore(name); } catch (_) {}
+        // [v227] セッション: 店舗選択トリガー
+        try { if (typeof window._spSessionOnStoreSelect==='function') window._spSessionOnStoreSelect(name); } catch(_) {}
 
         // ✅ ストアの税別/税込既定値を自動反映
         const storeTaxMode = db.config.storeTaxModes && db.config.storeTaxModes[curStore];
@@ -6164,6 +6185,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       });
       // v23.9.166 SP-250529-002: 動作ログ（商品追加 成功）
       try { if (typeof window.spOpLog === 'function') window.spOpLog('product_add', { jan: jan, name: safeName, result: 'ok', price: val, store: curStore }); } catch (_) {}
+      // [v227] セッション: 価格保存トリガー（scanCount++）
+      try { if (typeof window._spSessionOnSaveData==='function') window._spSessionOnSaveData(curStore); } catch(_) {}
 
       // [ssot-fix-save-version-log] どの版で保存したかを記録
       spDbg('[SAVE_VERSION]', {
@@ -8218,6 +8241,8 @@ function openManualEntryOnly(){
 function startScanner() {
     // v194: [START_CLICK] タイムスタンプ（ユーザーのタップ瞬間を計測）
     try { spDbg('[START_CLICK]', { ts: Date.now() }); } catch(_) {}
+    // [v227] セッション: スキャン開始トリガー
+    try { if (typeof window._spSessionOnScanStart==='function') window._spSessionOnScanStart(); } catch(_) {}
     // isScanning=true でも camera-area が非表示なら固着と判断してリカバリ
     if (isScanning) {
       var _caCheck = document.getElementById('camera-area');
@@ -17592,106 +17617,185 @@ window.spSetReportPeriod = spSetReportPeriod;
 </script>
 
 
-<!-- v23.9.226 SP-250606-SWIPEGUARD-001: 透明スワイプガードレイヤー実験 -->
-<!-- 削除方法: このscriptブロックごと削除する -->
+<!-- v23.9.227 SP-250606-SESSION-001/002: ショッピングセッション機能 -->
 <script>
 (function() {
-  // [v226] スワイプガード幅定数（1/2/3/4mm切替可）
-  const SWIPE_GUARD_MM = 4;
+  var SP_SESSION_KEY     = 'smartPrice_shoppingSession';
+  var SP_LAST_ACTIVE_KEY = 'smartPrice_lastAppActiveAt';
+  var SP_LAST_STORE_KEY  = 'smartPrice_lastStoreName';
+  var SP_LAST_STORE_TS   = 'smartPrice_lastStoreSelectedAt';
+  var RESUME_THRESHOLD   = 5 * 60 * 1000; // 5分
 
-  // 統計カウンター
-  var _spGuardStats = { left: 0, right: 0, total: 0 };
-
-  // debug=1 時のみ画面UI更新
-  function _spUpdateGuardDebugUI() {
-    var el = document.getElementById('sp-swipe-guard-debug');
-    if (!el) return;
-    el.textContent = [
-      'SwipeGuard',
-      'L:' + _spGuardStats.left,
-      'R:' + _spGuardStats.right,
-      'T:' + _spGuardStats.total
-    ].join(' | ');
+  function _isDebug() {
+    return window.location.search.includes('debug=1');
+  }
+  function _log(tag, data) {
+    if (_isDebug()) console.log('[SESSION] ' + tag, data || {});
   }
 
-  // ログ記録（debug=1 時のみ画面表示）
-  function _spSwipeGuardLog(side, x) {
-    _spGuardStats[side]++;
-    _spGuardStats.total++;
-    if (window.location.search.includes('debug=1')) {
-      console.log('[SWIPE_GUARD] side=' + side + ' x=' + x + ' total=' + _spGuardStats.total);
-      _spUpdateGuardDebugUI();
+  // ---- セッションデータ ----
+  function _load() {
+    try { return JSON.parse(localStorage.getItem(SP_SESSION_KEY) || 'null') || {}; } catch(_) { return {}; }
+  }
+  function _save(s) {
+    try { localStorage.setItem(SP_SESSION_KEY, JSON.stringify(s)); } catch(_) {}
+  }
+
+  // ---- セッション開始 ----
+  function _start(storeName) {
+    var s = _load();
+    var now = Date.now();
+    if (!s.active || s.storeName !== storeName) {
+      s = { active: true, storeName: storeName || '未設定', startedAt: now,
+            lastActiveAt: now, scanCount: 0, lastBarcode: '' };
+    } else {
+      s.lastActiveAt = now;
+    }
+    _save(s);
+    try { localStorage.setItem(SP_LAST_ACTIVE_KEY, String(now)); } catch(_) {}
+    try { localStorage.setItem(SP_LAST_STORE_KEY, storeName || ''); } catch(_) {}
+    try { localStorage.setItem(SP_LAST_STORE_TS, String(now)); } catch(_) {}
+    window._spSessionLastStore = storeName || '';
+    _renderBanner();
+    _log('SESSION_START', { store: storeName, scanCount: s.scanCount });
+  }
+
+  // ---- セッション終了 ----
+  function _end() {
+    var s = _load();
+    s.active = false;
+    s.lastActiveAt = Date.now();
+    _save(s);
+    _hideBanner();
+    _log('SESSION_END', { store: s.storeName, scanCount: s.scanCount });
+    try { if (typeof showToast === 'function') showToast('お買い物おつかれさまでした 🛒', 3000); } catch(_) {}
+  }
+  window._spSessionEnd = _end;
+
+  // ---- バナー描画 ----
+  function _renderBanner() {
+    var s = _load();
+    var el = document.getElementById('sp-session-banner');
+    if (!el) return;
+    if (!s.active || !s.storeName || s.storeName === '未設定') { _hideBanner(); return; }
+    var startHM = '--:--';
+    try {
+      var d = new Date(s.startedAt);
+      startHM = ('0'+d.getHours()).slice(-2) + ':' + ('0'+d.getMinutes()).slice(-2);
+    } catch(_) {}
+    var txt = document.getElementById('sp-session-banner-text');
+    var sub = document.getElementById('sp-session-banner-sub');
+    if (txt) txt.textContent = '🛒 ' + s.storeName + ' で買い物中';
+    if (sub) sub.textContent = startHM + '開始 · ' + s.scanCount + '品スキャン済';
+    el.style.display = 'block';
+  }
+  function _hideBanner() {
+    var el = document.getElementById('sp-session-banner');
+    if (el) el.style.display = 'none';
+  }
+
+  // ---- 5分超過ダイアログ ----
+  function _showResumeDialog(s) {
+    var modal  = document.getElementById('sp-session-modal');
+    var inner  = document.getElementById('sp-session-modal-inner');
+    if (!modal || !inner) return;
+    var storeName = s.storeName || '';
+    inner.innerHTML =
+      '<div style="margin-bottom:14px; font-size:0.95rem; font-weight:600;">続きから始めますか？</div>' +
+      '<div style="font-size:0.82rem; color:var(--sp-text-muted,#888); margin-bottom:16px;">' + storeName + ' · ' + s.scanCount + '品スキャン済</div>' +
+      '<button id="sp-sess-btn-gps" style="display:block; width:100%; padding:10px; margin-bottom:8px; border-radius:8px; border:1px solid var(--sp-border,#444); background:transparent; color:var(--sp-text,#fff); font-size:0.9rem; cursor:pointer;">📍 GPSで店舗を探す</button>' +
+      '<button id="sp-sess-btn-cont" style="display:block; width:100%; padding:10px; margin-bottom:8px; border-radius:8px; border:1px solid rgba(0,128,0,0.5); background:rgba(0,128,0,0.12); color:var(--sp-text,#fff); font-size:0.9rem; cursor:pointer;">↩️ 前回のストアで続ける（' + storeName + '）</button>' +
+      '<button id="sp-sess-btn-new" style="display:block; width:100%; padding:10px; border-radius:8px; border:1px solid var(--sp-border,#444); background:transparent; color:var(--sp-text,#fff); font-size:0.9rem; cursor:pointer;">✨ 新しく始める</button>';
+    modal.style.display = 'flex';
+
+    document.getElementById('sp-sess-btn-gps').onclick = function() {
+      modal.style.display = 'none';
+      try { if (typeof toggleGps === 'function') toggleGps(); } catch(_) {}
+      _log('SESSION_GPS_OFF_STORE_ORDER', { action: 'gps' });
+    };
+    document.getElementById('sp-sess-btn-cont').onclick = function() {
+      modal.style.display = 'none';
+      _start(storeName);
+      _log('SESSION_RESTORE_STORE', { store: storeName });
+    };
+    document.getElementById('sp-sess-btn-new').onclick = function() {
+      modal.style.display = 'none';
+      var fresh = { active: false, storeName: '', startedAt: 0, lastActiveAt: 0, scanCount: 0, lastBarcode: '' };
+      _save(fresh);
+      _hideBanner();
+      _log('SESSION_BOOT_CHECK', { action: 'new_start' });
+    };
+  }
+
+  // ---- 起動チェック ----
+  function _bootCheck() {
+    var s = _load();
+    var now = Date.now();
+    var lastActive = 0;
+    try { lastActive = parseInt(localStorage.getItem(SP_LAST_ACTIVE_KEY) || '0', 10) || 0; } catch(_) {}
+    var diff = now - lastActive;
+    var lastStore = '';
+    try { lastStore = localStorage.getItem(SP_LAST_STORE_KEY) || ''; } catch(_) {}
+
+    window._spSessionLastStore = lastStore || (s.storeName || '');
+    _log('SESSION_BOOT_CHECK', { active: s.active, diffMs: diff, lastStore: lastStore, scanCount: s.scanCount });
+
+    if (!s.active || !lastStore || lastStore === '未設定') {
+      // セッションなし - バナー非表示
+      return;
+    }
+
+    if (diff <= RESUME_THRESHOLD) {
+      // 5分以内: 前回ストアを即復元、トーストで通知
+      _start(lastStore);
+      _log('SESSION_WITHIN_5MIN', { store: lastStore, diffMinutes: Math.round(diff/60000), scanCount: s.scanCount });
+      try {
+        if (typeof showToast === 'function') {
+          showToast('🛒 前回の買い物を続けます: ' + lastStore + '(' + s.scanCount + '品済)', 4000);
+        }
+      } catch(_) {}
+    } else {
+      // 5分超過: 3択ダイアログ
+      _log('SESSION_OVER_5MIN', { store: lastStore, diffMinutes: Math.round(diff/60000) });
+      _showResumeDialog(s);
     }
   }
+  window._spSessionBootCheck = _bootCheck;
 
-  // debug=1 用オーバーレイUI生成
-  function _spCreateGuardDebugUI() {
-    if (!window.location.search.includes('debug=1')) return;
-    var el = document.createElement('div');
-    el.id = 'sp-swipe-guard-debug';
-    el.style.cssText = [
-      'position:fixed',
-      'top:4px',
-      'left:50%',
-      'transform:translateX(-50%)',
-      'background:rgba(0,0,0,0.7)',
-      'color:#0f0',
-      'font:10px monospace',
-      'padding:3px 8px',
-      'border-radius:4px',
-      'z-index:999998',
-      'pointer-events:none'
-    ].join(';');
-    el.textContent = 'SwipeGuard | L:0 | R:0 | T:0';
-    document.body.appendChild(el);
-  }
+  // ---- トリガーフック ----
+  window._spSessionOnStoreSelect = function(name) {
+    if (!name || name === '未設定') return;
+    _start(name);
+    _log('SESSION_SAVE', { trigger: 'storeSelect', store: name });
+  };
+  window._spSessionOnScanStart = function() {
+    var s = _load();
+    if (!s.active) return;
+    s.lastActiveAt = Date.now();
+    _save(s);
+    try { localStorage.setItem(SP_LAST_ACTIVE_KEY, String(s.lastActiveAt)); } catch(_) {}
+    _log('SESSION_SAVE', { trigger: 'scanStart' });
+  };
+  window._spSessionOnSaveData = function(storeName) {
+    var s = _load();
+    var now = Date.now();
+    if (!s.active && storeName && storeName !== '未設定') {
+      s = { active: true, storeName: storeName, startedAt: now, lastActiveAt: now, scanCount: 0, lastBarcode: '' };
+    }
+    s.scanCount = (s.scanCount || 0) + 1;
+    s.lastActiveAt = now;
+    _save(s);
+    try { localStorage.setItem(SP_LAST_ACTIVE_KEY, String(now)); } catch(_) {}
+    window._spSessionLastStore = storeName || s.storeName || '';
+    _renderBanner();
+    _log('SESSION_SAVE', { trigger: 'saveData', scanCount: s.scanCount, store: storeName });
+  };
 
-  // 左右透明ガードレイヤー生成
-  function _spCreateSwipeGuardLayers() {
-    // 重複生成防止
-    if (document.getElementById('sp-swipe-guard-left')) return;
-
-    // mm → CSS px 変換（指示書仕様準拠）
-    var pxPerMm = window.devicePixelRatio || 2;
-    var widthPx = Math.round(SWIPE_GUARD_MM * pxPerMm * 3);
-
-    ['left', 'right'].forEach(function(side) {
-      var layer = document.createElement('div');
-      layer.id = 'sp-swipe-guard-' + side;
-      layer.style.cssText = [
-        'position:fixed',
-        'top:0',
-        side + ':0',
-        'width:' + widthPx + 'px',
-        'height:100%',
-        'z-index:99999',
-        'background:transparent',
-        'pointer-events:auto',
-        'touch-action:none'
-      ].join(';');
-
-      // [v226] touchstart/pointerdown のみ取得・中央操作に干渉しない
-      layer.addEventListener('touchstart', function(e) {
-        _spSwipeGuardLog(side, e.touches[0].clientX);
-        e.preventDefault();
-      }, { passive: false });
-
-      layer.addEventListener('pointerdown', function(e) {
-        _spSwipeGuardLog(side, e.clientX);
-        e.preventDefault();
-      });
-
-      document.body.appendChild(layer);
-    });
-
-    _spCreateGuardDebugUI();
-  }
-
-  // DOMContentLoaded 後に生成
+  // ---- 初期化 ----
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', _spCreateSwipeGuardLayers);
+    document.addEventListener('DOMContentLoaded', function() { _renderBanner(); });
   } else {
-    _spCreateSwipeGuardLayers();
+    _renderBanner();
   }
 })();
 </script>
