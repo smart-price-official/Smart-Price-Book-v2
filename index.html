@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.227  BUILD_ID=2026-06-06_v227-shopping-session
+APP_VERSION=v23.9.228  BUILD_ID=2026-06-06_v228-session-fix
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.227";
-  const BUILD_ID    = "2026-06-06_v227-shopping-session";
+  const APP_VERSION = "v23.9.228";
+  const BUILD_ID    = "2026-06-06_v228-session-fix";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -17617,21 +17617,18 @@ window.spSetReportPeriod = spSetReportPeriod;
 </script>
 
 
-<!-- v23.9.227 SP-250606-SESSION-001/002: ショッピングセッション機能 -->
+<!-- v23.9.228 SP-250606-SESSION-001/002: ショッピングセッション機能（v227バグ修正版） -->
+<!-- Fix1: _start() で _renderBanner throw → SESSION_START ログ未到達 → try-catch + ログ先出し -->
+<!-- Fix2: _bootCheck が smartPrice_lastStoreName のみ読む → 既存ユーザーは sp_last_store にある → fallback追加 -->
 <script>
 (function() {
   var SP_SESSION_KEY     = 'smartPrice_shoppingSession';
   var SP_LAST_ACTIVE_KEY = 'smartPrice_lastAppActiveAt';
   var SP_LAST_STORE_KEY  = 'smartPrice_lastStoreName';
-  var SP_LAST_STORE_TS   = 'smartPrice_lastStoreSelectedAt';
   var RESUME_THRESHOLD   = 5 * 60 * 1000; // 5分
 
-  function _isDebug() {
-    return window.location.search.includes('debug=1');
-  }
-  function _log(tag, data) {
-    if (_isDebug()) console.log('[SESSION] ' + tag, data || {});
-  }
+  function _isDebug() { return window.location.search.includes('debug=1'); }
+  function _log(tag, data) { if (_isDebug()) console.log('[SESSION] ' + tag, data || {}); }
 
   // ---- セッションデータ ----
   function _load() {
@@ -17641,23 +17638,48 @@ window.spSetReportPeriod = spSetReportPeriod;
     try { localStorage.setItem(SP_SESSION_KEY, JSON.stringify(s)); } catch(_) {}
   }
 
+  // ---- バナー描画（引数で直接 s を受け取る → localStorage 再読み不要）----
+  // [v228 Fix1] _renderBanner(s) に変更: _start() 内で s を渡すことで
+  //   localStorage 書き込み失敗時でも in-memory の s でバナーを表示できる
+  function _renderBanner(s) {
+    if (!s) s = _load();
+    try {
+      var el = document.getElementById('sp-session-banner');
+      if (!el) return;
+      if (!s.active || !s.storeName || s.storeName === '未設定') { _hideBanner(); return; }
+      var startHM = '--:--';
+      try {
+        var d = new Date(s.startedAt);
+        startHM = ('0'+d.getHours()).slice(-2) + ':' + ('0'+d.getMinutes()).slice(-2);
+      } catch(_) {}
+      var txt = document.getElementById('sp-session-banner-text');
+      var sub = document.getElementById('sp-session-banner-sub');
+      if (txt) txt.textContent = '🛒 ' + s.storeName + ' で買い物中';
+      if (sub) sub.textContent = startHM + '開始 · ' + (s.scanCount || 0) + '品スキャン済';
+      el.style.display = 'block';
+    } catch(_) {}
+  }
+  function _hideBanner() {
+    try { var el = document.getElementById('sp-session-banner'); if (el) el.style.display = 'none'; } catch(_) {}
+  }
+
   // ---- セッション開始 ----
+  // [v228 Fix1] _log を _renderBanner より先に移動。_renderBanner を try-catch で保護
   function _start(storeName) {
     var s = _load();
     var now = Date.now();
     if (!s.active || s.storeName !== storeName) {
       s = { active: true, storeName: storeName || '未設定', startedAt: now,
-            lastActiveAt: now, scanCount: 0, lastBarcode: '' };
+            lastActiveAt: now, scanCount: s.scanCount || 0, lastBarcode: '' };
     } else {
       s.lastActiveAt = now;
     }
     _save(s);
     try { localStorage.setItem(SP_LAST_ACTIVE_KEY, String(now)); } catch(_) {}
     try { localStorage.setItem(SP_LAST_STORE_KEY, storeName || ''); } catch(_) {}
-    try { localStorage.setItem(SP_LAST_STORE_TS, String(now)); } catch(_) {}
     window._spSessionLastStore = storeName || '';
-    _renderBanner();
-    _log('SESSION_START', { store: storeName, scanCount: s.scanCount });
+    _log('SESSION_START', { store: storeName, scanCount: s.scanCount }); // ← Fix1: ログを先出し
+    try { _renderBanner(s); } catch(_) {}                                 // ← Fix1: try-catch で保護
   }
 
   // ---- セッション終了 ----
@@ -17672,42 +17694,19 @@ window.spSetReportPeriod = spSetReportPeriod;
   }
   window._spSessionEnd = _end;
 
-  // ---- バナー描画 ----
-  function _renderBanner() {
-    var s = _load();
-    var el = document.getElementById('sp-session-banner');
-    if (!el) return;
-    if (!s.active || !s.storeName || s.storeName === '未設定') { _hideBanner(); return; }
-    var startHM = '--:--';
-    try {
-      var d = new Date(s.startedAt);
-      startHM = ('0'+d.getHours()).slice(-2) + ':' + ('0'+d.getMinutes()).slice(-2);
-    } catch(_) {}
-    var txt = document.getElementById('sp-session-banner-text');
-    var sub = document.getElementById('sp-session-banner-sub');
-    if (txt) txt.textContent = '🛒 ' + s.storeName + ' で買い物中';
-    if (sub) sub.textContent = startHM + '開始 · ' + s.scanCount + '品スキャン済';
-    el.style.display = 'block';
-  }
-  function _hideBanner() {
-    var el = document.getElementById('sp-session-banner');
-    if (el) el.style.display = 'none';
-  }
-
   // ---- 5分超過ダイアログ ----
   function _showResumeDialog(s) {
-    var modal  = document.getElementById('sp-session-modal');
-    var inner  = document.getElementById('sp-session-modal-inner');
+    var modal = document.getElementById('sp-session-modal');
+    var inner = document.getElementById('sp-session-modal-inner');
     if (!modal || !inner) return;
     var storeName = s.storeName || '';
     inner.innerHTML =
-      '<div style="margin-bottom:14px; font-size:0.95rem; font-weight:600;">続きから始めますか？</div>' +
-      '<div style="font-size:0.82rem; color:var(--sp-text-muted,#888); margin-bottom:16px;">' + storeName + ' · ' + s.scanCount + '品スキャン済</div>' +
-      '<button id="sp-sess-btn-gps" style="display:block; width:100%; padding:10px; margin-bottom:8px; border-radius:8px; border:1px solid var(--sp-border,#444); background:transparent; color:var(--sp-text,#fff); font-size:0.9rem; cursor:pointer;">📍 GPSで店舗を探す</button>' +
-      '<button id="sp-sess-btn-cont" style="display:block; width:100%; padding:10px; margin-bottom:8px; border-radius:8px; border:1px solid rgba(0,128,0,0.5); background:rgba(0,128,0,0.12); color:var(--sp-text,#fff); font-size:0.9rem; cursor:pointer;">↩️ 前回のストアで続ける（' + storeName + '）</button>' +
-      '<button id="sp-sess-btn-new" style="display:block; width:100%; padding:10px; border-radius:8px; border:1px solid var(--sp-border,#444); background:transparent; color:var(--sp-text,#fff); font-size:0.9rem; cursor:pointer;">✨ 新しく始める</button>';
+      '<div style="margin-bottom:14px;font-size:0.95rem;font-weight:600;">続きから始めますか？</div>' +
+      '<div style="font-size:0.82rem;color:var(--sp-text-muted,#888);margin-bottom:16px;">' + storeName + ' · ' + (s.scanCount||0) + '品スキャン済</div>' +
+      '<button id="sp-sess-btn-gps" style="display:block;width:100%;padding:10px;margin-bottom:8px;border-radius:8px;border:1px solid var(--sp-border,#444);background:transparent;color:var(--sp-text,#fff);font-size:0.9rem;cursor:pointer;">📍 GPSで店舗を探す</button>' +
+      '<button id="sp-sess-btn-cont" style="display:block;width:100%;padding:10px;margin-bottom:8px;border-radius:8px;border:1px solid rgba(0,128,0,0.5);background:rgba(0,128,0,0.12);color:var(--sp-text,#fff);font-size:0.9rem;cursor:pointer;">↩️ 前回のストアで続ける（' + storeName + '）</button>' +
+      '<button id="sp-sess-btn-new" style="display:block;width:100%;padding:10px;border-radius:8px;border:1px solid var(--sp-border,#444);background:transparent;color:var(--sp-text,#fff);font-size:0.9rem;cursor:pointer;">✨ 新しく始める</button>';
     modal.style.display = 'flex';
-
     document.getElementById('sp-sess-btn-gps').onclick = function() {
       modal.style.display = 'none';
       try { if (typeof toggleGps === 'function') toggleGps(); } catch(_) {}
@@ -17720,44 +17719,45 @@ window.spSetReportPeriod = spSetReportPeriod;
     };
     document.getElementById('sp-sess-btn-new').onclick = function() {
       modal.style.display = 'none';
-      var fresh = { active: false, storeName: '', startedAt: 0, lastActiveAt: 0, scanCount: 0, lastBarcode: '' };
-      _save(fresh);
+      _save({ active: false, storeName: '', startedAt: 0, lastActiveAt: 0, scanCount: 0, lastBarcode: '' });
       _hideBanner();
       _log('SESSION_BOOT_CHECK', { action: 'new_start' });
     };
   }
 
   // ---- 起動チェック ----
+  // [v228 Fix2] lastStore の取得に sp_last_store フォールバックを追加
+  //   v227 以前のユーザーは smartPrice_lastStoreName が未設定 → sp_last_store を読む
   function _bootCheck() {
     var s = _load();
     var now = Date.now();
     var lastActive = 0;
     try { lastActive = parseInt(localStorage.getItem(SP_LAST_ACTIVE_KEY) || '0', 10) || 0; } catch(_) {}
     var diff = now - lastActive;
+
     var lastStore = '';
     try { lastStore = localStorage.getItem(SP_LAST_STORE_KEY) || ''; } catch(_) {}
+    if (!lastStore) {
+      // [v228 Fix2] 既存ユーザー向けフォールバック: sp_last_store を読む
+      try { lastStore = localStorage.getItem('sp_last_store') || ''; } catch(_) {}
+    }
+    if (lastStore === '未設定') lastStore = '';
 
     window._spSessionLastStore = lastStore || (s.storeName || '');
     _log('SESSION_BOOT_CHECK', { active: s.active, diffMs: diff, lastStore: lastStore, scanCount: s.scanCount });
 
-    if (!s.active || !lastStore || lastStore === '未設定') {
-      // セッションなし - バナー非表示
-      return;
-    }
+    if (!s.active && !lastStore) return; // 完全初回 - 何もしない
 
-    if (diff <= RESUME_THRESHOLD) {
-      // 5分以内: 前回ストアを即復元、トーストで通知
+    // セッション active または lastStore あり
+    if (lastStore && diff <= RESUME_THRESHOLD) {
       _start(lastStore);
       _log('SESSION_WITHIN_5MIN', { store: lastStore, diffMinutes: Math.round(diff/60000), scanCount: s.scanCount });
       try {
-        if (typeof showToast === 'function') {
-          showToast('🛒 前回の買い物を続けます: ' + lastStore + '(' + s.scanCount + '品済)', 4000);
-        }
+        if (typeof showToast === 'function') showToast('🛒 前回の買い物を続けます: ' + lastStore + '（' + (s.scanCount||0) + '品済）', 4000);
       } catch(_) {}
-    } else {
-      // 5分超過: 3択ダイアログ
+    } else if (lastStore) {
       _log('SESSION_OVER_5MIN', { store: lastStore, diffMinutes: Math.round(diff/60000) });
-      _showResumeDialog(s);
+      _showResumeDialog(s.active ? s : { storeName: lastStore, scanCount: 0 });
     }
   }
   window._spSessionBootCheck = _bootCheck;
@@ -17765,8 +17765,8 @@ window.spSetReportPeriod = spSetReportPeriod;
   // ---- トリガーフック ----
   window._spSessionOnStoreSelect = function(name) {
     if (!name || name === '未設定') return;
-    _start(name);
-    _log('SESSION_SAVE', { trigger: 'storeSelect', store: name });
+    _log('SESSION_HOOK_CALLED', { trigger: 'storeSelect', name: name }); // デバッグ確認用
+    try { _start(name); } catch(_) {}
   };
   window._spSessionOnScanStart = function() {
     var s = _load();
@@ -17782,20 +17782,21 @@ window.spSetReportPeriod = spSetReportPeriod;
     if (!s.active && storeName && storeName !== '未設定') {
       s = { active: true, storeName: storeName, startedAt: now, lastActiveAt: now, scanCount: 0, lastBarcode: '' };
     }
+    if (!s.storeName) return;
     s.scanCount = (s.scanCount || 0) + 1;
     s.lastActiveAt = now;
     _save(s);
     try { localStorage.setItem(SP_LAST_ACTIVE_KEY, String(now)); } catch(_) {}
     window._spSessionLastStore = storeName || s.storeName || '';
-    _renderBanner();
     _log('SESSION_SAVE', { trigger: 'saveData', scanCount: s.scanCount, store: storeName });
+    try { _renderBanner(s); } catch(_) {}
   };
 
   // ---- 初期化 ----
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function() { _renderBanner(); });
+    document.addEventListener('DOMContentLoaded', function() { try { _renderBanner(); } catch(_) {} });
   } else {
-    _renderBanner();
+    try { _renderBanner(); } catch(_) {}
   }
 })();
 </script>
