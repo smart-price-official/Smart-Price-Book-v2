@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.230  BUILD_ID=2026-06-07_session-end-bug
+APP_VERSION=v23.9.231  BUILD_ID=2026-06-07_family-invite
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.230";
-  const BUILD_ID    = "2026-06-07_session-end-bug";
+  const APP_VERSION = "v23.9.231";
+  const BUILD_ID    = "2026-06-07_family-invite";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -1407,38 +1407,42 @@ document.addEventListener('DOMContentLoaded', function() {
       </div>
         <!-- v23.9.165 SP-250528-001: パネル末尾[戻る]を settingsCommonBack に共通化（panelReferral） -->
 
+      <!-- v23.9.231 SP-250606-FAMILY-001: 家族招待機能（招待コード発行・参加）-->
       <div id="panelFamily" class="sp-panel mt-3" style="display:none;">
         <div class="small text-secondary mb-2" style="opacity:.9;">個人ID：<span class="sp-text-normal fw-bold" id="sp-personal-id-panelFamily"></span></div>
 
-        <div class="small text-secondary mb-2">
-          同じ購入データを別の端末でも使いたいときは、ここで「共有ID」を使います（準備中のため、まずは画面だけ整えています）。
-        </div>
-        <label class="small text-secondary">共有ID（相手のIDを貼り付け）</label>
-        <input id="family-share-id" class="form-control sp-bg-card sp-border-muted mb-2" placeholder="例：AB12CD（半角）">
-        <div class="small text-secondary mb-1">あなたの個人ID（このIDを送って共有できます）</div>
-        <div class="d-flex gap-2 mb-2">
-          <input id="family-my-id" class="form-control sp-bg-card sp-border-muted" readonly>
-          <button class="btn sp-btn-secondary" onclick="spCopy('family-my-id')">コピー</button>
-          <button class="btn sp-btn-primary" onclick="spShareFamilyId()">共有</button>
-        </div>
+        <hr style="border-color:var(--sp-border,#444); margin:8px 0 12px;">
 
-        <div class="form-check mb-2">
-          <input class="form-check-input" type="checkbox" id="family-hide-purchases">
-          <label class="form-check-label small text-secondary" for="family-hide-purchases">購入商品を隠す（家族共有用／準備中）</label>
-        </div>
-        <div class="d-grid gap-2">
-          <button type="button" class="btn btn-secondary" id="familySaveBtn" onclick="spSaveFamilyCode()">保存</button>
-        <div class="mt-3">
-          <div class="small text-secondary mb-1">家族共有コード（任意）</div>
-          <div class="d-flex gap-2 mb-2">
-            <input id="family-code-input" class="form-control sp-bg-card sp-border-muted" placeholder="例：FAMILY-001">
-            <button class="btn btn-primary" onclick="spSaveFamilyCode()">保存</button>
+        <!-- 招待コード発行 -->
+        <div class="mb-3">
+          <div class="small text-secondary mb-2 fw-bold">家族を招待する</div>
+          <button class="btn sp-btn-primary w-100 py-2" onclick="spCreateFamilyInvite()">招待コードを発行する</button>
+          <div id="family-invite-result" class="mt-2" style="display:none;">
+            <div class="small text-secondary mb-1">招待コード：</div>
+            <div class="d-flex gap-2 mb-1">
+              <input id="family-invite-code-display" class="form-control sp-bg-card sp-border-muted fw-bold"
+                     readonly style="font-family:monospace; letter-spacing:0.12em; font-size:1rem;">
+              <button class="btn sp-btn-secondary" onclick="spCopyFamilyInvite()">コピー</button>
+              <button class="btn sp-btn-primary" onclick="spShareFamilyInvite()">共有</button>
+            </div>
+            <div class="small text-secondary" style="opacity:.75;" id="family-invite-expiry"></div>
           </div>
-          <div id="family-code-status" class="small text-secondary"></div>
         </div>
 
+        <div class="small text-center text-secondary mb-3" style="opacity:.6;">── または ──</div>
+
+        <!-- 招待コード入力・参加 -->
+        <div class="mb-3">
+          <div class="small text-secondary mb-1 fw-bold">招待コードを入力：</div>
+          <div class="d-flex gap-2 mb-1">
+            <input id="family-join-code" class="form-control sp-bg-card sp-border-muted"
+                   placeholder="FAM-XXXXXX" maxlength="10"
+                   style="font-family:monospace; letter-spacing:0.08em; text-transform:uppercase;">
+            <button class="btn sp-btn-primary" onclick="spJoinFamilyGroup()" style="white-space:nowrap;">参加する</button>
+          </div>
+          <div id="family-join-status" class="small mt-1"></div>
         </div>
-        <div id="familyMsg" class="small text-secondary mt-2"></div>
+
         <!-- v23.9.165 SP-250528-001: パネル末尾[戻る]を settingsCommonBack に共通化（panelFamily） -->
       </div>
 
@@ -15085,6 +15089,162 @@ function spSaveFamilyCode() {
   } catch(e) {}
 }
 window.spSaveFamilyCode = spSaveFamilyCode;
+
+// ======= 家族招待 (v23.9.231 SP-250606-FAMILY-001) =======
+// B-2 仮説: 同一アカウント共有は進学・独立時のデータ分離が困難
+// B-2 真因: 1人1アカウント方式が必要。招待コードで Family Group に紐付ける
+// B-2 修正方法: FAM-XXXXXX 形式の招待コードを Firebase に発行・検証し
+//              familyGroups/{groupId}/members + users/{uid}/familyGroupId を更新
+
+function _spGenInviteCode() {
+  // 紛らわしい文字(0/O/1/I/L)を除外した英数字
+  var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  var code = 'FAM-';
+  for (var i = 0; i < 6; i++) {
+    code += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return code;
+}
+
+async function spCreateFamilyInvite() {
+  try {
+    // UID 取得
+    var uid = (typeof currentAuthUid !== 'undefined' && currentAuthUid)
+           || (window.firebaseAuth && window.firebaseAuth.currentUser && window.firebaseAuth.currentUser.uid)
+           || null;
+    if (!uid) {
+      showToast('ログインが必要です（設定→⑧ アカウント連携）', 3500);
+      return;
+    }
+    if (!window.firebaseDb) {
+      showToast('Firebase未接続です。しばらく待って再試行してください', 3000);
+      return;
+    }
+    var code = _spGenInviteCode();
+    var now = Date.now();
+    var expiresAt = now + 24 * 60 * 60 * 1000; // +24時間
+    var ownerName = (db && db.config && db.config.handle) || uid.slice(0, 8);
+    var record = {
+      code: code,
+      ownerUid: uid,
+      ownerName: ownerName,
+      createdAt: now,
+      expiresAt: expiresAt,
+      used: false
+    };
+    await window.firebaseDb.ref('familyInvites/' + code).set(record);
+    if (window.location.search.includes('debug=1')) {
+      console.log('[FAMILY] FAMILY_INVITE_CREATED', { code: code, ownerUid: uid });
+    }
+    // 発行結果 UI 表示
+    var display = document.getElementById('family-invite-code-display');
+    if (display) display.value = code;
+    var expiry = document.getElementById('family-invite-expiry');
+    if (expiry) expiry.textContent = '有効期限：24時間';
+    var result = document.getElementById('family-invite-result');
+    if (result) result.style.display = 'block';
+    showToast('招待コードを発行しました', 2000);
+  } catch(e) {
+    showToast('発行に失敗しました', 2000);
+    if (window.location.search.includes('debug=1')) console.error('[FAMILY] invite create error', e);
+  }
+}
+window.spCreateFamilyInvite = spCreateFamilyInvite;
+
+function spCopyFamilyInvite() {
+  try {
+    var el = document.getElementById('family-invite-code-display');
+    var code = el ? el.value : '';
+    if (!code) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(code).then(function() { showToast('コピーしました', 1200); });
+    } else {
+      var ta = document.createElement('textarea');
+      ta.value = code; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+      showToast('コピーしました', 1200);
+    }
+  } catch(e) {}
+}
+window.spCopyFamilyInvite = spCopyFamilyInvite;
+
+async function spShareFamilyInvite() {
+  try {
+    var el = document.getElementById('family-invite-code-display');
+    var code = el ? el.value : '';
+    if (!code) return;
+    var text = '【Smart Price 家族招待】\n招待コード：' + code
+             + '\n有効期限：24時間\nSmartPriceアプリ → 設定 → ②家族共有 → コード入力欄に貼り付けてください';
+    var ok = await spShareText('Smart Price 家族招待', text);
+    if (!ok) spCopyTextFallback(text);
+  } catch(e) {}
+}
+window.spShareFamilyInvite = spShareFamilyInvite;
+
+async function spJoinFamilyGroup() {
+  var statusEl = document.getElementById('family-join-status');
+  function setStatus(msg, isError) {
+    if (!statusEl) return;
+    statusEl.textContent = msg;
+    statusEl.className = 'small mt-1 ' + (isError ? 'text-danger' : 'text-success');
+  }
+  try {
+    var inp = document.getElementById('family-join-code');
+    var code = (inp ? inp.value : '').trim().toUpperCase();
+    if (!code || !code.startsWith('FAM-') || code.length !== 10) {
+      setStatus('FAM-XXXXXX 形式で入力してください', true);
+      return;
+    }
+    var uid = (typeof currentAuthUid !== 'undefined' && currentAuthUid)
+           || (window.firebaseAuth && window.firebaseAuth.currentUser && window.firebaseAuth.currentUser.uid)
+           || null;
+    if (!uid) { setStatus('ログインが必要です（設定→⑧ アカウント連携）', true); return; }
+    if (!window.firebaseDb) { setStatus('Firebase未接続です', true); return; }
+
+    setStatus('確認中…', false);
+
+    // 招待コード検証
+    var inviteSnap = await window.firebaseDb.ref('familyInvites/' + code).once('value');
+    var invite = inviteSnap.val();
+    if (!invite)                      { setStatus('招待コードが見つかりません', true); return; }
+    if (invite.used)                  { setStatus('この招待コードはすでに使用済みです', true); return; }
+    if (Date.now() > invite.expiresAt){ setStatus('招待コードの有効期限が切れています', true); return; }
+    if (invite.ownerUid === uid)      { setStatus('自分の招待コードには参加できません', true); return; }
+
+    // グループID（発行者 UID 先頭8文字をキーに）
+    var groupId = 'G-' + invite.ownerUid.slice(0, 8);
+
+    // familyGroups/{groupId} を読み込み・更新
+    var groupRef = window.firebaseDb.ref('familyGroups/' + groupId);
+    var groupSnap = await groupRef.once('value');
+    var group = groupSnap.val() || {
+      groupId: groupId, members: [], ownerUid: invite.ownerUid, createdAt: Date.now()
+    };
+    if (!Array.isArray(group.members)) group.members = [];
+    if (group.members.indexOf(invite.ownerUid) < 0) group.members.push(invite.ownerUid);
+    if (group.members.indexOf(uid) < 0)              group.members.push(uid);
+    await groupRef.set(group);
+
+    // users/{uid}/familyGroupId に記録
+    await window.firebaseDb.ref('users/' + uid + '/familyGroupId').set(groupId);
+
+    // 招待コードを使用済みに
+    await window.firebaseDb.ref('familyInvites/' + code + '/used').set(true);
+
+    if (window.location.search.includes('debug=1')) {
+      console.log('[FAMILY] FAMILY_INVITE_USED',   { code: code, uid: uid });
+      console.log('[FAMILY] FAMILY_GROUP_JOINED',  { groupId: groupId, uid: uid });
+    }
+    setStatus('✅ 家族グループに参加しました！', false);
+    showToast('家族グループに参加しました 🎉', 3000);
+    if (inp) inp.value = '';
+
+  } catch(e) {
+    setStatus('エラーが発生しました', true);
+    if (window.location.search.includes('debug=1')) console.error('[FAMILY] join error', e);
+  }
+}
+window.spJoinFamilyGroup = spJoinFamilyGroup;
+// ======= 家族招待 ここまで =======
 
 // サポート送信系
 function spCopySupport() {
