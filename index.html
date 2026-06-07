@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.231  BUILD_ID=2026-06-07_family-invite
+APP_VERSION=v23.9.232  BUILD_ID=2026-06-07_theme-dialog-fix
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.231";
-  const BUILD_ID    = "2026-06-07_family-invite";
+  const APP_VERSION = "v23.9.232";
+  const BUILD_ID    = "2026-06-07_theme-dialog-fix";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -1140,12 +1140,24 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 <!-- ここから既存コンテンツ -->
 <!-- P0-6: テーマフラッシュ防止（body属性も維持・belt-and-suspenders） -->
+<!-- [v232 Fix1] 起動時にtheme-colorメタタグもテーマに合わせて更新 -->
 <script>
 (function(){
   try {
     var _t = localStorage.getItem('smartPrice_colorTheme');
     if (_t && _t !== 'default' && _t !== 'standard' && _t !== '') {
       document.body.setAttribute('data-theme', _t);
+      // [v232 Fix1] meta theme-color も同期更新
+      var _tc = {
+        'standard':'#D50000','youth-pink':'#e91e8c','dusty-rose':'#8a5462',
+        'sage-modern':'#586846','navy-elegant':'#1d3258','access-green':'#0c3a25',
+        'gold-luxury':'#000000','soft-blue':'#3a6a9c','lavender-calm':'#5a407a',
+        'ocean-pro':'#003540','warm-home':'#a64a32','midnight-neon':'#02050c',
+        'sakura-premium':'#993f64','cyber-magenta':'#02020a','holo-pop':'#1e58f0',
+        'dark-plum':'#2a0f1f','dark-mauve':'#241c34'
+      };
+      var _mc = document.querySelector('meta[name="theme-color"]');
+      if (_mc && _tc[_t]) _mc.setAttribute('content', _tc[_t]);
     }
   } catch(e) {}
 })();
@@ -8852,13 +8864,35 @@ return true;
   window.renderStoreTaxSettingsPanel = renderStoreTaxSettingsPanel;
 
   // v23.9.157: カラーテーマ
+  // [v232 Fix1] テーマ変更時に theme-color メタタグも動的更新
+  var _SP_THEME_COLOR_MAP = {
+    'standard':'#D50000','youth-pink':'#e91e8c','dusty-rose':'#8a5462',
+    'sage-modern':'#586846','navy-elegant':'#1d3258','access-green':'#0c3a25',
+    'gold-luxury':'#000000','soft-blue':'#3a6a9c','lavender-calm':'#5a407a',
+    'ocean-pro':'#003540','warm-home':'#a64a32','midnight-neon':'#02050c',
+    'sakura-premium':'#993f64','cyber-magenta':'#02020a','holo-pop':'#1e58f0',
+    'dark-plum':'#2a0f1f','dark-mauve':'#241c34'
+  };
+  function _spUpdateThemeColor(color) {
+    try {
+      var meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', color);
+    } catch(e) {}
+  }
+  window._spUpdateThemeColor = _spUpdateThemeColor;
+
   function applyColorTheme(theme) {
     try {
       // v23.9.158 Step1: 'default'（旧）と 'standard'（新）は同義 = data-theme未指定
       if (!theme || theme === 'default' || theme === 'standard') {
         document.body.removeAttribute('data-theme');
+        // [v232 Fix1] standard テーマの header-bg 色に更新
+        _spUpdateThemeColor('#D50000');
       } else {
         document.body.setAttribute('data-theme', theme);
+        // [v232 Fix1] テーマに対応した header-bg 色に更新
+        var _c = _SP_THEME_COLOR_MAP[theme] || '#D50000';
+        _spUpdateThemeColor(_c);
       }
     } catch(e) {}
   }
@@ -17963,6 +17997,8 @@ window.spSetReportPeriod = spSetReportPeriod;
       '<button id="sp-sess-btn-gps" style="display:block;width:100%;padding:10px;margin-bottom:8px;border-radius:8px;border:1px solid var(--sp-border,#444);background:transparent;color:var(--sp-text,#fff);font-size:0.9rem;cursor:pointer;">📍 GPSで店舗を探す</button>' +
       '<button id="sp-sess-btn-cont" style="display:block;width:100%;padding:10px;margin-bottom:8px;border-radius:8px;border:1px solid rgba(0,128,0,0.5);background:rgba(0,128,0,0.12);color:var(--sp-text,#fff);font-size:0.9rem;cursor:pointer;">↩️ 前回のストアで続ける（' + storeName + '）</button>' +
       '<button id="sp-sess-btn-new" style="display:block;width:100%;padding:10px;border-radius:8px;border:1px solid var(--sp-border,#444);background:transparent;color:var(--sp-text,#fff);font-size:0.9rem;cursor:pointer;">✨ 新しく始める</button>';
+    // [v232 Fix2] ダイアログ表示中はセッション帯を非表示にして二重表示を防ぐ
+    _hideBanner();
     modal.style.display = 'flex';
     document.getElementById('sp-sess-btn-gps').onclick = function() {
       modal.style.display = 'none';
@@ -17971,13 +18007,13 @@ window.spSetReportPeriod = spSetReportPeriod;
     };
     document.getElementById('sp-sess-btn-cont').onclick = function() {
       modal.style.display = 'none';
-      _start(storeName);
+      _start(storeName); // _start() 内で _renderBanner() が呼ばれてバナー復元
       _log('SESSION_RESTORE_STORE', { store: storeName });
     };
     document.getElementById('sp-sess-btn-new').onclick = function() {
       modal.style.display = 'none';
       _save({ active: false, storeName: '', startedAt: 0, lastActiveAt: 0, scanCount: 0, lastBarcode: '' });
-      _hideBanner();
+      _hideBanner(); // 新規開始：バナー非表示のまま
       _log('SESSION_BOOT_CHECK', { action: 'new_start' });
     };
   }
