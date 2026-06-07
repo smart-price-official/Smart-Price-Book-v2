@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.229  BUILD_ID=2026-06-06_v229-img-log-investigation
+APP_VERSION=v23.9.230  BUILD_ID=2026-06-07_session-end-bug
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.229";
-  const BUILD_ID    = "2026-06-06_v229-img-log-investigation";
+  const APP_VERSION = "v23.9.230";
+  const BUILD_ID    = "2026-06-07_session-end-bug";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -3216,6 +3216,16 @@ document.addEventListener('DOMContentLoaded', function() {
   let curBarcode = null, curStore = "未設定";
   // 起動直後は必ず「未設定」から開始（前回選択を引きずらない）
   let SP_BOOT_RESET_STORE = true;
+  // [v230 SP-250606-SESSION-004 Fix4] session IIFE（別 <script> ブロック）から
+  //   curStore をリセットするための window hook。
+  //   IIFE 内では let curStore に直接アクセスできないため、hook 経由で呼ぶ。
+  window._spCurStoreReset = function() {
+    curStore = '未設定';
+    try {
+      var _ind = document.getElementById('curStoreIndicator');
+      if (_ind) _ind.innerText = '';
+    } catch(_) {}
+  };
   let processBarcodeInFlight = new Set(); // ✅ P0: 同一JANの二重発火防止
   let janCoolDown = new Map(); // ✅ P0: 同じJANを0.8〜1.2秒以内に再検出したら無視（クールダウン）
   let tempImgData = null; // {type:'key', key} or {type:'url', url}
@@ -17686,6 +17696,11 @@ window.spSetReportPeriod = spSetReportPeriod;
 
 
 <!-- v23.9.228 SP-250606-SESSION-001/002: ショッピングセッション機能（v227バグ修正版） -->
+<!-- v23.9.230 SP-250606-SESSION-004: 「買い物を終わる」後に再起動でバナーが戻る問題を修正
+     Fix1: SESSION_END_START/VERIFY ログ追加
+     Fix2: SESSION_BOOT_CHECK_DETAIL ログ強化
+     Fix3: _bootCheck に active!==true ガード追加（active=false+lastStore あり の誤再開を防止）
+     Fix4: window._spCurStoreReset hook 経由で curStore='未設定' リセット -->
 <!-- Fix1: _start() で _renderBanner throw → SESSION_START ログ未到達 → try-catch + ログ先出し -->
 <!-- Fix2: _bootCheck が smartPrice_lastStoreName のみ読む → 既存ユーザーは sp_last_store にある → fallback追加 -->
 <script>
@@ -17751,13 +17766,27 @@ window.spSetReportPeriod = spSetReportPeriod;
   }
 
   // ---- セッション終了 ----
+  // [v230 SP-250606-SESSION-004]
+  // B-2 仮説: active=false 書込み後も SP_LAST_STORE_KEY が残るため
+  //           boot check の lastStore チェックが再開始を引き起こす
+  // B-2 真因: _bootCheck が s.active ではなく lastStore の有無で復元判定しており
+  //           active=false + lastStore あり → _start() が呼ばれバナーが再表示される
+  // B-2 修正方法: ①END/VERIFYログで書込み確認 ②boot check に active!==true ガード追加
+  //              ③curStore リセット hook ④SESSION_BOOT_CHECK_DETAIL ログ強化
   function _end() {
     var s = _load();
+    // [Fix1] SESSION_END_START: active=false 書込み前の状態を記録
+    _log('SESSION_END_START', { before_active: s.active, store: s.storeName });
     s.active = false;
     s.lastActiveAt = Date.now();
     _save(s);
+    // [Fix1] SESSION_END_VERIFY: 書込み後の再読み確認（書込み失敗の検出用）
+    var _sv = _load();
+    _log('SESSION_END_VERIFY', { active: _sv ? _sv.active : 'load_failed' });
     _hideBanner();
     _log('SESSION_END', { store: s.storeName, scanCount: s.scanCount });
+    // [Fix4] curStore リセット（main script の window hook 経由 — let 変数に直接アクセス不可のため）
+    try { if (typeof window._spCurStoreReset === 'function') window._spCurStoreReset(); } catch(_) {}
     try { if (typeof showToast === 'function') showToast('お買い物おつかれさまでした 🛒', 3000); } catch(_) {}
   }
   window._spSessionEnd = _end;
@@ -17813,10 +17842,21 @@ window.spSetReportPeriod = spSetReportPeriod;
 
     window._spSessionLastStore = lastStore || (s.storeName || '');
     _log('SESSION_BOOT_CHECK', { active: s.active, diffMs: diff, lastStore: lastStore, scanCount: s.scanCount });
+    // [v230 Fix2] SESSION_BOOT_CHECK_DETAIL: 起動時判定の詳細ログ（active 型まで確認）
+    _log('SESSION_BOOT_CHECK_DETAIL', {
+      raw: (function(){ try { return localStorage.getItem(SP_SESSION_KEY); } catch(_){ return null; } })(),
+      active: s.active,
+      activeType: typeof s.active,
+      lastStore: lastStore,
+      diffMs: diff
+    });
 
-    if (!s.active && !lastStore) return; // 完全初回 - 何もしない
+    // [v230 Fix3] active=false の場合はバナーを出さない
+    //   旧: if (!s.active && !lastStore) return; ← lastStore あり+active=false で re-start していたバグ
+    //   新: active !== true であれば問答無用でスキップ（SESSION_END 後の再起動に対応）
+    if (s.active !== true) return;
 
-    // セッション active または lastStore あり
+    // セッション active かつ lastStore あり
     if (lastStore && diff <= RESUME_THRESHOLD) {
       _start(lastStore);
       _log('SESSION_WITHIN_5MIN', { store: lastStore, diffMinutes: Math.round(diff/60000), scanCount: s.scanCount });
