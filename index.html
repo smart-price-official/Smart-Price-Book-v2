@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.233  BUILD_ID=2026-06-08_share-flow
+APP_VERSION=v23.9.234  BUILD_ID=2026-06-09_share-templates
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.233";
-  const BUILD_ID    = "2026-06-08_share-flow";
+  const APP_VERSION = "v23.9.234";
+  const BUILD_ID    = "2026-06-09_share-templates";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -1398,11 +1398,18 @@ document.addEventListener('DOMContentLoaded', function() {
         <div class="small text-secondary mb-1">紹介リンク（内部用・自動生成）</div>
         <textarea id="ref-link" class="form-control sp-bg-card sp-border-muted url-box mb-3" rows="2" readonly style="font-size:0.7rem;opacity:0.7;"></textarea>
 
-        <!-- [v233 SP-250608-SHARE-001] 1アクション共有ボタン（2ボタン→1ボタン） -->
-        <div class="d-grid mb-3">
-          <button class="btn sp-btn-primary py-2" onclick="spReferralShare1Tap()">
-            📤 友人に紹介する
-          </button>
+        <!-- [v234 SP-250609-SHARE-002] 文章テンプレート選択 + テキストエリア + 共有ボタン -->
+        <div class="mb-3">
+          <div class="small text-secondary mb-2 fw-bold">共有文を選ぶ</div>
+          <div class="d-flex gap-2 mb-2">
+            <button class="btn btn-sm sp-btn-primary" id="ref-tmpl-btn-0" onclick="spSelectReferralTemplate(0)">案1</button>
+            <button class="btn btn-sm btn-outline-secondary" id="ref-tmpl-btn-1" onclick="spSelectReferralTemplate(1)">案2</button>
+            <button class="btn btn-sm btn-outline-secondary" id="ref-tmpl-btn-2" onclick="spSelectReferralTemplate(2)">案3</button>
+          </div>
+          <textarea id="referral-share-text" class="form-control sp-bg-card sp-border-muted mb-2" rows="5" style="font-size:0.82rem; resize:vertical;"></textarea>
+          <div class="d-grid">
+            <button class="btn sp-btn-primary py-2" onclick="spShareReferralWithText()">📤 友人に紹介する</button>
+          </div>
         </div>
 
         <button class="btn btn-outline-secondary w-100 py-2 mb-3" onclick="showReferralStatus()">
@@ -1433,11 +1440,19 @@ document.addEventListener('DOMContentLoaded', function() {
                      readonly style="font-family:monospace; letter-spacing:0.12em; font-size:1rem;">
             </div>
             <div class="small text-secondary mb-2" style="opacity:.75;" id="family-invite-expiry"></div>
-            <!-- [v233 SP-250608-SHARE-001] 3アクションボタン（LINE / その他 / コピーのみ） -->
-            <div class="d-grid gap-2">
-              <button class="btn sp-btn-primary py-1" onclick="spLineFamilyInvite()">📱 LINEで送る</button>
-              <button class="btn btn-outline-light py-1" onclick="spShareFamilyInvite()">📤 その他で共有</button>
-              <button class="btn btn-outline-secondary py-1" onclick="spCopyFamilyInvite()">📋 コピーだけする</button>
+            <!-- [v234 SP-250609-SHARE-002] 文章テンプレート選択 + テキストエリア + 共有ボタン -->
+            <div>
+              <div class="small text-secondary mb-2 fw-bold">共有文を選ぶ</div>
+              <div class="d-flex gap-2 mb-2">
+                <button class="btn btn-sm sp-btn-primary" id="fam-tmpl-btn-0" onclick="spSelectFamilyTemplate(0)">案1</button>
+                <button class="btn btn-sm btn-outline-secondary" id="fam-tmpl-btn-1" onclick="spSelectFamilyTemplate(1)">案2</button>
+                <button class="btn btn-sm btn-outline-secondary" id="fam-tmpl-btn-2" onclick="spSelectFamilyTemplate(2)">案3</button>
+              </div>
+              <textarea id="family-share-text" class="form-control sp-bg-card sp-border-muted mb-2" rows="5" style="font-size:0.82rem; resize:vertical;"></textarea>
+              <div class="d-grid gap-2">
+                <button class="btn sp-btn-primary py-1" onclick="spShareFamilyWithText()">📤 共有する</button>
+                <button class="btn btn-outline-secondary py-1" onclick="spCopyFamilyInvite()">📋 コピーだけする</button>
+              </div>
             </div>
           </div>
         </div>
@@ -14903,6 +14918,9 @@ function updateReferralPanel() {
 
   const linkEl = document.getElementById('ref-link');
   if (linkEl) linkEl.value = refLink;
+
+  // [v234 SP-250609-SHARE-002] テンプレート初期化（案1をデフォルト表示）
+  try { if (typeof spSelectReferralTemplate === 'function') spSelectReferralTemplate(_spRefTmplIdx || 0); } catch(e) {}
 }
 window.updateReferralPanel = updateReferralPanel;
 
@@ -14972,6 +14990,76 @@ async function spReferralShare1Tap() {
   await _spShareContent(title, text, url);
 }
 window.spReferralShare1Tap = spReferralShare1Tap;
+
+// ========== [v234 SP-250609-SHARE-002] 共有テンプレート ==========
+
+var FRIEND_SHARE_TEMPLATES = [
+  '最近使い始めた「スマプラ」っていうアプリが結構便利だよ♪\nお店ごとの値段を比べられるから、どこで買うのが安いかすぐ分かるの。\n無料で使えるから良かったら試してみてね！',
+  '買い物前にスマプラを見るようにしたら、同じ商品でもお店によって値段が違うのが分かって面白いよ！\nバーコードで簡単に登録できるし、節約にも役立つからおすすめ♪',
+  '節約したい人におすすめの「スマプラ」を紹介するね。\nよく買う商品の値段を記録して、お得なお店を見つけやすくなるよ！\n無料だから気軽に使ってみてね。'
+];
+window.FRIEND_SHARE_TEMPLATES = FRIEND_SHARE_TEMPLATES;
+
+var FAMILY_SHARE_TEMPLATES = [
+  'スマプラで家族グループを作ったよ！\n招待コードは【[招待コード]】です。\nアプリを開いて「家族グループに参加」から入力してね。\n家族みんなで価格情報を共有できるよ。',
+  '買い物情報を家族で共有できるようにしたよ。\n招待コードは【[招待コード]】です。\nスマプラの「家族グループに参加」から入力して参加してね♪',
+  'スーパーの価格情報を家族でまとめて見られるようにしたよ！\n招待コードは【[招待コード]】です。\nスマプラを開いて入力すると参加できるので、時間のある時に登録してね。'
+];
+window.FAMILY_SHARE_TEMPLATES = FAMILY_SHARE_TEMPLATES;
+
+// 友人紹介テンプレート選択（タブボタン + テキストエリア更新）
+var _spRefTmplIdx = 0;
+function spSelectReferralTemplate(idx) {
+  _spRefTmplIdx = idx;
+  var linkEl = document.getElementById('ref-link');
+  var url = linkEl ? linkEl.value.trim() : '';
+  var text = FRIEND_SHARE_TEMPLATES[idx] + (url ? '\n\n' + url : '');
+  var ta = document.getElementById('referral-share-text');
+  if (ta) ta.value = text;
+  for (var i = 0; i < 3; i++) {
+    var btn = document.getElementById('ref-tmpl-btn-' + i);
+    if (!btn) continue;
+    btn.className = i === idx ? 'btn btn-sm sp-btn-primary' : 'btn btn-sm btn-outline-secondary';
+  }
+}
+window.spSelectReferralTemplate = spSelectReferralTemplate;
+
+// 友人紹介：テキストエリアの内容で共有
+async function spShareReferralWithText() {
+  var ta = document.getElementById('referral-share-text');
+  var text = ta ? ta.value : (FRIEND_SHARE_TEMPLATES[0] || '');
+  var linkEl = document.getElementById('ref-link');
+  var url = (linkEl ? linkEl.value.trim() : '') || location.href;
+  await _spShareContent('Smart Price 友人紹介', text, url);
+}
+window.spShareReferralWithText = spShareReferralWithText;
+
+// 家族共有テンプレート選択（[招待コード]を実コードで置換）
+var _spFamTmplIdx = 0;
+function spSelectFamilyTemplate(idx) {
+  _spFamTmplIdx = idx;
+  var codeEl = document.getElementById('family-invite-code-display');
+  var code = codeEl ? codeEl.value : '';
+  var text = FAMILY_SHARE_TEMPLATES[idx].replace(/\[招待コード\]/g, code || 'FAM-XXXXXX');
+  var ta = document.getElementById('family-share-text');
+  if (ta) ta.value = text;
+  for (var i = 0; i < 3; i++) {
+    var btn = document.getElementById('fam-tmpl-btn-' + i);
+    if (!btn) continue;
+    btn.className = i === idx ? 'btn btn-sm sp-btn-primary' : 'btn btn-sm btn-outline-secondary';
+  }
+}
+window.spSelectFamilyTemplate = spSelectFamilyTemplate;
+
+// 家族共有：テキストエリアの内容で共有
+async function spShareFamilyWithText() {
+  var ta = document.getElementById('family-share-text');
+  var text = ta ? ta.value.trim() : '';
+  if (!text) { try { showToast('先に招待コードを発行してください', 2000); } catch(e) {} return; }
+  var url = 'https://smart-price-official.github.io/Smart-Price-Book-v2/';
+  await _spShareContent('Smart Price 家族招待', text, url);
+}
+window.spShareFamilyWithText = spShareFamilyWithText;
 
 // ========== 招待リンク受信処理（起動時）==========
 // トークン受信 → Firebaseでtoken→uid解決 → invitedByに保存
@@ -15220,6 +15308,8 @@ async function spCreateFamilyInvite() {
     if (expiry) expiry.textContent = '有効期限：24時間';
     var result = document.getElementById('family-invite-result');
     if (result) result.style.display = 'block';
+    // [v234 SP-250609-SHARE-002] テンプレート初期化（案1をコード入りで表示）
+    try { if (typeof spSelectFamilyTemplate === 'function') spSelectFamilyTemplate(0); } catch(e) {}
     showToast('招待コードを発行しました', 2000);
   } catch(e) {
     showToast('発行に失敗しました', 2000);
