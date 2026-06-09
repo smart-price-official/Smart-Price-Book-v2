@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.232  BUILD_ID=2026-06-07_theme-dialog-fix
+APP_VERSION=v23.9.233  BUILD_ID=2026-06-08_share-flow
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.232";
-  const BUILD_ID    = "2026-06-07_theme-dialog-fix";
+  const APP_VERSION = "v23.9.233";
+  const BUILD_ID    = "2026-06-08_share-flow";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -1398,13 +1398,10 @@ document.addEventListener('DOMContentLoaded', function() {
         <div class="small text-secondary mb-1">紹介リンク（内部用・自動生成）</div>
         <textarea id="ref-link" class="form-control sp-bg-card sp-border-muted url-box mb-3" rows="2" readonly style="font-size:0.7rem;opacity:0.7;"></textarea>
 
-        <!-- 一括アクションボタン -->
-        <div class="d-grid gap-2 mb-3">
-          <button class="btn sp-btn-primary py-2" onclick="spShareReferral()">
-            📤 紹介文＋リンクを共有する
-          </button>
-          <button class="btn btn-outline-light" onclick="spCopyReferral()">
-            📋 紹介文＋リンクをコピー
+        <!-- [v233 SP-250608-SHARE-001] 1アクション共有ボタン（2ボタン→1ボタン） -->
+        <div class="d-grid mb-3">
+          <button class="btn sp-btn-primary py-2" onclick="spReferralShare1Tap()">
+            📤 友人に紹介する
           </button>
         </div>
 
@@ -1431,13 +1428,17 @@ document.addEventListener('DOMContentLoaded', function() {
           <button class="btn sp-btn-primary w-100 py-2" onclick="spCreateFamilyInvite()">招待コードを発行する</button>
           <div id="family-invite-result" class="mt-2" style="display:none;">
             <div class="small text-secondary mb-1">招待コード：</div>
-            <div class="d-flex gap-2 mb-1">
+            <div class="mb-1">
               <input id="family-invite-code-display" class="form-control sp-bg-card sp-border-muted fw-bold"
                      readonly style="font-family:monospace; letter-spacing:0.12em; font-size:1rem;">
-              <button class="btn sp-btn-secondary" onclick="spCopyFamilyInvite()">コピー</button>
-              <button class="btn sp-btn-primary" onclick="spShareFamilyInvite()">共有</button>
             </div>
-            <div class="small text-secondary" style="opacity:.75;" id="family-invite-expiry"></div>
+            <div class="small text-secondary mb-2" style="opacity:.75;" id="family-invite-expiry"></div>
+            <!-- [v233 SP-250608-SHARE-001] 3アクションボタン（LINE / その他 / コピーのみ） -->
+            <div class="d-grid gap-2">
+              <button class="btn sp-btn-primary py-1" onclick="spLineFamilyInvite()">📱 LINEで送る</button>
+              <button class="btn btn-outline-light py-1" onclick="spShareFamilyInvite()">📤 その他で共有</button>
+              <button class="btn btn-outline-secondary py-1" onclick="spCopyFamilyInvite()">📋 コピーだけする</button>
+            </div>
           </div>
         </div>
 
@@ -14803,6 +14804,36 @@ async function spCopyTextFallback(text){
   }catch(e){}
 }
 
+// [v233 SP-250608-SHARE-001] 共通 Web Share API ユーティリティ
+// 対応端末: Web Share API → ネイティブ共有画面
+// 未対応端末: テキスト＋URLをクリップボードにコピー
+async function _spShareContent(title, text, url) {
+  try {
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: title || 'Smart Price', text: text, url: url });
+      } catch(e) {
+        // AbortError（キャンセル）は無視
+      }
+    } else {
+      // フォールバック: クリップボードへコピー
+      var fullText = url ? text + '\n' + url : text;
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(fullText);
+        } else {
+          var ta = document.createElement('textarea');
+          ta.value = fullText; ta.style.position = 'fixed'; ta.style.opacity = '0';
+          document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+          ta.remove();
+        }
+        showToast('コピーしました。LINEやメールに貼り付けてください 📋', 2500);
+      } catch(e2) {}
+    }
+  } catch(e) {}
+}
+window._spShareContent = _spShareContent;
+
 // ========== ハンドルネーム管理 ==========
 function getHandle() {
   return localStorage.getItem('smartPrice_handle') || '';
@@ -14929,6 +14960,18 @@ async function spShareReferral() {
   }
 }
 window.spShareReferral = spShareReferral;
+
+// [v233 SP-250608-SHARE-001] 友人紹介 1タップ共有
+async function spReferralShare1Tap() {
+  var referralId = (document.getElementById('referralUserIdValue') || {}).value || '';
+  var linkEl = document.getElementById('ref-link');
+  var url = (linkEl ? linkEl.value.trim() : '') || location.href;
+  var title = '【スマプラ】Smart Price 友人紹介';
+  var text = '【スマプラ】価格記録アプリ「Smart Price」を紹介します！'
+    + (referralId ? '\n\n紹介コード：' + referralId : '');
+  await _spShareContent(title, text, url);
+}
+window.spReferralShare1Tap = spReferralShare1Tap;
 
 // ========== 招待リンク受信処理（起動時）==========
 // トークン受信 → Firebaseでtoken→uid解決 → invitedByに保存
@@ -15201,18 +15244,37 @@ function spCopyFamilyInvite() {
 }
 window.spCopyFamilyInvite = spCopyFamilyInvite;
 
+// [v233 SP-250608-SHARE-001] 家族共有テキスト生成ヘルパー
+function _buildFamilyInviteText(code) {
+  return '【スマプラ 家族共有】\n\n招待コード：' + code
+    + '\n\nSmart Priceを開いて「設定 → 家族共有 → 招待コードを入力」から参加してください。';
+}
+
+// [v233] Web Share API で「その他で共有」
 async function spShareFamilyInvite() {
   try {
     var el = document.getElementById('family-invite-code-display');
     var code = el ? el.value : '';
     if (!code) return;
-    var text = '【Smart Price 家族招待】\n招待コード：' + code
-             + '\n有効期限：24時間\nSmartPriceアプリ → 設定 → ②家族共有 → コード入力欄に貼り付けてください';
-    var ok = await spShareText('Smart Price 家族招待', text);
-    if (!ok) spCopyTextFallback(text);
+    var text = _buildFamilyInviteText(code);
+    var url = 'https://smart-price-official.github.io/Smart-Price-Book-v2/';
+    await _spShareContent('Smart Price 家族招待', text, url);
   } catch(e) {}
 }
 window.spShareFamilyInvite = spShareFamilyInvite;
+
+// [v233 SP-250608-SHARE-001] LINEで直接送る
+function spLineFamilyInvite() {
+  try {
+    var el = document.getElementById('family-invite-code-display');
+    var code = el ? el.value : '';
+    if (!code) { showToast('先に招待コードを発行してください', 2000); return; }
+    var text = _buildFamilyInviteText(code)
+      + '\n\nhttps://smart-price-official.github.io/Smart-Price-Book-v2/';
+    window.open('https://line.me/R/share?text=' + encodeURIComponent(text), '_blank');
+  } catch(e) {}
+}
+window.spLineFamilyInvite = spLineFamilyInvite;
 
 async function spJoinFamilyGroup() {
   var statusEl = document.getElementById('family-join-status');
