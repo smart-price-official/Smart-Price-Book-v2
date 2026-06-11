@@ -13,15 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.234  BUILD_ID=2026-06-09_share-templates
+APP_VERSION=v23.9.235  BUILD_ID=235
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.234";
-  const BUILD_ID    = "2026-06-09_share-templates";
+  const APP_VERSION = "v23.9.235";
+  const BUILD_ID    = "235";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -1710,6 +1710,14 @@ document.addEventListener('DOMContentLoaded', function() {
     <button id="syncBtn" class="btn btn-primary w-100 py-2 fw-bold mb-2" onclick="startMigration()">設定保存と同期</button>
     <button id="clearCacheBtn" class="btn sp-btn-primary w-100 py-2 fw-bold mb-2" onclick="clearAllCache()">🔄 キャッシュクリア（表示崩れ修正）</button>
     <button id="webBtn" class="btn btn-outline-secondary w-100 py-2 fw-bold mb-2" onclick="openWebModal()">ブラウザ版へ（URL表示）</button>
+
+    <div id="sp-company-info" class="small text-secondary mt-3 mb-2 px-1" style="line-height:1.65; opacity:.88;">
+      <div class="fw-bold mb-1">運営会社情報</div>
+      <div>運営会社：株式会社スマート</div>
+      <div>所在地：〒319-1118 茨城県那珂郡東海村舟石川駅東４丁目８−９ 東昭ビルド101</div>
+      <div>お問い合わせ：SmartPrice</div>
+      <div>メール：<a href="mailto:smapri.jp@gmail.com" class="text-secondary">smapri.jp@gmail.com</a></div>
+    </div>
 
     <button class="btn btn-link text-secondary w-100" data-action="close-settings">閉じる</button>
   </div>
@@ -14979,11 +14987,14 @@ async function spShareReferral() {
 }
 window.spShareReferral = spShareReferral;
 
+// [v235] 共有URL正本（SMSスパム判定回避のため github.io から smapri.jp へ統一）
+var SP_SHARE_PUBLIC_URL = 'https://smapri.jp';
+window.SP_SHARE_PUBLIC_URL = SP_SHARE_PUBLIC_URL;
+
 // [v233 SP-250608-SHARE-001] 友人紹介 1タップ共有
 async function spReferralShare1Tap() {
   var referralId = (document.getElementById('referralUserIdValue') || {}).value || '';
-  var linkEl = document.getElementById('ref-link');
-  var url = (linkEl ? linkEl.value.trim() : '') || location.href;
+  var url = SP_SHARE_PUBLIC_URL;
   var title = '【スマプラ】Smart Price 友人紹介';
   var text = '【スマプラ】価格記録アプリ「Smart Price」を紹介します！'
     + (referralId ? '\n\n紹介コード：' + referralId : '');
@@ -15011,8 +15022,7 @@ window.FAMILY_SHARE_TEMPLATES = FAMILY_SHARE_TEMPLATES;
 var _spRefTmplIdx = 0;
 function spSelectReferralTemplate(idx) {
   _spRefTmplIdx = idx;
-  var linkEl = document.getElementById('ref-link');
-  var url = linkEl ? linkEl.value.trim() : '';
+  var url = SP_SHARE_PUBLIC_URL;
   var text = FRIEND_SHARE_TEMPLATES[idx] + (url ? '\n\n' + url : '');
   var ta = document.getElementById('referral-share-text');
   if (ta) ta.value = text;
@@ -15028,8 +15038,7 @@ window.spSelectReferralTemplate = spSelectReferralTemplate;
 async function spShareReferralWithText() {
   var ta = document.getElementById('referral-share-text');
   var text = ta ? ta.value : (FRIEND_SHARE_TEMPLATES[0] || '');
-  var linkEl = document.getElementById('ref-link');
-  var url = (linkEl ? linkEl.value.trim() : '') || location.href;
+  var url = SP_SHARE_PUBLIC_URL;
   await _spShareContent('Smart Price 友人紹介', text, url);
 }
 window.spShareReferralWithText = spShareReferralWithText;
@@ -15056,7 +15065,7 @@ async function spShareFamilyWithText() {
   var ta = document.getElementById('family-share-text');
   var text = ta ? ta.value.trim() : '';
   if (!text) { try { showToast('先に招待コードを発行してください', 2000); } catch(e) {} return; }
-  var url = 'https://smart-price-official.github.io/Smart-Price-Book-v2/';
+  var url = SP_SHARE_PUBLIC_URL;
   await _spShareContent('Smart Price 家族招待', text, url);
 }
 window.spShareFamilyWithText = spShareFamilyWithText;
@@ -15347,7 +15356,7 @@ async function spShareFamilyInvite() {
     var code = el ? el.value : '';
     if (!code) return;
     var text = _buildFamilyInviteText(code);
-    var url = 'https://smart-price-official.github.io/Smart-Price-Book-v2/';
+    var url = SP_SHARE_PUBLIC_URL;
     await _spShareContent('Smart Price 家族招待', text, url);
   } catch(e) {}
 }
@@ -15360,7 +15369,7 @@ function spLineFamilyInvite() {
     var code = el ? el.value : '';
     if (!code) { showToast('先に招待コードを発行してください', 2000); return; }
     var text = _buildFamilyInviteText(code)
-      + '\n\nhttps://smart-price-official.github.io/Smart-Price-Book-v2/';
+      + '\n\n' + SP_SHARE_PUBLIC_URL;
     window.open('https://line.me/R/share?text=' + encodeURIComponent(text), '_blank');
   } catch(e) {}
 }
