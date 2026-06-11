@@ -13,15 +13,22 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.235  BUILD_ID=235
+APP_VERSION=v23.9.236  BUILD_ID=236
+
+=== ChangeLog B-2 ===
+### v23.9.236
+- 仮説：新規登録時にパスワード確認がなく誤入力のリスクがある。また、パスワードリセット手段がないためアカウントに入れなくなるリスクがある
+- 真因：新規登録フォームがログイン/登録共用の単一パスワード欄のみで、確認欄・リセット機能が未実装だった
+- 修正方法①：新規登録時の2ステップ確認欄（accountPasswordConfirmWrap）追加＋「パスワードを忘れた場合」リンク＋handlePasswordResetClick()を追加
+- 修正方法②：migrateUserIdTo()内のsyncFirebase()失敗を内部吸収（新規アカウントはクラウドパスが空のためthrowしてロールバックするバグ修正）→ PUT（ローカルデータ書き込み）まで確実に到達させる
 */
 // --- GLOBAL SAFE ALIASES (onclick handlers) ---
 function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeLen(len) : undefined); }catch(e){} }
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.235";
-  const BUILD_ID    = "235";
+  const APP_VERSION = "v23.9.236";
+  const BUILD_ID    = "236";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -1672,7 +1679,7 @@ document.addEventListener('DOMContentLoaded', function() {
             <label class="small text-secondary mb-1 d-block" for="accountEmailInput">メールアドレス</label>
             <input id="accountEmailInput" type="email" class="form-control sp-bg-card sp-border-muted" placeholder="example@mail.com" autocomplete="email">
           </div>
-          <div class="mb-3">
+          <div class="mb-2">
             <label class="small text-secondary mb-1 d-block" for="accountPasswordInput">パスワード</label>
             <!-- v23.9.222 SP-250605-013 P0-03: パスワード表示切替 👁（ログイン/新規登録共用の単一欄） -->
             <div style="position:relative;">
@@ -1680,9 +1687,21 @@ document.addEventListener('DOMContentLoaded', function() {
               <button type="button" id="accountPasswordToggle" onclick="togglePasswordVisibility('accountPasswordInput', this)" aria-label="パスワード表示切替" title="パスワード表示切替" style="position:absolute; right:6px; top:50%; transform:translateY(-50%); background:transparent; border:none; cursor:pointer; font-size:1.1rem; line-height:1; padding:4px 6px;">👁</button>
             </div>
           </div>
+          <!-- v23.9.236: パスワード確認欄（新規登録時のみ表示） -->
+          <div class="mb-3" id="accountPasswordConfirmWrap" style="display:none;">
+            <label class="small text-secondary mb-1 d-block" for="accountPasswordConfirmInput">パスワード（確認）</label>
+            <div style="position:relative;">
+              <input id="accountPasswordConfirmInput" type="password" class="form-control sp-bg-card sp-border-muted" placeholder="もう一度入力" autocomplete="new-password" style="padding-right:2.8rem;">
+              <button type="button" onclick="togglePasswordVisibility('accountPasswordConfirmInput', this)" aria-label="パスワード確認表示切替" title="パスワード確認表示切替" style="position:absolute; right:6px; top:50%; transform:translateY(-50%); background:transparent; border:none; cursor:pointer; font-size:1.1rem; line-height:1; padding:4px 6px;">👁</button>
+            </div>
+          </div>
           <div class="d-grid gap-2 mb-2">
             <button type="button" class="btn sp-btn-primary py-2" onclick="handleAccountLoginClick()">ログイン</button>
             <button type="button" class="btn btn-outline-light py-2" onclick="handleAccountRegisterClick()">新規登録</button>
+          </div>
+          <!-- v23.9.236: パスワードリセットリンク -->
+          <div class="text-center mb-2">
+            <button type="button" class="btn btn-link btn-sm text-secondary p-0" onclick="handlePasswordResetClick()" style="font-size:0.82rem; text-decoration:underline;">パスワードを忘れた場合</button>
           </div>
           <div class="small text-secondary" style="opacity:.7;">※パスワードは8文字以上</div>
           <div id="accountStatusMsg" class="small mt-2" style="min-height:1.2em;"></div>
@@ -13293,6 +13312,9 @@ function spVisibleTrace(tag, payload, cls) {
     var btn = document.getElementById('accountMenuBtn');
     if (btn) btn.textContent = loggedIn ? '⑧ アカウント設定' : '⑧ アカウント連携（ログイン）';
 
+    // v23.9.236: パスワード確認欄をリセット（パネル再描画時）
+    try { var _cw2 = document.getElementById('accountPasswordConfirmWrap'); if (_cw2) _cw2.style.display = 'none'; } catch (_) {}
+    try { var _ce2 = document.getElementById('accountPasswordConfirmInput'); if (_ce2) _ce2.value = ''; } catch (_) {}
     // ステータス領域クリア
     var s1 = document.getElementById('accountStatusMsg'); if (s1) { s1.textContent = ''; s1.className = 'small mt-2'; }
     var s2 = document.getElementById('accountStatusMsgLoggedIn'); if (s2) { s2.textContent = ''; s2.className = 'small mt-2'; }
@@ -13345,6 +13367,9 @@ function spVisibleTrace(tag, payload, cls) {
 
   // ログイン ボタン
   async function handleAccountLoginClick() {
+    // v23.9.236: 新規登録フローの確認欄をリセット
+    try { var _cw = document.getElementById('accountPasswordConfirmWrap'); if (_cw) _cw.style.display = 'none'; } catch (_) {}
+    try { var _ce = document.getElementById('accountPasswordConfirmInput'); if (_ce) _ce.value = ''; } catch (_) {}
     var emailEl = document.getElementById('accountEmailInput');
     var passEl = document.getElementById('accountPasswordInput');
     var msg = document.getElementById('accountStatusMsg');
@@ -13380,12 +13405,25 @@ function spVisibleTrace(tag, payload, cls) {
   async function handleAccountRegisterClick() {
     var emailEl = document.getElementById('accountEmailInput');
     var passEl = document.getElementById('accountPasswordInput');
+    var confirmWrap = document.getElementById('accountPasswordConfirmWrap');
+    var confirmEl = document.getElementById('accountPasswordConfirmInput');
     var msg = document.getElementById('accountStatusMsg');
     var email = emailEl ? String(emailEl.value || '').trim() : '';
     var password = passEl ? String(passEl.value || '') : '';
     function setMsg(t, cls) { if (msg) { msg.textContent = t; msg.className = 'small mt-2 ' + cls; } }
     if (!email || !password) { setMsg('メールアドレスとパスワードを入力してください', 'text-warning'); return; }
     if (password.length < 8) { setMsg('パスワードは8文字以上にしてください', 'text-warning'); return; }
+    // v23.9.236: 確認欄が非表示なら表示して確認入力を促す（2ステップ登録）
+    if (confirmWrap && confirmWrap.style.display === 'none') {
+      confirmWrap.style.display = '';
+      try { if (passEl) passEl.setAttribute('autocomplete', 'new-password'); } catch (_) {}
+      setMsg('パスワードをもう一度入力してください', 'text-secondary');
+      try { if (confirmEl) confirmEl.focus(); } catch (_) {}
+      return;
+    }
+    // v23.9.236: パスワード確認一致チェック
+    var confirm = confirmEl ? String(confirmEl.value || '') : '';
+    if (password !== confirm) { setMsg('パスワードが一致しません', 'text-warning'); return; }
     setMsg('登録中…', 'text-secondary');
     try {
       var ret = await spAccountRegister(email, password);
@@ -13429,6 +13467,32 @@ function spVisibleTrace(tag, payload, cls) {
     renderStartupBannerIfNeeded();
   }
   window.handleAccountLogoutClick = handleAccountLogoutClick;
+
+  // v23.9.236: パスワードリセット
+  async function handlePasswordResetClick() {
+    var emailEl = document.getElementById('accountEmailInput');
+    var msg = document.getElementById('accountStatusMsg');
+    var email = emailEl ? String(emailEl.value || '').trim() : '';
+    function setMsg(t, cls) { if (msg) { msg.textContent = t; msg.className = 'small mt-2 ' + cls; } }
+    if (!email) { setMsg('メールアドレスを入力してください', 'text-warning'); return; }
+    setMsg('送信中…', 'text-secondary');
+    try {
+      var ret = await _spApiCall('/api/auth/reset-password', 'POST', { email: email });
+      if (ret.ok) {
+        setMsg('✓ パスワードリセットメールを送信しました', 'text-success');
+        try { spDbg('[PASSWORD_RESET_OK]', { email: email }); } catch (_) {}
+      } else if (ret.networkError) {
+        setMsg('✗ 通信エラー: ' + ret.networkError, 'text-danger');
+      } else {
+        var detail = (ret.body && (ret.body.detail || ret.body.error)) || ('HTTP ' + ret.status);
+        setMsg('✗ 送信失敗: ' + detail, 'text-danger');
+        try { spDbg('[PASSWORD_RESET_ERR]', { status: ret.status, detail: detail }); } catch (_) {}
+      }
+    } catch (e) {
+      setMsg('✗ 通信エラー: ' + (e && e.message ? e.message : String(e)), 'text-danger');
+    }
+  }
+  window.handlePasswordResetClick = handlePasswordResetClick;
 
   // 起動時バナー（C案）
   function renderStartupBannerIfNeeded() {
@@ -14174,8 +14238,9 @@ async function migrateUserIdTo(newUid, opts) {
     if (db && db.config) db.config.userId = newUid;
     try { if (typeof window.spOpLog === 'function') window.spOpLog('uid_migrate_progress', { step: 'switch_uid', trigger: trigger, oldUidHead: current.slice(0, 8), newUidHead: newUid.slice(0, 8) }); } catch (_) {}
     // 4. GET（syncFirebase 内で新uidパスを取得し既存ローカルと merge）
+    // v23.9.236: 新規アカウントはクラウドパスが空のため syncFirebase が throw する → 内部で吸収して PUT へ進む
     if (typeof syncFirebase === 'function') {
-      await syncFirebase();
+      try { await syncFirebase(); } catch (_migSync) {}
     }
     try { if (typeof window.spOpLog === 'function') window.spOpLog('uid_migrate_progress', { step: 'sync_done', trigger: trigger }); } catch (_) {}
     // 5. PUT は mergeLocal:true の時だけ（C4 別アカウントは PUT しない＝ローカルデータを別アカウントへ漏洩させない）
