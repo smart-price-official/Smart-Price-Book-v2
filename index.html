@@ -13,9 +13,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.239  BUILD_ID=239
+APP_VERSION=v23.9.240  BUILD_ID=240
 
 === ChangeLog B-2 ===
+### v23.9.240
+- 仮説：「設定保存と同期」ボタンを押しても同期成功トーストが出ない
+- 真因：startMigration() が IIFE 内で定義されており window.startMigration としてエクスポートされていなかったため、onclick="startMigration()" が ReferenceError で毎回失敗していた
+- 修正方法：startMigration 関数定義の直後に window.startMigration = startMigration; を追加してグローバル公開
+
 ### v23.9.239
 - 仮説：Firebase URL がローカルストレージ未設定の端末で同期が一切動作しない
 - 真因：fbUrl = localStorage.getItem('smartPriceFirebaseUrl') || '' で空になり syncFirebase() が早期リターン。「設定保存と同期」ボタンも fb-url-input 値の取得前に fbUrl 依存処理で無反応になっていた
@@ -43,8 +48,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.239";
-  const BUILD_ID    = "239";
+  const APP_VERSION = "v23.9.240";
+  const BUILD_ID    = "240";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -12792,6 +12797,7 @@ function spVisibleTrace(tag, payload, cls) {
       activeSyncController = null;
     }
   }
+  window.startMigration = startMigration; // v23.9.240: IIFE内定義のためグローバル公開
 </script>
 
 <script>
