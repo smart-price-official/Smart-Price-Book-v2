@@ -13,9 +13,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.238  BUILD_ID=238
+APP_VERSION=v23.9.239  BUILD_ID=239
 
 === ChangeLog B-2 ===
+### v23.9.239
+- 仮説：Firebase URL がローカルストレージ未設定の端末で同期が一切動作しない
+- 真因：fbUrl = localStorage.getItem('smartPriceFirebaseUrl') || '' で空になり syncFirebase() が早期リターン。「設定保存と同期」ボタンも fb-url-input 値の取得前に fbUrl 依存処理で無反応になっていた
+- 修正方法：fbUrl 初期値として FIREBASE_CONFIG.databaseURL を自動フォールバック設定。localStorage にも自動保存して以降の起動でも有効化
+
 ### v23.9.238
 - 仮説：複数の匿名UIDに分散したデータが現在のアカウントに統合されていない
 - 真因：検証期間中に複数のUIDが生成され、アカウント移行時に引き継がれなかった
@@ -38,8 +43,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.238";
-  const BUILD_ID    = "238";
+  const APP_VERSION = "v23.9.239";
+  const BUILD_ID    = "239";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -3309,7 +3314,12 @@ document.addEventListener('DOMContentLoaded', function() {
   let deferredPrompt = null; // ✅ PWAインストールプロンプト
 
   // ✅ ここは必ず let（const にすると "Assignment to constant variable" の原因になる）
-  let fbUrl = localStorage.getItem('smartPriceFirebaseUrl') || '';
+  // v23.9.239: FIREBASE_CONFIG.databaseURL を自動フォールバック（localStorage 未設定端末で同期不能になるバグ修正）
+  let fbUrl = localStorage.getItem('smartPriceFirebaseUrl') ||
+    (typeof FIREBASE_CONFIG !== 'undefined' && FIREBASE_CONFIG && FIREBASE_CONFIG.databaseURL ? FIREBASE_CONFIG.databaseURL : '');
+  if (fbUrl && !localStorage.getItem('smartPriceFirebaseUrl')) {
+    try { localStorage.setItem('smartPriceFirebaseUrl', fbUrl); } catch (_) {}
+  }
 
   // ========= Config.json (Yahoo Proxy URL) =========
   window.SP_CONFIG = {};
