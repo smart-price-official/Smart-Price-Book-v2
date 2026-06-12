@@ -13,9 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.236  BUILD_ID=236
+APP_VERSION=v23.9.237  BUILD_ID=237
 
 === ChangeLog B-2 ===
+### v23.9.237
+- 仮説：メールアカウント登録時に匿名UIDのデータが引き継がれていない（数週間分の購入履歴が見えない）
+- 真因：migrateUserIdTo()はv236で修正済みだが、すでに登録済みのユーザーはC1(already_linked)スキップで自動移行が走らない。sp_user_id_backupに旧UIDが残っていても移行UIがなかった
+- 修正方法①：migrateUserIdTo()のspOpLogに旧UID情報を追記（デバッグ用）
+- 修正方法②：ログイン済みパネルに「以前のデータを引き継ぐ」ボタン追加（sp_user_id_backupから旧UIDを取得しFirebaseからデータ取得→mergeDb→syncFirebasePut）
+
 ### v23.9.236
 - 仮説：新規登録時にパスワード確認がなく誤入力のリスクがある。また、パスワードリセット手段がないためアカウントに入れなくなるリスクがある
 - 真因：新規登録フォームがログイン/登録共用の単一パスワード欄のみで、確認欄・リセット機能が未実装だった
@@ -27,8 +33,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.236";
-  const BUILD_ID    = "236";
+  const APP_VERSION = "v23.9.237";
+  const BUILD_ID    = "237";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -1717,6 +1723,11 @@ document.addEventListener('DOMContentLoaded', function() {
             <button type="button" class="btn btn-outline-warning py-2" onclick="handleAccountLogoutClick()">ログアウト</button>
           </div>
           <div id="accountStatusMsgLoggedIn" class="small mt-2" style="min-height:1.2em;"></div>
+          <!-- v23.9.237: 手動データ移行ボタン（旧匿名UID→アカウントUID） -->
+          <div id="dataMigrationWrap" class="mt-2" style="display:none;">
+            <button type="button" id="dataMigrationBtn" class="btn btn-outline-info btn-sm w-100 py-2" onclick="handleDataMigrationClick()">以前のデータを引き継ぐ</button>
+            <div class="small text-secondary mt-1" style="font-size:0.78rem; opacity:.8;">アカウント登録前のデータが見えない場合に使用</div>
+          </div>
         </div>
         <!-- v23.9.173 SP-260601-007: パネル末尾[戻る]を settingsCommonBack に共通化（panelAccount） -->
       </div>
@@ -13361,6 +13372,17 @@ function spVisibleTrace(tag, payload, cls) {
         }
       }).catch(function(){});
     }
+    // v23.9.237: 手動移行ボタン表示制御（sp_user_id_backup が旧UIDとして残っている場合のみ表示）
+    if (loggedIn) {
+      var migWrap = document.getElementById('dataMigrationWrap');
+      if (migWrap) {
+        var _backupUid = '';
+        try { _backupUid = (localStorage.getItem('sp_user_id_backup') || '').toString(); } catch (_) {}
+        var _curUid = '';
+        try { _curUid = (localStorage.getItem('sp_user_id') || '').toString(); } catch (_) {}
+        migWrap.style.display = (_backupUid && _backupUid !== _curUid) ? '' : 'none';
+      }
+    }
     try { spDbg('[ACCOUNT_PANEL_RENDER]', { loggedIn: loggedIn, hasEmail: !!email }); } catch(_) {}
   }
   window.renderAccountPanel = renderAccountPanel;
@@ -13467,6 +13489,76 @@ function spVisibleTrace(tag, payload, cls) {
     renderStartupBannerIfNeeded();
   }
   window.handleAccountLogoutClick = handleAccountLogoutClick;
+
+  // v23.9.237: 手動データ移行（旧匿名UID Firebase データ → 現在のアカウントUID にマージ）
+  async function handleDataMigrationClick() {
+    var btn = document.getElementById('dataMigrationBtn');
+    var msg = document.getElementById('accountStatusMsgLoggedIn');
+    function setMsg(t, cls) { if (msg) { msg.textContent = t; msg.className = 'small mt-2 ' + cls; } }
+
+    var oldUid = '';
+    try { oldUid = (localStorage.getItem('sp_user_id_backup') || '').toString(); } catch (_) {}
+    if (!oldUid) { setMsg('以前のデータが見つかりません（旧IDなし）', 'text-warning'); return; }
+
+    var currentUid = '';
+    try { currentUid = (localStorage.getItem('sp_user_id') || '').toString(); } catch (_) {}
+    if (!currentUid || !currentUid.startsWith('acct_')) {
+      setMsg('アカウントにログインしていません', 'text-warning'); return;
+    }
+    if (oldUid === currentUid) {
+      setMsg('データは既に統合済みです', 'text-secondary');
+      try { var w = document.getElementById('dataMigrationWrap'); if (w) w.style.display = 'none'; } catch (_) {}
+      return;
+    }
+
+    setMsg('旧データを取得中…', 'text-secondary');
+    if (btn) btn.disabled = true;
+
+    try {
+      if (!window.firebaseDb) throw new Error('Firebase未接続');
+
+      var snap = await new Promise(function (resolve, reject) {
+        window.firebaseDb.ref('users/' + oldUid).once('value', resolve, reject);
+      });
+      var oldData = snap.val();
+
+      if (!oldData || !oldData.products || Object.keys(oldData.products).length === 0) {
+        setMsg('旧アカウントのデータが空です（0件）', 'text-secondary');
+        try { var w2 = document.getElementById('dataMigrationWrap'); if (w2) w2.style.display = 'none'; } catch (_) {}
+        return;
+      }
+
+      var oldCount = Object.keys(oldData.products).length;
+
+      // ローカルデータと旧データをマージ
+      if (typeof mergeDb === 'function') {
+        db = mergeDb(db, oldData);
+      } else {
+        db = oldData;
+      }
+
+      if (typeof saveLocalOnly === 'function') saveLocalOnly();
+
+      // 現在のアカウントUID パスに書き込む
+      if (typeof syncFirebasePut === 'function') {
+        await syncFirebasePut();
+      }
+
+      try { spDbg('[DATA_MIGRATION_MANUAL_OK]', { oldUidHead: oldUid.slice(0, 8), currentUidHead: currentUid.slice(0, 8), oldCount: oldCount }); } catch (_) {}
+
+      setMsg('✓ ' + oldCount + '件のデータを引き継ぎました', 'text-success');
+      try { var w3 = document.getElementById('dataMigrationWrap'); if (w3) w3.style.display = 'none'; } catch (_) {}
+
+      try { if (typeof renderHistory === 'function') await renderHistory(); } catch (_) {}
+      try { if (typeof renderMainList === 'function') renderMainList(); } catch (_) {}
+
+    } catch (e) {
+      try { spDbg('[DATA_MIGRATION_MANUAL_ERR]', { err: e && e.message ? e.message : String(e) }); } catch (_) {}
+      setMsg('✗ エラー: ' + (e && e.message ? e.message : String(e)), 'text-danger');
+      if (btn) btn.disabled = false;
+    }
+  }
+  window.handleDataMigrationClick = handleDataMigrationClick;
 
   // v23.9.236: パスワードリセット
   async function handlePasswordResetClick() {
