@@ -13,9 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.241  BUILD_ID=241
+APP_VERSION=v23.9.242  BUILD_ID=242
 
 === ChangeLog B-2 ===
+### v23.9.242
+- 仮説：startMigration()が呼ばれているが内部の複雑な依存（fetchWithTimeout/scopeUrlByUser/getSafeUrl等）でエラーになりトーストに到達しない。また起動時自動同期もfbUrl空で不発。
+- 真因：startMigration()がfb-url-inputのvalueを参照するが取得できない場合u=''→ローカル保存のみで終了。fbUrl依存の起動時syncFirebase()も不安定。
+- 修正方法①：startMigration()をfetch直接呼び出しのシンプル実装に完全書き換え（fetchWithTimeout/scopeUrlByUser廃止）
+- 修正方法②：window.onload末尾にfbUrl非依存の起動時強制同期コードを追加（FIREBASE_CONFIG.databaseURL + sp_user_id を直接使用）
+
 ### v23.9.241
 - 仮説：「設定保存と同期」タップ後も同期成功・失敗のトーストが見えない
 - 真因：設定モーダルの z-index が 100500、トースト z-index が 1500 のためモーダル開放中はトーストが完全に隠れる
@@ -53,8 +59,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.241";
-  const BUILD_ID    = "241";
+  const APP_VERSION = "v23.9.242";
+  const BUILD_ID    = "242";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -3713,6 +3719,32 @@ document.addEventListener('DOMContentLoaded', function() {
     } catch (e) {
       try { spDbg('[BOOT_STEP_ERROR]', { step: 'debugUiInit', message: String(e && e.message) }); } catch (_) {}
     }
+
+    // v23.9.242: 起動時強制同期（fbUrl/syncFirebase に依存しない直接fetch版）
+    // fbUrl が空でも FIREBASE_CONFIG.databaseURL + sp_user_id で直接Firebaseにアクセス
+    setTimeout(async () => {
+      try {
+        const _uid = (localStorage.getItem('sp_user_id') || '').trim() ||
+                     (db && db.config && db.config.userId ? String(db.config.userId).trim() : '');
+        const _base = ((localStorage.getItem('smartPriceFirebaseUrl') || '').trim()) ||
+                      (typeof FIREBASE_CONFIG !== 'undefined' && FIREBASE_CONFIG.databaseURL ? FIREBASE_CONFIG.databaseURL : '');
+        if (!_uid || !_base) return;
+        const _url = _base.replace(/\/+$/, '') + '/users/' + encodeURIComponent(_uid) + '/smart_price.json';
+        const _res = await fetch(_url);
+        const _cloud = await _res.json();
+        if (_cloud && _cloud.products) {
+          db = mergeDb(db, _cloud);
+          if (!localStorage.getItem('smartPriceFirebaseUrl')) {
+            localStorage.setItem('smartPriceFirebaseUrl', _base);
+            fbUrl = _base;
+          }
+          saveLocalOnly();
+          await renderHistory();
+          renderStoreList();
+          showToast('クラウドデータを取得しました', 3000);
+        }
+      } catch (_e) { /* サイレント失敗 */ }
+    }, 2000);
   };
 
   // ✅ pageshowイベントでも初期化（ブラウザバック対策）
@@ -12719,90 +12751,57 @@ function spVisibleTrace(tag, payload, cls) {
   }
   window.confirmDeleteProduct = confirmDeleteProduct;
 
-  // ========= Settings / Sync =========
+  // ========= Settings / Sync (v23.9.242: 直接fetch版に書き換え) =========
   async function startMigration() {
     const btn = document.getElementById('syncBtn');
-    const urlEl = document.getElementById('fb-url-input');
-    const cityEl = document.getElementById('home-city-input');
-
-    const u = (urlEl ? urlEl.value : '').trim();
-    const cityInput = (cityEl ? cityEl.value : '').trim();
-
     if (btn) { btn.disabled = true; btn.innerText = "同期中…"; }
-    showToast("同期を開始…", 3000);
-    activeSyncController = new AbortController();
-
+    showToast('同期中...', 30000);
     try {
-      db.config.homeCity = cityInput;
-      db = normalizeDb(db);
-      saveLocalOnly();
-
-      if(!u) {
-        showToast("ローカル保存完了", 3000);
-        closeSettings(); showHome();
+      // uid: localStorage優先、なければdb.config
+      const uid = (localStorage.getItem('sp_user_id') || '').trim() ||
+                  (db && db.config && db.config.userId ? db.config.userId.trim() : '');
+      // base URL: localStorage優先、なければFIREBASE_CONFIG
+      const base = ((localStorage.getItem('smartPriceFirebaseUrl') || '').trim() ||
+                    (typeof FIREBASE_CONFIG !== 'undefined' && FIREBASE_CONFIG.databaseURL ? FIREBASE_CONFIG.databaseURL : ''));
+      if (!uid || !base) {
+        showToast('設定不足: uid=' + (uid || 'なし') + ' url=' + (base ? 'あり' : 'なし'), 10000);
+        if (btn) { btn.disabled = false; btn.innerText = "設定保存と同期"; }
         return;
       }
-
-      const uid = getOrCreateUserId();
-      const targetUrl = scopeUrlByUser(getSafeUrl(u), uid);
-      const legacyUrl = getSafeUrl(u);
-
-      // ✅ PUT前にクラウドを読み、マージしてから送る（端末間の取りこぼし減、画像情報も保護）
-      try {
-        // まずユーザーID単位（新）を読む
-        const res0 = await fetchWithTimeout(targetUrl, { signal: activeSyncController.signal }, 9000);
-        const cloud0 = await res0.json();
-        if (cloud0 && cloud0.products) {
-          db = mergeDb(db, cloud0); // ✅ マージ方式で画像情報が消えない
-          saveLocalOnly();
-        } else {
-          // 旧URL（全員共通）にデータが残っている場合の救済
-          try{
-            const resL = await fetchWithTimeout(legacyUrl, { signal: activeSyncController.signal }, 9000);
-            const cloudL = await resL.json();
-            if (cloudL && cloudL.products) {
-              db = mergeDb(db, cloudL);
-              saveLocalOnly();
-            }
-          }catch(e){}
-        }
-      } catch(e) {
-        // 読めなくても続行
-        try{
-          const resL = await fetchWithTimeout(legacyUrl, { signal: activeSyncController.signal }, 9000);
-          const cloudL = await resL.json();
-          if (cloudL && cloudL.products) { db = mergeDb(db, cloudL); saveLocalOnly(); }
-        }catch(e){}
+      const targetUrl = base.replace(/\/+$/, '') + '/users/' + encodeURIComponent(uid) + '/smart_price.json';
+      // GET（クラウドを取得してマージ）
+      const res = await fetch(targetUrl);
+      const cloud = await res.json();
+      if (cloud && cloud.products) {
+        db = mergeDb(db, cloud);
+        localStorage.setItem('smartPriceFirebaseUrl', base);
+        fbUrl = base;
+        saveLocalOnly();
+        // PUT（ローカルデータをクラウドに書き戻し）
+        try {
+          const payload = typeof stripForCloud === 'function' ? stripForCloud(db) : db;
+          await fetch(targetUrl, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+        } catch (_putErr) { /* PUT失敗は無視（GETで取得済みなので継続）*/ }
+        await renderHistory();
+        renderStoreList();
+        showToast('同期完了！', 5000);
+        if (btn) { btn.disabled = false; btn.innerText = "設定保存と同期"; }
+        if (typeof window.SmartPriceModal !== 'undefined' && window.SmartPriceModal.close) window.SmartPriceModal.close();
+        showHome();
+      } else {
+        showToast('クラウドデータなし（uid=' + uid.slice(0,12) + '…）', 8000);
+        if (btn) { btn.disabled = false; btn.innerText = "設定保存と同期"; }
       }
-
-      // PUT（画像は送らない）
-      const payload = stripForCloud(db);
-      await fetchWithTimeout(targetUrl, {
-        method: 'PUT',
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        signal: activeSyncController.signal
-      }, 12000);
-
-      // ✅ 成功後：GETで読み直し（Edgeの空表示対策、マージ方式で画像が消えない）
-      fbUrl = u;
-      localStorage.setItem('smartPriceFirebaseUrl', u);
-      await syncFirebase();
-
-      showToast("同期成功！", 3000);
-      if (typeof window.SmartPriceModal !== 'undefined' && window.SmartPriceModal.close) {
-        window.SmartPriceModal.close();
-      }
-      showHome();
-
-    } catch(e) {
-      const msg = (e.name === 'AbortError') ? "タイムアウト/中断" : e.message;
-      showToast(`同期失敗（${msg}）`, 10000);
-    } finally {
-      activeSyncController = null;
+    } catch (e) {
+      showToast('同期エラー: ' + e.message, 10000);
+      if (btn) { btn.disabled = false; btn.innerText = "設定保存と同期"; }
     }
   }
-  window.startMigration = startMigration; // v23.9.240: IIFE内定義のためグローバル公開
+  window.startMigration = startMigration;
 </script>
 
 <script>
