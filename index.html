@@ -13,9 +13,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.240  BUILD_ID=240
+APP_VERSION=v23.9.241  BUILD_ID=241
 
 === ChangeLog B-2 ===
+### v23.9.241
+- 仮説：「設定保存と同期」タップ後も同期成功・失敗のトーストが見えない
+- 真因：設定モーダルの z-index が 100500、トースト z-index が 1500 のためモーダル開放中はトーストが完全に隠れる
+- 修正方法：トースト host の z-index を 200000 に引き上げ、常にモーダルより前面に表示する
+
 ### v23.9.240
 - 仮説：「設定保存と同期」ボタンを押しても同期成功トーストが出ない
 - 真因：startMigration() が IIFE 内で定義されており window.startMigration としてエクスポートされていなかったため、onclick="startMigration()" が ReferenceError で毎回失敗していた
@@ -48,8 +53,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.240";
-  const BUILD_ID    = "240";
+  const APP_VERSION = "v23.9.241";
+  const BUILD_ID    = "241";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -3785,7 +3790,7 @@ document.addEventListener('DOMContentLoaded', function() {
     host.style.top = "auto";
     host.style.bottom = "80px";
     host.style.transform = "translateX(-50%)";
-    host.style.zIndex = "1500";
+    host.style.zIndex = "200000"; // v23.9.241: 設定モーダル(100500)より上に常時表示
     host.style.width = "min(560px, calc(100vw - 24px))";
     host.style.pointerEvents = "none";
     document.body.appendChild(host);
