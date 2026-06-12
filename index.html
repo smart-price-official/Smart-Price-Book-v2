@@ -13,9 +13,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.237  BUILD_ID=237
+APP_VERSION=v23.9.238  BUILD_ID=238
 
 === ChangeLog B-2 ===
+### v23.9.238
+- 仮説：複数の匿名UIDに分散したデータが現在のアカウントに統合されていない
+- 真因：検証期間中に複数のUIDが生成され、アカウント移行時に引き継がれなかった
+- 修正方法：Firebase上の全匿名UID・dev系UID（12件）のデータをacct_27cab792...に一括マージ（Node.jsスクリプトで実行済み）。商品数441件、全旧UID購入履歴を統合。
+
 ### v23.9.237
 - 仮説：メールアカウント登録時に匿名UIDのデータが引き継がれていない（数週間分の購入履歴が見えない）
 - 真因：migrateUserIdTo()はv236で修正済みだが、すでに登録済みのユーザーはC1(already_linked)スキップで自動移行が走らない。sp_user_id_backupに旧UIDが残っていても移行UIがなかった
@@ -33,8 +38,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.237";
-  const BUILD_ID    = "237";
+  const APP_VERSION = "v23.9.238";
+  const BUILD_ID    = "238";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
