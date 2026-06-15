@@ -13,9 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.246  BUILD_ID=246
+APP_VERSION=v23.9.247  BUILD_ID=247
 
 === ChangeLog B-2 ===
+### v23.9.247
+- 仮説：起動時診断パネル（赤/緑バー）が不要になった。GPS座標が間違っている可能性がある
+- 真因：v244〜v246の起動時診断パネルは同期問題解決のためのデバッグ用途であり、Firebase同期が解決した現在は不要。GPS問題の原因は未特定（ブラウザが返す座標が間違っている可能性）
+- 修正方法①：window.onload冒頭の診断パネル（sp-diag-246）を完全削除
+- 修正方法②：GPS ON後に座標と精度を一時表示（5秒）してどこの座標が取れているか確認できるようにする
+
 ### v23.9.246
 - 仮説：sp_user_idがすでにacct_で始まる別のUID（80商品）に設定されており、v245のauto-fix条件(!uid.startsWith('acct_'))をスキップした
 - 真因：v245の条件はsp_user_idがacct_でない場合のみ修正する。sp_user_id=acct_XXXX（80商品）かつsp_linked_account_uid=acct_27cab792...（441商品）の組み合わせで発動しなかった
@@ -81,8 +87,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.246";
-  const BUILD_ID    = "246";
+  const APP_VERSION = "v23.9.247";
+  const BUILD_ID    = "247";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -3471,53 +3477,7 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 
   window.onload = async () => {
-    // v23.9.246: DOM直書き診断パネル（UID自動修正条件拡張・成功時にUID表示）
-    try {
-      const _d = document.createElement('div');
-      _d.id = 'sp-diag-246';
-      _d.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#c00;color:#fff;z-index:2000000;padding:6px 10px;font-size:12px;font-family:monospace;word-break:break-all;';
-      _d.textContent = '[v246] 起動中...';
-      document.body.appendChild(_d);
-      setTimeout(async () => {
-        try {
-          let _uid = (localStorage.getItem('sp_user_id') || '').trim();
-          const _linked = (localStorage.getItem('sp_linked_account_uid') || '').trim();
-          const _base = ((localStorage.getItem('smartPriceFirebaseUrl') || '').trim()) || (FIREBASE_CONFIG && FIREBASE_CONFIG.databaseURL ? FIREBASE_CONFIG.databaseURL : '');
-          // v246: sp_linked_account_uidがacct_で始まり、かつ現在のuidと異なれば（両方acct_でも）linkedを優先
-          let _autoFixed = false;
-          if (_linked.startsWith('acct_') && _linked !== _uid) {
-            _uid = _linked;
-            try { localStorage.setItem('sp_user_id', _uid); } catch(_) {}
-            if (typeof db !== 'undefined' && db && db.config) db.config.userId = _uid;
-            _autoFixed = true;
-          }
-          _d.textContent = '[v246] uid=' + (_uid ? _uid.slice(0,20) + '…' : 'なし') + (_autoFixed ? '(修正済)' : '') + ' / linked=' + (_linked ? _linked.slice(0,12) + '…' : 'なし') + ' / base=' + (_base ? 'あり' : 'なし');
-          if (!_uid || !_base) { _d.style.background = '#800'; _d.textContent += ' ← UID/URL不足'; return; }
-          const _url = _base.replace(/\/+$/, '') + '/users/' + encodeURIComponent(_uid) + '/smart_price.json';
-          _d.textContent += ' → fetch中...';
-          const _res = await fetch(_url);
-          const _cloud = await _res.json();
-          if (_cloud && _cloud.products) {
-            const cnt = Object.keys(_cloud.products).length;
-            db = mergeDb(db, _cloud);
-            localStorage.setItem('smartPriceFirebaseUrl', _base);
-            fbUrl = _base;
-            saveLocalOnly();
-            await renderHistory();
-            renderStoreList();
-            _d.style.background = '#060';
-            _d.textContent = '[v246] ' + cnt + '商品' + (_autoFixed ? '(UID修正済)' : '') + ' uid=' + _uid.slice(0,16) + '… linked=' + (_linked ? _linked.slice(0,12) + '…' : 'なし') + ' / 5秒後に消えます';
-            setTimeout(() => { try { _d.remove(); } catch(_){} }, 5000);
-          } else {
-            _d.style.background = '#840';
-            _d.textContent = '[v246] データなし uid=' + _uid.slice(0,16) + '… linked=' + (_linked ? _linked.slice(0,12) + '…' : 'なし');
-          }
-        } catch(_fe) {
-          _d.style.background = '#800';
-          _d.textContent = '[v246] エラー: ' + String(_fe && _fe.message || _fe);
-        }
-      }, 1500);
-    } catch(_diagE) {}
+    // v23.9.247: 起動時診断パネル削除（同期問題解決済み）
 
     // [_auditLogs] 別スクリプトより先に実行される起動ログ用（spDbg より前）
     try {
@@ -6694,6 +6654,16 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         const d2 = new Date(); lastGpsTime = `${d2.getHours()}:${d2.getMinutes().toString().padStart(2,'0')}`;
 
         spDbg('[GPS_DEBUG_POSITION]', { lat, lng, accuracy, timestamp });
+
+        // v23.9.247: GPS座標一時表示（5秒）
+        try {
+          const _gd = document.createElement('div');
+          _gd.id = 'sp-gps-coord-247';
+          _gd.style.cssText = 'position:fixed;bottom:80px;left:0;right:0;background:rgba(0,0,0,0.85);color:#fff;z-index:2000000;padding:6px 10px;font-size:11px;font-family:monospace;text-align:center;';
+          _gd.textContent = `GPS: ${lat.toFixed(5)}, ${lng.toFixed(5)} / 精度±${Math.round(accuracy)}m`;
+          document.body.appendChild(_gd);
+          setTimeout(() => { try { _gd.remove(); } catch(_){} }, 5000);
+        } catch(_) {}
 
         // 精度チェック
         if (accuracy > 500) {
