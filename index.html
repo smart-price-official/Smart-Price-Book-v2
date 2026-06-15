@@ -13,9 +13,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.247  BUILD_ID=247
+APP_VERSION=v23.9.248  BUILD_ID=248
 
 === ChangeLog B-2 ===
+### v23.9.248
+- 仮説：ストア名に◆◆◆が表示される
+- 真因：db.products[*].history[*].storeフィールドに過去保存されたサロゲートペア文字（絵文字・BMP外Unicode）が混入している。normalizeStoreLabelがそのまま通過させるため◆◆◆として表示される
+- 修正方法：normalizeStoreLabelにサロゲートペア文字（U+D800〜U+DFFF）の除去処理を追加。これにより表示時に不正文字が取り除かれる
+
 ### v23.9.247
 - 仮説：起動時診断パネル（赤/緑バー）が不要になった。GPS座標が間違っている可能性がある
 - 真因：v244〜v246の起動時診断パネルは同期問題解決のためのデバッグ用途であり、Firebase同期が解決した現在は不要。GPS問題の原因は未特定（ブラウザが返す座標が間違っている可能性）
@@ -87,8 +92,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.247";
-  const BUILD_ID    = "247";
+  const APP_VERSION = "v23.9.248";
+  const BUILD_ID    = "248";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -7581,6 +7586,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
   function normalizeStoreLabel(raw) {
     if (!raw) return '';
     let s = String(raw).trim();
+    // v248: サロゲートペア文字（絵文字・BMP外Unicode）を除去（◆◆◆表示バグ対策）
+    s = s.replace(/[\uD800-\uDFFF]/g, '');
     // 空白整理
     s = s.replace(/\s+/g, ' ').trim();
     // 末尾の不要記号整理
