@@ -13,9 +13,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.244  BUILD_ID=244
+APP_VERSION=v23.9.245  BUILD_ID=245
 
 === ChangeLog B-2 ===
+### v23.9.245
+- 仮説：sp_user_idが匿名UID（80商品）のままで、acct_27cab792...（441商品）のデータが取得されない
+- 真因：linkAccountUid()のrelinkパスでmigrateUserIdTo()はsp_user_idをacct_に更新するが、syncFirebase()がfbUrl未設定等で失敗するとsp_user_idが匿名UIDにロールバックされる。startMigration()はsp_user_idをそのまま使うためacct_のデータに到達できない
+- 修正方法①：startMigration()にUID自動修正ロジックを追加。sp_user_idがacct_で始まらず、sp_linked_account_uidがacct_で始まる場合、sp_linked_account_uidをuidとして使用しsp_user_idを上書き保存する
+- 修正方法②：window.onload診断パネル(v245)でもUID自動修正を適用。sp_linked_account_uidも表示してどちらのUIDを使ったか明示する
+
 ### v23.9.244
 - 仮説：showToast自体が動いていない、またはwindow.onload内のsetTimeoutが実行されていない
 - 真因：不明（v243でtry/catchなしの全パターントーストを実装したが何も出なかった）
@@ -69,8 +75,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.244";
-  const BUILD_ID    = "244";
+  const APP_VERSION = "v23.9.245";
+  const BUILD_ID    = "245";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -3459,18 +3465,27 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 
   window.onload = async () => {
-    // v23.9.244: DOM直書き診断パネル（showToast非依存・z-index:2000000）
+    // v23.9.245: DOM直書き診断パネル（UID自動修正付き）
     try {
       const _d = document.createElement('div');
-      _d.id = 'sp-diag-244';
+      _d.id = 'sp-diag-245';
       _d.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#c00;color:#fff;z-index:2000000;padding:6px 10px;font-size:12px;font-family:monospace;word-break:break-all;';
-      _d.textContent = '[v244] onload開始 / showToast=' + (typeof showToast) + ' / fbUrl=' + (fbUrl ? fbUrl.slice(0,30) : 'empty');
+      _d.textContent = '[v245] 起動中...';
       document.body.appendChild(_d);
       setTimeout(async () => {
         try {
-          const _uid = (localStorage.getItem('sp_user_id') || '').trim();
+          let _uid = (localStorage.getItem('sp_user_id') || '').trim();
+          const _linked = (localStorage.getItem('sp_linked_account_uid') || '').trim();
           const _base = ((localStorage.getItem('smartPriceFirebaseUrl') || '').trim()) || (FIREBASE_CONFIG && FIREBASE_CONFIG.databaseURL ? FIREBASE_CONFIG.databaseURL : '');
-          _d.textContent = '[v244] uid=' + (_uid ? _uid.slice(0,20) + '…' : 'なし') + ' / base=' + (_base ? _base.slice(0,30) + '…' : 'なし');
+          // v245: sp_user_idがacct_でなくsp_linked_account_uidがacct_なら自動修正
+          let _autoFixed = false;
+          if (!_uid.startsWith('acct_') && _linked.startsWith('acct_')) {
+            _uid = _linked;
+            try { localStorage.setItem('sp_user_id', _uid); } catch(_) {}
+            if (typeof db !== 'undefined' && db && db.config) db.config.userId = _uid;
+            _autoFixed = true;
+          }
+          _d.textContent = '[v245] uid=' + (_uid ? _uid.slice(0,20) + '…' : 'なし') + (_autoFixed ? '(修正済)' : '') + ' / linked=' + (_linked ? _linked.slice(0,12) + '…' : 'なし') + ' / base=' + (_base ? 'あり' : 'なし');
           if (!_uid || !_base) { _d.style.background = '#800'; _d.textContent += ' ← UID/URL不足'; return; }
           const _url = _base.replace(/\/+$/, '') + '/users/' + encodeURIComponent(_uid) + '/smart_price.json';
           _d.textContent += ' → fetch中...';
@@ -3485,15 +3500,15 @@ document.addEventListener('DOMContentLoaded', function() {
             await renderHistory();
             renderStoreList();
             _d.style.background = '#060';
-            _d.textContent = '[v244] 同期完了: ' + cnt + '商品 / 5秒後に消えます';
+            _d.textContent = '[v245] 同期完了: ' + cnt + '商品' + (_autoFixed ? '(UID自動修正済)' : '') + ' / 5秒後に消えます';
             setTimeout(() => { try { _d.remove(); } catch(_){} }, 5000);
           } else {
             _d.style.background = '#840';
-            _d.textContent = '[v244] データなし: ' + JSON.stringify(_cloud).slice(0, 100);
+            _d.textContent = '[v245] データなし(uid=' + _uid.slice(0,12) + '…): ' + JSON.stringify(_cloud).slice(0, 80);
           }
         } catch(_fe) {
           _d.style.background = '#800';
-          _d.textContent = '[v244] エラー: ' + String(_fe && _fe.message || _fe);
+          _d.textContent = '[v245] エラー: ' + String(_fe && _fe.message || _fe);
         }
       }, 1500);
     } catch(_diagE) {}
@@ -12817,8 +12832,16 @@ function spVisibleTrace(tag, payload, cls) {
     showToast('同期中...', 30000);
     try {
       // uid: localStorage優先、なければdb.config
-      const uid = (localStorage.getItem('sp_user_id') || '').trim() ||
-                  (db && db.config && db.config.userId ? db.config.userId.trim() : '');
+      let uid = (localStorage.getItem('sp_user_id') || '').trim() ||
+                (db && db.config && db.config.userId ? db.config.userId.trim() : '');
+      // v245: sp_user_idがacct_でなく、sp_linked_account_uidがacct_なら自動修正
+      const _linkedAcct = (localStorage.getItem('sp_linked_account_uid') || '').trim();
+      if (!uid.startsWith('acct_') && _linkedAcct.startsWith('acct_')) {
+        uid = _linkedAcct;
+        try { localStorage.setItem('sp_user_id', uid); } catch(_) {}
+        if (db && db.config) db.config.userId = uid;
+        showToast('UID自動修正: ' + uid.slice(0,16) + '…', 3000);
+      }
       // base URL: localStorage優先、なければFIREBASE_CONFIG
       const base = ((localStorage.getItem('smartPriceFirebaseUrl') || '').trim() ||
                     (typeof FIREBASE_CONFIG !== 'undefined' && FIREBASE_CONFIG.databaseURL ? FIREBASE_CONFIG.databaseURL : ''));
