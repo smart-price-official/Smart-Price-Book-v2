@@ -13,9 +13,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.243  BUILD_ID=243
+APP_VERSION=v23.9.244  BUILD_ID=244
 
 === ChangeLog B-2 ===
+### v23.9.244
+- 仮説：showToast自体が動いていない、またはwindow.onload内のsetTimeoutが実行されていない
+- 真因：不明（v243でtry/catchなしの全パターントーストを実装したが何も出なかった）
+- 修正方法：showToastに依存しないDOM直書き診断パネルをwindow.onload冒頭に追加。z-index:2000000で必ず表示。3秒後にfbUrl/uid/showToastの状態を更新表示。
+
 ### v23.9.243
 - 仮説：v242の起動時強制同期がサイレント失敗していて何も表示されない
 - 真因：起動時強制同期のcatch節がサイレント（何も表示しない）のため失敗しても何も起きないように見える。v242が読み込まれているかどうかも不明。
@@ -64,8 +69,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.243";
-  const BUILD_ID    = "243";
+  const APP_VERSION = "v23.9.244";
+  const BUILD_ID    = "244";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -3454,6 +3459,45 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 
   window.onload = async () => {
+    // v23.9.244: DOM直書き診断パネル（showToast非依存・z-index:2000000）
+    try {
+      const _d = document.createElement('div');
+      _d.id = 'sp-diag-244';
+      _d.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#c00;color:#fff;z-index:2000000;padding:6px 10px;font-size:12px;font-family:monospace;word-break:break-all;';
+      _d.textContent = '[v244] onload開始 / showToast=' + (typeof showToast) + ' / fbUrl=' + (fbUrl ? fbUrl.slice(0,30) : 'empty');
+      document.body.appendChild(_d);
+      setTimeout(async () => {
+        try {
+          const _uid = (localStorage.getItem('sp_user_id') || '').trim();
+          const _base = ((localStorage.getItem('smartPriceFirebaseUrl') || '').trim()) || (FIREBASE_CONFIG && FIREBASE_CONFIG.databaseURL ? FIREBASE_CONFIG.databaseURL : '');
+          _d.textContent = '[v244] uid=' + (_uid ? _uid.slice(0,20) + '…' : 'なし') + ' / base=' + (_base ? _base.slice(0,30) + '…' : 'なし');
+          if (!_uid || !_base) { _d.style.background = '#800'; _d.textContent += ' ← UID/URL不足'; return; }
+          const _url = _base.replace(/\/+$/, '') + '/users/' + encodeURIComponent(_uid) + '/smart_price.json';
+          _d.textContent += ' → fetch中...';
+          const _res = await fetch(_url);
+          const _cloud = await _res.json();
+          if (_cloud && _cloud.products) {
+            const cnt = Object.keys(_cloud.products).length;
+            db = mergeDb(db, _cloud);
+            localStorage.setItem('smartPriceFirebaseUrl', _base);
+            fbUrl = _base;
+            saveLocalOnly();
+            await renderHistory();
+            renderStoreList();
+            _d.style.background = '#060';
+            _d.textContent = '[v244] 同期完了: ' + cnt + '商品 / 5秒後に消えます';
+            setTimeout(() => { try { _d.remove(); } catch(_){} }, 5000);
+          } else {
+            _d.style.background = '#840';
+            _d.textContent = '[v244] データなし: ' + JSON.stringify(_cloud).slice(0, 100);
+          }
+        } catch(_fe) {
+          _d.style.background = '#800';
+          _d.textContent = '[v244] エラー: ' + String(_fe && _fe.message || _fe);
+        }
+      }, 1500);
+    } catch(_diagE) {}
+
     // [_auditLogs] 別スクリプトより先に実行される起動ログ用（spDbg より前）
     try {
       if (!window._auditLogs) window._auditLogs = [];
