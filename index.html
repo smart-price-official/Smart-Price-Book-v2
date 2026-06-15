@@ -13,9 +13,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.242  BUILD_ID=242
+APP_VERSION=v23.9.243  BUILD_ID=243
 
 === ChangeLog B-2 ===
+### v23.9.243
+- 仮説：v242の起動時強制同期がサイレント失敗していて何も表示されない
+- 真因：起動時強制同期のcatch節がサイレント（何も表示しない）のため失敗しても何も起きないように見える。v242が読み込まれているかどうかも不明。
+- 修正方法：起動2秒後のトーストを「診断トースト」に変更し、UID/URL/取得結果/エラーを全て必ず表示する。成功・失敗・設定不足を全パターン表示。
+
 ### v23.9.242
 - 仮説：startMigration()が呼ばれているが内部の複雑な依存（fetchWithTimeout/scopeUrlByUser/getSafeUrl等）でエラーになりトーストに到達しない。また起動時自動同期もfbUrl空で不発。
 - 真因：startMigration()がfb-url-inputのvalueを参照するが取得できない場合u=''→ローカル保存のみで終了。fbUrl依存の起動時syncFirebase()も不安定。
@@ -59,8 +64,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.242";
-  const BUILD_ID    = "242";
+  const APP_VERSION = "v23.9.243";
+  const BUILD_ID    = "243";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -3720,30 +3725,40 @@ document.addEventListener('DOMContentLoaded', function() {
       try { spDbg('[BOOT_STEP_ERROR]', { step: 'debugUiInit', message: String(e && e.message) }); } catch (_) {}
     }
 
-    // v23.9.242: 起動時強制同期（fbUrl/syncFirebase に依存しない直接fetch版）
-    // fbUrl が空でも FIREBASE_CONFIG.databaseURL + sp_user_id で直接Firebaseにアクセス
+    // v23.9.243: 起動時診断同期（全パターン必ずトースト表示・サイレント失敗なし）
     setTimeout(async () => {
       try {
         const _uid = (localStorage.getItem('sp_user_id') || '').trim() ||
                      (db && db.config && db.config.userId ? String(db.config.userId).trim() : '');
         const _base = ((localStorage.getItem('smartPriceFirebaseUrl') || '').trim()) ||
-                      (typeof FIREBASE_CONFIG !== 'undefined' && FIREBASE_CONFIG.databaseURL ? FIREBASE_CONFIG.databaseURL : '');
-        if (!_uid || !_base) return;
+                      (typeof FIREBASE_CONFIG !== 'undefined' && FIREBASE_CONFIG && FIREBASE_CONFIG.databaseURL ? FIREBASE_CONFIG.databaseURL : '');
+        if (!_uid) { showToast('[v243] UID未取得 - sp_user_idが空', 10000); return; }
+        if (!_base) { showToast('[v243] Firebase URL未設定', 10000); return; }
         const _url = _base.replace(/\/+$/, '') + '/users/' + encodeURIComponent(_uid) + '/smart_price.json';
-        const _res = await fetch(_url);
-        const _cloud = await _res.json();
+        showToast('[v243] 同期試行中… uid=' + _uid.slice(0, 14) + '…', 8000);
+        let _res, _cloud;
+        try {
+          _res = await fetch(_url);
+          _cloud = await _res.json();
+        } catch (_fe) {
+          showToast('[v243] fetch失敗: ' + String(_fe && _fe.message || _fe), 15000);
+          return;
+        }
         if (_cloud && _cloud.products) {
+          const cnt = Object.keys(_cloud.products).length;
           db = mergeDb(db, _cloud);
-          if (!localStorage.getItem('smartPriceFirebaseUrl')) {
-            localStorage.setItem('smartPriceFirebaseUrl', _base);
-            fbUrl = _base;
-          }
+          localStorage.setItem('smartPriceFirebaseUrl', _base);
+          fbUrl = _base;
           saveLocalOnly();
           await renderHistory();
           renderStoreList();
-          showToast('クラウドデータを取得しました', 3000);
+          showToast('[v243] 同期完了: ' + cnt + '商品取得！', 6000);
+        } else {
+          showToast('[v243] データなし: ' + JSON.stringify(_cloud).slice(0, 80), 10000);
         }
-      } catch (_e) { /* サイレント失敗 */ }
+      } catch (_e) {
+        showToast('[v243] 予期せぬエラー: ' + String(_e && _e.message || _e), 15000);
+      }
     }, 2000);
   };
 
