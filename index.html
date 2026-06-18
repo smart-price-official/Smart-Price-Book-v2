@@ -5,14 +5,11 @@ POLICY: UI_FREEZE / 単一HTML / VERSION SSOT
 NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-->
 <html lang="ja">
 <head>
-<!-- v23.9.292: FORCE_CLEAR + ?hardreset=1 (Yui設計) -->
+<!-- v23.9.294: ?hardreset=1 専用（通常アクセスではlocalStorageを消さない） -->
 <script>
 (async function() {
-  var FORCE_CLEAR_VERSION = 'v23.9.292';
   var q = new URLSearchParams(location.search);
-  var isHardReset = q.get('hardreset') === '1';
-  var alreadyCleared = localStorage.getItem('sp_cleared_version') === FORCE_CLEAR_VERSION;
-  if (!isHardReset && alreadyCleared) return;
+  if (q.get('hardreset') !== '1') return;
   try { localStorage.clear(); } catch(e) {}
   try { sessionStorage.clear(); } catch(e) {}
   if ('caches' in window) {
@@ -21,14 +18,9 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
   if ('serviceWorker' in navigator) {
     try { var regs = await navigator.serviceWorker.getRegistrations(); await Promise.all(regs.map(function(r){ return r.unregister(); })); } catch(e) {}
   }
-  try { localStorage.setItem('sp_cleared_version', FORCE_CLEAR_VERSION); } catch(e) {}
-  if (isHardReset) {
-    q.delete('hardreset');
-    q.set('fresh', Date.now());
-    location.replace(location.pathname + '?' + q.toString());
-  } else {
-    location.reload();
-  }
+  q.delete('hardreset');
+  q.set('fresh', Date.now());
+  location.replace(location.pathname + '?' + q.toString());
 })();
 </script>
 
@@ -40,9 +32,13 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.293  BUILD_ID=293
+APP_VERSION=v23.9.294  BUILD_ID=294
 
 === ChangeLog B-2 ===
+### v23.9.294
+- 仮説：v292のFORCE_CLEAR_VERSIONが通常ページロード時にも全端末のlocalStorageをクリアしてしまう
+- 真因：FORCE_CLEAR_VERSIONチェックはsp_cleared_versionが一致しない全端末で発動するため、PCを含む全デバイスの商品データが消えた（SP-260618-RESET-008）
+- 修正方法：FORCE_CLEARを?hardreset=1専用に変更。通常ページロードではlocalStorageに一切触れない
 ### v23.9.293
 - 仮説：PWAアンインストール後にChromeブラウザから再インストールしようとしてもアドレスバーの⊕アイコンが出ず、設定画面にもインストールボタンがない
 - 真因：pwaInstallBtnがbeforeinstallpromptイベント発火時のみ表示される設計のため、SWクリア直後などdeferredPromptがnullの状態ではボタンが出ない
@@ -249,8 +245,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.293";
-  const BUILD_ID    = "293";
+  const APP_VERSION = "v23.9.294";
+  const BUILD_ID    = "294";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
