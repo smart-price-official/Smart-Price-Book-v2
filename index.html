@@ -40,9 +40,13 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.292  BUILD_ID=292
+APP_VERSION=v23.9.293  BUILD_ID=293
 
 === ChangeLog B-2 ===
+### v23.9.293
+- 仮説：PWAアンインストール後にChromeブラウザから再インストールしようとしてもアドレスバーの⊕アイコンが出ず、設定画面にもインストールボタンがない
+- 真因：pwaInstallBtnがbeforeinstallpromptイベント発火時のみ表示される設計のため、SWクリア直後などdeferredPromptがnullの状態ではボタンが出ない
+- 修正方法：設定画面に「📲 ホーム画面にアイコンを追加」ボタンを常時表示。deferredPromptがある場合はそのまま実行、ない場合はChrome手順案内ダイアログ（showPwaGuideDialog）を表示
 ### v23.9.292
 - 仮説：PWAアンインストール後もChromeのlocalStorage・SWキャッシュは削除されず古いデータが残存する
 - 真因：ChromeはPWAアンインストール時にlocalStorage・ServiceWorker・CacheStorageを削除しない。Firebase削除済みでもローカルキャッシュからデータが表示される（SP-260618-RESET-007・Yui判断）
@@ -245,8 +249,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.292";
-  const BUILD_ID    = "292";
+  const APP_VERSION = "v23.9.293";
+  const BUILD_ID    = "293";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -2108,6 +2112,7 @@ document.addEventListener('DOMContentLoaded', function() {
       <button type="button" class="btn btn-outline-secondary sp-back-btn" data-back="Main">戻る</button>
     </div>
 
+    <button id="addToHomeBtn" class="btn btn-outline-success w-100 py-2 fw-bold mb-2" onclick="addToHomeScreen()">📲 ホーム画面にアイコンを追加</button>
     <button id="syncBtn" class="btn btn-primary w-100 py-2 fw-bold mb-2" onclick="startMigration()">設定保存と同期</button>
     <button id="clearCacheBtn" class="btn sp-btn-primary w-100 py-2 fw-bold mb-2" onclick="clearAllCache()">🔄 キャッシュ＋データを完全リセット</button>
     <button id="openBrowserBtn" class="btn btn-outline-info w-100 py-2 fw-bold mb-2" onclick="openInChromeBrowser()">🌐 Chromeで開く（キャッシュクリア用）</button>
@@ -17265,6 +17270,24 @@ function spResetLocalData() {
   } catch(e) {}
 }
 window.spResetLocalData = spResetLocalData;
+
+function addToHomeScreen() {
+  try {
+    if (typeof deferredPrompt !== 'undefined' && deferredPrompt) {
+      deferredPrompt.prompt();
+      deferredPrompt.userChoice.then(function() { deferredPrompt = null; });
+    } else {
+      var isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+      var isAndroid = /Android/.test(navigator.userAgent);
+      if (typeof showPwaGuideDialog === 'function') {
+        showPwaGuideDialog(isIOS, isAndroid);
+      } else {
+        showToast('Chrome 右上メニュー（⋮）→「ホーム画面に追加」をタップしてください', 4000);
+      }
+    }
+  } catch(e) {}
+}
+window.addToHomeScreen = addToHomeScreen;
 
 function openInChromeBrowser() {
   try {
