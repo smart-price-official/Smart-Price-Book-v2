@@ -32,9 +32,13 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.294  BUILD_ID=294
+APP_VERSION=v23.9.295  BUILD_ID=295
 
 === ChangeLog B-2 ===
+### v23.9.295
+- 仮説：設定画面にバックアップ出力ボタンがなくスマホからJSONエクスポートができない
+- 真因：exportBackup()関数は実装済みだがHTMLにボタンが未配置
+- 修正方法：設定画面に「バックアップ出力」「バックアップ読み込む」ボタンを追加
 ### v23.9.294
 - 仮説：v292のFORCE_CLEAR_VERSIONが通常ページロード時にも全端末のlocalStorageをクリアしてしまう
 - 真因：FORCE_CLEAR_VERSIONチェックはsp_cleared_versionが一致しない全端末で発動するため、PCを含む全デバイスの商品データが消えた（SP-260618-RESET-008）
@@ -245,8 +249,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.294";
-  const BUILD_ID    = "294";
+  const APP_VERSION = "v23.9.295";
+  const BUILD_ID    = "295";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -2113,6 +2117,8 @@ document.addEventListener('DOMContentLoaded', function() {
     <button id="clearCacheBtn" class="btn sp-btn-primary w-100 py-2 fw-bold mb-2" onclick="clearAllCache()">🔄 キャッシュ＋データを完全リセット</button>
     <button id="openBrowserBtn" class="btn btn-outline-info w-100 py-2 fw-bold mb-2" onclick="openInChromeBrowser()">🌐 Chromeで開く（キャッシュクリア用）</button>
     <button id="webBtn" class="btn btn-outline-secondary w-100 py-2 fw-bold mb-2" onclick="openWebModal()">ブラウザ版へ（URL表示）</button>
+    <button id="exportBackupBtn" class="btn btn-outline-secondary w-100 py-2 fw-bold mb-2" onclick="exportBackup()">💾 バックアップ出力（JSON保存）</button>
+    <button id="importBackupBtn" class="btn btn-outline-secondary w-100 py-2 fw-bold mb-2" onclick="importBackup()">📂 バックアップ読み込む</button>
     <button id="resetDataBtn" class="btn btn-outline-danger w-100 py-2 fw-bold mb-2" onclick="spResetLocalData()">🗑 このスマホの商品データをリセット</button>
 
     <div id="sp-company-info" class="small text-secondary mt-3 mb-2 px-1" style="line-height:1.65; opacity:.88;">
