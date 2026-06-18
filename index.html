@@ -32,9 +32,13 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.295  BUILD_ID=295
+APP_VERSION=v23.9.296  BUILD_ID=296
 
 === ChangeLog B-2 ===
+### v23.9.296
+- 仮説：startMigration()でクラウドが空の場合にPUTが実行されず初回同期が成立しない
+- 真因：cloud.productsがnullのときelseブランチでPUTせず「クラウドデータなし」トーストを出して終了する設計だった
+- 修正方法：elseブランチでローカルデータがあれば必ずPUT。users/{uid}パスとlegacyパスの両方に書き込む
 ### v23.9.295
 - 仮説：設定画面にバックアップ出力ボタンがなくスマホからJSONエクスポートができない
 - 真因：exportBackup()関数は実装済みだがHTMLにボタンが未配置
@@ -249,8 +253,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.295";
-  const BUILD_ID    = "295";
+  const APP_VERSION = "v23.9.296";
+  const BUILD_ID    = "296";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -13354,8 +13358,39 @@ function spVisibleTrace(tag, payload, cls) {
         if (typeof window.SmartPriceModal !== 'undefined' && window.SmartPriceModal.close) window.SmartPriceModal.close();
         showHome();
       } else {
-        showToast('クラウドデータなし（uid=' + uid.slice(0,12) + '…）', 8000);
-        if (btn) { btn.disabled = false; btn.innerText = "設定保存と同期"; }
+        // v23.9.296: クラウドが空でもローカルデータがあれば必ずPUT（初回同期バグ修正）
+        if (db && db.products && Object.keys(db.products).length > 0) {
+          try {
+            localStorage.setItem('smartPriceFirebaseUrl', base);
+            fbUrl = base;
+            const payload = typeof stripForCloud === 'function' ? stripForCloud(db) : db;
+            // users/{uid}パスにPUT
+            await fetch(targetUrl, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
+            // legacyパスにも書き込み（奥さんスマホ等、UID未設定端末が読めるように）
+            const legacyUrl = base.replace(/\/+$/, '') + '/smart_price.json';
+            await fetch(legacyUrl, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
+            await renderHistory();
+            renderStoreList();
+            showToast('同期完了！', 5000);
+            if (btn) { btn.disabled = false; btn.innerText = "設定保存と同期"; }
+            if (typeof window.SmartPriceModal !== 'undefined' && window.SmartPriceModal.close) window.SmartPriceModal.close();
+            showHome();
+          } catch (_putErr) {
+            showToast('同期エラー: ' + (_putErr.message || ''), 8000);
+            if (btn) { btn.disabled = false; btn.innerText = "設定保存と同期"; }
+          }
+        } else {
+          showToast('ローカルデータがありません', 5000);
+          if (btn) { btn.disabled = false; btn.innerText = "設定保存と同期"; }
+        }
       }
     } catch (e) {
       showToast('同期エラー: ' + e.message, 10000);
