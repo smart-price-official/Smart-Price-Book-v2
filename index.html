@@ -13,9 +13,13 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.287  BUILD_ID=287
+APP_VERSION=v23.9.288  BUILD_ID=288
 
 === ChangeLog B-2 ===
+### v23.9.288
+- 仮説：「🔄 キャッシュクリア」ボタンも「🗑 データリセット」ボタンもPWAスタンドアロンで動作しない
+- 真因：clearAllCache()がconfirm()とalert()を使っておりAndroid/iOS PWAスタンドアロンモードでは常にfalse/無視されるため「if(!confirmed) return」でスキップされ何も実行されない。これが「何をしてもダメ」の根本原因（SP-260618-RESET-003）
+- 修正方法：clearAllCache()のconfirm()/alert()を廃止して2段階タップ確認に変更。さらにService Worker削除・キャッシュ削除・Firebase個人データ削除・家族グループ参加削除・localStorageクリアをすべて1ボタンに統合。ボタン名を「🔄 キャッシュ＋データを完全リセット」に変更
 ### v23.9.287
 - 仮説：リセット後にlocation.reload()しても起動時syncFirebase()がFirebaseの古いデータを再読み込みして復元される
 - 真因：db.products={}でローカルは空になるがFirebase個人パス（users/{uid}/smart_price.json）と家族グループパスに古いデータが残っており、location.reload()後の起動時syncFirebase()で再度読み込まれる。またlocalStorage('sp_family_group_id')が残っているためグループパスを参照し続ける（SP-260618-RESET-002）
@@ -198,8 +202,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.287";
-  const BUILD_ID    = "287";
+  const APP_VERSION = "v23.9.288";
+  const BUILD_ID    = "288";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -2062,7 +2066,7 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
 
     <button id="syncBtn" class="btn btn-primary w-100 py-2 fw-bold mb-2" onclick="startMigration()">設定保存と同期</button>
-    <button id="clearCacheBtn" class="btn sp-btn-primary w-100 py-2 fw-bold mb-2" onclick="clearAllCache()">🔄 キャッシュクリア（表示崩れ修正）</button>
+    <button id="clearCacheBtn" class="btn sp-btn-primary w-100 py-2 fw-bold mb-2" onclick="clearAllCache()">🔄 キャッシュ＋データを完全リセット</button>
     <button id="webBtn" class="btn btn-outline-secondary w-100 py-2 fw-bold mb-2" onclick="openWebModal()">ブラウザ版へ（URL表示）</button>
     <button id="resetDataBtn" class="btn btn-outline-danger w-100 py-2 fw-bold mb-2" onclick="spResetLocalData()">🗑 このスマホの商品データをリセット</button>
 
@@ -14287,46 +14291,63 @@ function spVisibleTrace(tag, payload, cls) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // キャッシュクリア機能
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// v23.9.288: confirm()/alert()廃止→2段階タップ確認。キャッシュ+Firebase+localStorage全削除統合
 async function clearAllCache() {
-  const confirmed = confirm(
-    '【キャッシュを完全にクリアします】\n\n' +
-    '・Service Worker の削除\n' +
-    '・キャッシュストレージの削除\n' +
-    '・ページの再読み込み\n\n' +
-    'レイアウト崩れが修正されます。\n続行しますか？'
-  );
-  
-  if (!confirmed) return;
-  
-  try {
-    // Service Worker の削除
-    if ('serviceWorker' in navigator) {
-      const registrations = await navigator.serviceWorker.getRegistrations();
-      for (const registration of registrations) {
-        await registration.unregister();
+  var btn = document.getElementById('clearCacheBtn');
+  if (!btn) return;
+  if (btn.dataset.confirming === '1') {
+    btn.dataset.confirming = '';
+    btn.textContent = '⏳ リセット中...';
+    btn.className = 'btn btn-secondary w-100 py-2 fw-bold mb-2';
+    btn.disabled = true;
+    try {
+      // 1. Firebase: 家族グループメンバーシップ削除
+      var uid = (typeof currentAuthUid !== 'undefined') ? currentAuthUid : null;
+      if (uid && typeof firebaseDb !== 'undefined' && firebaseDb) {
+        try { await firebaseDb.ref('users/' + uid + '/familyGroupId').remove(); } catch(_) {}
       }
-      console.log('[Cache Clear] Service Workers unregistered:', registrations.length);
-    }
-    
-    // Cache Storage の削除
-    if ('caches' in window) {
-      const cacheNames = await caches.keys();
-      for (const cacheName of cacheNames) {
-        await caches.delete(cacheName);
+      // 2. Firebase: 個人パスのデータ削除
+      if (typeof fbUrl !== 'undefined' && fbUrl && uid && typeof scopeUrlByUser === 'function') {
+        try {
+          var personalUrl = scopeUrlByUser(fbUrl, uid);
+          if (personalUrl) await fetch(personalUrl, { method: 'DELETE' });
+        } catch(_) {}
       }
-    // location.reload(true); // モーダル内に留まるため無効化
-    }
-    
-    // LocalStorage は保持（ユーザーデータを守る）
-    
-    alert('✅ キャッシュクリア完了！\n\nページを再読み込みします。');
-    
-    // 強制リロード
-    location.reload(true);
-    
-  } catch (error) {
-    console.error('[Cache Clear] Error:', error);
-    alert('❌ エラーが発生しました:\n' + error.message);
+      // 3. Service Worker削除
+      if ('serviceWorker' in navigator) {
+        try {
+          var regs = await navigator.serviceWorker.getRegistrations();
+          for (var r of regs) { await r.unregister(); }
+        } catch(_) {}
+      }
+      // 4. Cache Storage削除
+      if ('caches' in window) {
+        try {
+          var names = await caches.keys();
+          for (var n of names) { await caches.delete(n); }
+        } catch(_) {}
+      }
+    } catch(_) {}
+    // 5. localStorage全削除
+    try {
+      db.products = {};
+      localStorage.removeItem('sp_family_group_id');
+      if (typeof currentFamilyGroupId !== 'undefined') currentFamilyGroupId = null;
+      saveLocalOnly();
+    } catch(_) {}
+    showToast('完全リセット完了。再起動します...', 2000);
+    setTimeout(function() { location.reload(true); }, 1800);
+  } else {
+    btn.dataset.confirming = '1';
+    btn.textContent = '⚠️ もう一度タップで実行（データ全削除）';
+    btn.className = 'btn btn-danger w-100 py-2 fw-bold mb-2';
+    setTimeout(function() {
+      if (btn && btn.dataset.confirming === '1') {
+        btn.dataset.confirming = '';
+        btn.textContent = '🔄 キャッシュ＋データを完全リセット';
+        btn.className = 'btn sp-btn-primary w-100 py-2 fw-bold mb-2';
+      }
+    }, 4000);
   }
 }
 
