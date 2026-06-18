@@ -13,9 +13,13 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.290  BUILD_ID=290
+APP_VERSION=v23.9.291  BUILD_ID=291
 
 === ChangeLog B-2 ===
+### v23.9.291
+- 仮説：v290でlocalStorageクリアがFirebase削除（最大3秒タイムアウト）の後に実行されるため、Firebase削除がハングするとlocalStorageクリアも遅延する
+- 真因：clearAllCache()/spResetLocalData()でFirebase削除ステップが先にあり、3秒タイムアウトが満了するまでlocalStorageクリアとrenderHistory()が実行されない。その間に画面が空にならない（SP-260618-RESET-006）
+- 修正方法：①localStorageクリア+renderHistory()をFirebase削除より前に移動（即座に画面が空になる）②設定画面に「🌐 Chromeで開く（キャッシュクリア用）」ボタンを追加（PWAスタンドアロンからChromeブラウザを起動してサイトデータ削除操作ができる）
 ### v23.9.290
 - 仮説：v289でwindow.location.hrefに変更したがAndroid PWAスタンドアロンでsetTimeoutコールバック自体が実行されない
 - 真因：Android PWAスタンドアロンモードでは非同期処理完了後にsetTimeoutが実行されないケースがある（Webビューの制限）。また全リロードに依存しているためリロードが失敗すると画面が変わらない（SP-260618-RESET-005）
@@ -210,8 +214,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.290";
-  const BUILD_ID    = "290";
+  const APP_VERSION = "v23.9.291";
+  const BUILD_ID    = "291";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -2075,6 +2079,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     <button id="syncBtn" class="btn btn-primary w-100 py-2 fw-bold mb-2" onclick="startMigration()">設定保存と同期</button>
     <button id="clearCacheBtn" class="btn sp-btn-primary w-100 py-2 fw-bold mb-2" onclick="clearAllCache()">🔄 キャッシュ＋データを完全リセット</button>
+    <button id="openBrowserBtn" class="btn btn-outline-info w-100 py-2 fw-bold mb-2" onclick="openInChromeBrowser()">🌐 Chromeで開く（キャッシュクリア用）</button>
     <button id="webBtn" class="btn btn-outline-secondary w-100 py-2 fw-bold mb-2" onclick="openWebModal()">ブラウザ版へ（URL表示）</button>
     <button id="resetDataBtn" class="btn btn-outline-danger w-100 py-2 fw-bold mb-2" onclick="spResetLocalData()">🗑 このスマホの商品データをリセット</button>
 
@@ -14317,7 +14322,18 @@ async function clearAllCache() {
     function _spWt(p) {
       return Promise.race([p, new Promise(function(_, rej){ setTimeout(function(){ rej(new Error('timeout')); }, 3000); })]);
     }
-    // 1. Firebase削除（バックグラウンド・失敗しても続行）
+    // 1. localStorageクリア + 画面を即座に空に（Firebase削除より先に実行）
+    try {
+      db.products = {};
+      localStorage.removeItem('sp_family_group_id');
+      if (typeof currentFamilyGroupId !== 'undefined') currentFamilyGroupId = null;
+      saveLocalOnly();
+      localStorage.setItem('sp_skip_sync_once', '1');
+    } catch(_) {}
+    try { await renderHistory(); } catch(_) {}
+    try { if (typeof renderStoreList === 'function') renderStoreList(); } catch(_) {}
+    showToast('✅ リセット完了！', 3000);
+    // 2. Firebase削除（バックグラウンド・失敗しても続行・画面はすでに空）
     try {
       var uid = (typeof currentAuthUid !== 'undefined') ? currentAuthUid : null;
       if (uid && typeof firebaseDb !== 'undefined' && firebaseDb) {
@@ -14336,18 +14352,6 @@ async function clearAllCache() {
         } catch(_) {}
       }
     } catch(_) {}
-    // 2. localStorageクリア + sp_skip_sync_onceフラグ（次回起動時にsyncFirebaseをスキップ）
-    try {
-      db.products = {};
-      localStorage.removeItem('sp_family_group_id');
-      if (typeof currentFamilyGroupId !== 'undefined') currentFamilyGroupId = null;
-      localStorage.setItem('sp_skip_sync_once', '1');
-      saveLocalOnly();
-    } catch(_) {}
-    // 3. 画面を即座に空に更新（リロード不要・Android PWAでも確実に動く）
-    try { await renderHistory(); } catch(_) {}
-    try { if (typeof renderStoreList === 'function') renderStoreList(); } catch(_) {}
-    showToast('✅ リセット完了！', 3000);
     // 4. SW/キャッシュ削除 + リロードを試みる（失敗しても画面はすでに空）
     try {
       if ('serviceWorker' in navigator) {
@@ -17179,7 +17183,19 @@ function spResetLocalData() {
         function _spWt2(p) {
           return Promise.race([p, new Promise(function(_, rej){ setTimeout(function(){ rej(new Error('timeout')); }, 3000); })]);
         }
-        // 1. Firebase削除（バックグラウンド・失敗しても続行）
+        // 1. localStorageクリア + 画面を即座に空に（Firebase削除より先に実行）
+        try {
+          db.products = {};
+          try { localStorage.removeItem('sp_family_group_id'); } catch(_) {}
+          if (typeof currentFamilyGroupId !== 'undefined') currentFamilyGroupId = null;
+          saveLocalOnly();
+          localStorage.setItem('sp_skip_sync_once', '1');
+        } catch(_) {}
+        try { await renderHistory(); } catch(_) {}
+        try { if (typeof renderStoreList === 'function') renderStoreList(); } catch(_) {}
+        btn.textContent = '✅ リセット完了！';
+        showToast('✅ このスマホのデータをリセットしました！', 3000);
+        // 2. Firebase削除（バックグラウンド・失敗しても続行・画面はすでに空）
         try {
           var uid = (typeof currentAuthUid !== 'undefined') ? currentAuthUid : null;
           if (uid && typeof firebaseDb !== 'undefined' && firebaseDb) {
@@ -17198,20 +17214,7 @@ function spResetLocalData() {
             } catch(_) {}
           }
         } catch(_) {}
-        // 2. localStorageクリア + sp_skip_sync_onceフラグ
-        try {
-          db.products = {};
-          try { localStorage.removeItem('sp_family_group_id'); } catch(_) {}
-          if (typeof currentFamilyGroupId !== 'undefined') currentFamilyGroupId = null;
-          localStorage.setItem('sp_skip_sync_once', '1');
-          saveLocalOnly();
-        } catch(_) {}
-        // 3. 画面を即座に空に更新（リロード不要）
-        try { await renderHistory(); } catch(_) {}
-        try { if (typeof renderStoreList === 'function') renderStoreList(); } catch(_) {}
-        btn.textContent = '✅ リセット完了！';
-        showToast('✅ このスマホのデータをリセットしました！', 3000);
-        // 4. リロードを試みる（失敗しても画面はすでに空）
+        // 3. リロードを試みる（失敗しても画面はすでに空）
         try {
           window.location.href = window.location.origin + window.location.pathname + '?reset=' + (+new Date());
         } catch(_) {}
@@ -17231,6 +17234,16 @@ function spResetLocalData() {
   } catch(e) {}
 }
 window.spResetLocalData = spResetLocalData;
+
+function openInChromeBrowser() {
+  try {
+    var url = location.origin + location.pathname + '?from_pwa=1&t=' + (+new Date());
+    window.open(url, '_blank', 'noopener');
+  } catch(e) {
+    showToast('Chromeを手動で開いて smapri.jp にアクセスしてください', 4000);
+  }
+}
+window.openInChromeBrowser = openInChromeBrowser;
 
 function openWebModal() {
   try {
