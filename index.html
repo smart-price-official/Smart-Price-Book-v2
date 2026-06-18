@@ -13,9 +13,13 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.288  BUILD_ID=288
+APP_VERSION=v23.9.289  BUILD_ID=289
 
 === ChangeLog B-2 ===
+### v23.9.289
+- 仮説：「完全リセット完了。再起動します...」トーストは表示されるが自動再起動しない。またリセット後も古いデータが残る
+- 真因：①location.reload(true)のtrueパラメータがdeprecatedでAndroid PWAスタンドアロンで動作しない②Firebase SDK/fetchのawaitがネットワーク不安定時にタイムアウトなしでハングし後続のshowToast/setTimeoutまで到達しない（SP-260618-RESET-004）
+- 修正方法：①Firebase SDK remove()とfetch DELETE各awaitに3秒タイムアウト（Promise.race）を追加しハング防止②location.reload(true)をwindow.location.href=origin+pathname+?reset=timestampに変更（確実なキャッシュバスト＋ナビゲーション）③spResetLocalData()も同様に修正
 ### v23.9.288
 - 仮説：「🔄 キャッシュクリア」ボタンも「🗑 データリセット」ボタンもPWAスタンドアロンで動作しない
 - 真因：clearAllCache()がconfirm()とalert()を使っておりAndroid/iOS PWAスタンドアロンモードでは常にfalse/無視されるため「if(!confirmed) return」でスキップされ何も実行されない。これが「何をしてもダメ」の根本原因（SP-260618-RESET-003）
@@ -202,8 +206,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.288";
-  const BUILD_ID    = "288";
+  const APP_VERSION = "v23.9.289";
+  const BUILD_ID    = "289";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -14291,7 +14295,7 @@ function spVisibleTrace(tag, payload, cls) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // キャッシュクリア機能
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// v23.9.288: confirm()/alert()廃止→2段階タップ確認。キャッシュ+Firebase+localStorage全削除統合
+// v23.9.289: Firebaseタイムアウト追加・location.reload(true)→window.location.href変更
 async function clearAllCache() {
   var btn = document.getElementById('clearCacheBtn');
   if (!btn) return;
@@ -14300,31 +14304,41 @@ async function clearAllCache() {
     btn.textContent = '⏳ リセット中...';
     btn.className = 'btn btn-secondary w-100 py-2 fw-bold mb-2';
     btn.disabled = true;
+    // 3秒タイムアウト付きPromiseラッパー（Firebase/fetchハング防止）
+    function _spWt(p) {
+      return Promise.race([p, new Promise(function(_, rej){ setTimeout(function(){ rej(new Error('timeout')); }, 3000); })]);
+    }
     try {
-      // 1. Firebase: 家族グループメンバーシップ削除
+      // 1. Firebase SDK: 家族グループメンバーシップ削除 + 個人パス削除
       var uid = (typeof currentAuthUid !== 'undefined') ? currentAuthUid : null;
       if (uid && typeof firebaseDb !== 'undefined' && firebaseDb) {
-        try { await firebaseDb.ref('users/' + uid + '/familyGroupId').remove(); } catch(_) {}
+        try { await _spWt(firebaseDb.ref('users/' + uid + '/familyGroupId').remove()); } catch(_) {}
+        try { await _spWt(firebaseDb.ref('users/' + uid + '/smart_price').remove()); } catch(_) {}
       }
-      // 2. Firebase: 個人パスのデータ削除
+      // 2. Firebase REST API DELETE: 個人パス（AbortControllerで3秒タイムアウト）
       if (typeof fbUrl !== 'undefined' && fbUrl && uid && typeof scopeUrlByUser === 'function') {
         try {
           var personalUrl = scopeUrlByUser(fbUrl, uid);
-          if (personalUrl) await fetch(personalUrl, { method: 'DELETE' });
+          if (personalUrl) {
+            var ac = new AbortController();
+            var tid = setTimeout(function(){ try{ ac.abort(); }catch(_){} }, 3000);
+            try { await fetch(personalUrl, { method: 'DELETE', signal: ac.signal }); } catch(_) {}
+            clearTimeout(tid);
+          }
         } catch(_) {}
       }
       // 3. Service Worker削除
       if ('serviceWorker' in navigator) {
         try {
           var regs = await navigator.serviceWorker.getRegistrations();
-          for (var r of regs) { await r.unregister(); }
+          for (var r of regs) { try { await r.unregister(); } catch(_) {} }
         } catch(_) {}
       }
       // 4. Cache Storage削除
       if ('caches' in window) {
         try {
           var names = await caches.keys();
-          for (var n of names) { await caches.delete(n); }
+          for (var n of names) { try { await caches.delete(n); } catch(_) {} }
         } catch(_) {}
       }
     } catch(_) {}
@@ -14336,7 +14350,14 @@ async function clearAllCache() {
       saveLocalOnly();
     } catch(_) {}
     showToast('完全リセット完了。再起動します...', 2000);
-    setTimeout(function() { location.reload(true); }, 1800);
+    // location.reload(true)はAndroid PWAで動作しないためwindow.location.href変更（キャッシュバスト付き）
+    setTimeout(function() {
+      try {
+        window.location.href = window.location.origin + window.location.pathname + '?reset=' + (+new Date());
+      } catch(_) {
+        try { window.location.reload(); } catch(__) {}
+      }
+    }, 1800);
   } else {
     btn.dataset.confirming = '1';
     btn.textContent = '⚠️ もう一度タップで実行（データ全削除）';
@@ -17140,7 +17161,7 @@ window.spShareFamilyId = spShareFamilyId;
 <script>
 /* === 未定義関数の補完 (v22.7 fix) === */
 
-// v23.9.287: Firebase個人データ・グループメンバーシップも削除する完全リセット
+// v23.9.289: Firebaseタイムアウト追加・location.reload()→window.location.href変更
 function spResetLocalData() {
   try {
     var btn = document.getElementById('resetDataBtn');
@@ -17151,17 +17172,27 @@ function spResetLocalData() {
       btn.className = 'btn btn-secondary w-100 py-2 fw-bold mb-2';
       btn.disabled = true;
       (async function() {
+        // 3秒タイムアウト付きPromiseラッパー（Firebase/fetchハング防止）
+        function _spWt2(p) {
+          return Promise.race([p, new Promise(function(_, rej){ setTimeout(function(){ rej(new Error('timeout')); }, 3000); })]);
+        }
         try {
           var uid = (typeof currentAuthUid !== 'undefined') ? currentAuthUid : null;
-          // 1. Firebase: 家族グループメンバーシップを削除
+          // 1. Firebase SDK: 家族グループメンバーシップ削除 + 個人パス削除
           if (uid && typeof firebaseDb !== 'undefined' && firebaseDb) {
-            try { await firebaseDb.ref('users/' + uid + '/familyGroupId').remove(); } catch(_) {}
+            try { await _spWt2(firebaseDb.ref('users/' + uid + '/familyGroupId').remove()); } catch(_) {}
+            try { await _spWt2(firebaseDb.ref('users/' + uid + '/smart_price').remove()); } catch(_) {}
           }
-          // 2. Firebase: 個人パスのデータを削除（REST API DELETE）
+          // 2. Firebase REST API DELETE: 個人パス（AbortControllerで3秒タイムアウト）
           if (typeof fbUrl !== 'undefined' && fbUrl && uid && typeof scopeUrlByUser === 'function') {
             try {
               var personalUrl = scopeUrlByUser(fbUrl, uid);
-              if (personalUrl) await fetch(personalUrl, { method: 'DELETE' });
+              if (personalUrl) {
+                var ac2 = new AbortController();
+                var tid2 = setTimeout(function(){ try{ ac2.abort(); }catch(_){} }, 3000);
+                try { await fetch(personalUrl, { method: 'DELETE', signal: ac2.signal }); } catch(_) {}
+                clearTimeout(tid2);
+              }
             } catch(_) {}
           }
         } catch(_) {}
@@ -17174,7 +17205,14 @@ function spResetLocalData() {
         } catch(_) {}
         btn.textContent = '✅ リセット完了。再起動します...';
         showToast('このスマホのデータをリセットしました。再起動します...', 2000);
-        setTimeout(function() { location.reload(); }, 1800);
+        // location.reload()をwindow.location.href変更（Android PWA対応・キャッシュバスト付き）
+        setTimeout(function() {
+          try {
+            window.location.href = window.location.origin + window.location.pathname + '?reset=' + (+new Date());
+          } catch(_) {
+            try { window.location.reload(); } catch(__) {}
+          }
+        }, 1800);
       })();
     } else {
       // 1回目のタップ → 確認状態に変化
