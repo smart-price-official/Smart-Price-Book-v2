@@ -13,9 +13,13 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.286  BUILD_ID=286
+APP_VERSION=v23.9.287  BUILD_ID=287
 
 === ChangeLog B-2 ===
+### v23.9.287
+- 仮説：リセット後にlocation.reload()しても起動時syncFirebase()がFirebaseの古いデータを再読み込みして復元される
+- 真因：db.products={}でローカルは空になるがFirebase個人パス（users/{uid}/smart_price.json）と家族グループパスに古いデータが残っており、location.reload()後の起動時syncFirebase()で再度読み込まれる。またlocalStorage('sp_family_group_id')が残っているためグループパスを参照し続ける（SP-260618-RESET-002）
+- 修正方法：リセット時にFirebase REST API DELETEで個人パスのデータを削除、firebaseDb.ref('users/{uid}/familyGroupId').remove()でグループメンバーシップも削除、localStorage('sp_family_group_id')もクリア。これにより再起動後は完全に空の状態になる
 ### v23.9.286
 - 仮説：「このスマホのデータをリセット」ボタンの2段階タップは動作したがトースト表示後も履歴が消えない
 - 真因：db.products={}→saveLocalOnly()→renderHistory()の順で実行しているが、window.onload起動時に自動syncFirebase()が走っており家族グループパスからFirebaseデータが再読み込みされるため画面描画が元に戻る。またrenderHistory()が非同期でawaitせず呼ばれているため描画タイミングがずれる可能性がある（SP-260618-RESET-001）
@@ -194,8 +198,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.286";
-  const BUILD_ID    = "286";
+  const APP_VERSION = "v23.9.287";
+  const BUILD_ID    = "287";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -17115,22 +17119,42 @@ window.spShareFamilyId = spShareFamilyId;
 <script>
 /* === 未定義関数の補完 (v22.7 fix) === */
 
-// ブラウザ版URLモーダル
-// v23.9.286: リセット後にlocation.reload()で確実に画面反映
+// v23.9.287: Firebase個人データ・グループメンバーシップも削除する完全リセット
 function spResetLocalData() {
   try {
     var btn = document.getElementById('resetDataBtn');
     if (!btn) return;
     if (btn.dataset.confirming === '1') {
-      // 2回目のタップ → 実行
       btn.dataset.confirming = '';
-      db.products = {};
-      saveLocalOnly();
-      btn.textContent = '✅ リセット完了。再起動します...';
+      btn.textContent = '⏳ リセット中...';
       btn.className = 'btn btn-secondary w-100 py-2 fw-bold mb-2';
       btn.disabled = true;
-      showToast('このスマホのデータをリセットしました。再起動します...', 2000);
-      setTimeout(function() { location.reload(); }, 1800);
+      (async function() {
+        try {
+          var uid = (typeof currentAuthUid !== 'undefined') ? currentAuthUid : null;
+          // 1. Firebase: 家族グループメンバーシップを削除
+          if (uid && typeof firebaseDb !== 'undefined' && firebaseDb) {
+            try { await firebaseDb.ref('users/' + uid + '/familyGroupId').remove(); } catch(_) {}
+          }
+          // 2. Firebase: 個人パスのデータを削除（REST API DELETE）
+          if (typeof fbUrl !== 'undefined' && fbUrl && uid && typeof scopeUrlByUser === 'function') {
+            try {
+              var personalUrl = scopeUrlByUser(fbUrl, uid);
+              if (personalUrl) await fetch(personalUrl, { method: 'DELETE' });
+            } catch(_) {}
+          }
+        } catch(_) {}
+        // 3. localStorageクリア（グループIDも削除）
+        try {
+          db.products = {};
+          try { localStorage.removeItem('sp_family_group_id'); } catch(_) {}
+          if (typeof currentFamilyGroupId !== 'undefined') currentFamilyGroupId = null;
+          saveLocalOnly();
+        } catch(_) {}
+        btn.textContent = '✅ リセット完了。再起動します...';
+        showToast('このスマホのデータをリセットしました。再起動します...', 2000);
+        setTimeout(function() { location.reload(); }, 1800);
+      })();
     } else {
       // 1回目のタップ → 確認状態に変化
       btn.dataset.confirming = '1';
