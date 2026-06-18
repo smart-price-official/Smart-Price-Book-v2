@@ -13,9 +13,111 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.248  BUILD_ID=248
+APP_VERSION=v23.9.286  BUILD_ID=286
 
 === ChangeLog B-2 ===
+### v23.9.286
+- 仮説：「このスマホのデータをリセット」ボタンの2段階タップは動作したがトースト表示後も履歴が消えない
+- 真因：db.products={}→saveLocalOnly()→renderHistory()の順で実行しているが、window.onload起動時に自動syncFirebase()が走っており家族グループパスからFirebaseデータが再読み込みされるため画面描画が元に戻る。またrenderHistory()が非同期でawaitせず呼ばれているため描画タイミングがずれる可能性がある（SP-260618-RESET-001）
+- 修正方法：リセット実行後に1.8秒待ってlocation.reload()でページを強制再起動する。再起動後にloadLocal()が空のlocalStorageを読み込み、続いてsyncFirebase()が家族グループの最新データのみを取得するため古い個人データは復元されない
+### v23.9.285
+- 仮説：「このスマホのデータをリセット」ボタンを押してもまっさらにならない
+- 真因：iOSのPWAスタンドアロンモードではconfirm()ダイアログが動作せず常にfalseを返すため、if(!confirm(...)) return でリセット処理がキャンセルされている（SP-260618-UI-002）
+- 修正方法：confirm()を廃止して2段階タップ確認に変更。1回目のタップでボタンが赤く変わり「もう一度タップで実行」と表示、2回目のタップで実際にリセットを実行する
+### v23.9.284
+- 仮説：設定画面内の「ブラウザ版へ」ボタンが機能しない
+- 真因：settingsModalのz-indexが100500でwebModalが99000以下のため、設定画面が前面にいてwebModalが裏に隠れて見えない（SP-260618-UI-001）
+- 修正方法：#webModalのz-indexを100600に設定してsettingsModalより前面に出す。あわせて設定パネルに「このスマホのデータをリセット」ボタンを追加しPWA化していてもサイトデータ削除が不要になるようにする
+### v23.9.283
+- 仮説：グループ参加時に参加者の古いデータが全員の共有データを上書きしてしまう。また友人紹介メールにURLがなく友人がアプリにアクセスできない
+- 真因：①spAcceptFamilyInviteでsyncFirebasePut()（上書きPUT）を呼んでいたため参加者の古いlocalStorageデータがグループ共有パスに書き込まれる②v271でキャリアスパム回避のため友人紹介テンプレートからURLを削除したがその結果友人がアクセス先を知る方法がなくなった（SP-260618-FAM-003）
+- 修正方法：①グループ参加時はsyncFirebasePutをやめてsyncFirebase（読み込みマージ）に変更しグループの既存データを取り込む②FRIEND_SHARE_TEMPLATESの全テンプレートにhttps://smapri.jpを末尾追加
+### v23.9.282
+- 仮説：新規登録だけでなくログイン成功時もデータリセットが必要なケースがある
+- 真因：v281のデータリセット処理がret2.ok（新規登録成功）にしかなく、ret.ok（ログイン成功）では実行されない。奥さんが過去に検証でアカウント作成済みだった場合、今回はログイン成功（ret.ok）ルートを通るためリセットされない（SP-260618-FAM-002）
+- 修正方法：ログイン成功時にlocalStorageのsp_auth_emailと今回のメールアドレスを比較し、異なる場合または初回ログインの場合はdb.productsをリセットする
+### v23.9.281
+- 仮説：新規アカウント登録しても他人のスマホに既存データが残っておりまっさらにならない。また家族グループに参加しても商品履歴が共有されない
+- 真因：①新規登録成功時にlocalStorageの商品データをクリアする処理がない②syncFirebaseが常に個人パス（users/{uid}）を使うため家族グループメンバーが別々のデータを持つ③「アカウント連携」という表現がデータ共有の意味と誤解される（SP-260618-FAM-001）
+- 修正方法：①新規登録成功時にdb.productsをリセット②家族グループIDがある場合はsyncFirebase/syncFirebasePutをfamilyGroups/{groupId}/パスに切り替え③グループ参加時に現在のデータをグループパスにコピー④「アカウント連携」を「アカウント登録」に変更
+### v23.9.280
+- 仮説：「インストール」という言葉がアプリ不要のPWAと矛盾して混乱を招く。またホーム画面へのアイコン追加手順の案内がなく女性ユーザーがアクセス方法を発見できない
+- 真因：①「📱 今すぐインストール」ボタンの文言がアプリのダウンロードと誤解される②初回アクセス時にホーム画面追加の案内が出ない③iPhoneはSafari経由の手順が必要なのに説明がない（SP-260618-PWA-001）
+- 修正方法：①「インストール」を「ホーム画面にアイコンを作る」に変更②初回アクセス時にiOS/Androidそれぞれの手順を説明するガイドダイアログを表示③スマプラの売り「アプリのインストール不要」の説明を追加
+### v23.9.279
+- 仮説：招待URLをタップしても登録画面（⑧アカウント連携）に飛ばされ「ログイン失敗」「新規登録の区別がわからない」でITスキルの低いユーザーが全員離脱する
+- 真因：①v278のspAcceptFamilyInviteが匿名ユーザーを強制的に⑧アカウント連携へ誘導する設計になっており登録なしで参加できない②ログイン/新規登録の2ボタンで初めてのユーザーが「ログイン」を押しエラーになる③エラーが英語のまま「Invalid login credentials」で表示される④「ログイン」と「新規登録」の違いが分からず全員ログインを試みて失敗する（SP-260618-FAMUX-004）
+- 修正方法：①匿名Firebase UID（起動時に自動付与）のまま家族グループに参加できるようにspAcceptFamilyInviteの匿名チェックを撤廃②⑧アカウント連携の「ログイン」「新規登録」2ボタンを「はじめる（ログイン・新規登録を自動判別）」1ボタンに統一。メール未登録なら自動で新規登録する③全エラーメッセージを日本語化
+### v23.9.278
+- 仮説：受け取り側が「リンクこれ何？」「コードをコピーできない」「家族共有パネルに入って迷子」という3問題でPCスキルの低いユーザーが登録に進めない
+- 真因：「招待コードを手動でコピー→入力」という操作フローがスマホ主婦層には難易度が高すぎる。①テンプレートに「リンク」という曖昧な表現がある②②家族共有パネルを開くと招待コード発行UIと入力UIが混在して迷子になる③+メッセージでは長文からコードのみ部分コピーが困難（SP-260618-FAMUX-003）
+- 修正方法：URLに招待コードを埋め込む（https://smapri.jp?fam=FAM-XXXXXX）。受け取り側はURLをタップするだけで「○○さんから招待が届いています・参加する」ダイアログが自動表示される。テンプレートを「URLタップするだけ」の短文に刷新。未ログイン時はかんたん登録→自動で家族グループ参加まで完結
+### v23.9.277
+- 仮説：v276でLINEで送るボタンを招待コードの直下に大きく配置したためLINE特化UIに見え、＋メッセージ・SMSユーザーが送り方を見つけにくい
+- 真因：「💚 LINEで招待コードを送る」ボタンが独立した全幅ボタンとして招待コード直下に配置され、その下の「アプリで共有（＋メッセージ等）」ボタンが「共有文テンプレート」セクション内に埋もれているためLINEが優先されているように見える（SP-260618-FAMUX-002）
+- 修正方法：「送り方を選ぶ」として「📩 ＋メッセージ・SMS」と「💚 LINE」を横並び等幅2ボタンで対等に配置。テンプレート選択を「文面を変更する▼」の折りたたみに変更してデフォルト非表示にし、必要な人だけ開けるようにする
+### v23.9.276
+- 仮説：iPhoneユーザー（日本では約70%）はGoogleアカウントへの抵抗感が強く家族共有機能を使い始めるハードルが高い。また招待コードのみコピーしたい場合にUIが不明確で、エラー後も入力欄が残存する問題がある
+- 真因：①⑧アカウント連携パネルへ移動してからログインという2パネル往復導線が技術スキルの低いユーザーには難しい②コピーボタンが目立たないbtn-outline-secondary/btn-smで「コピー」とだけ表示されている③spJoinFamilyGroupのerror/early-returnパスでinp.value=''していない（SP-260618-FAMUX-001）
+- 修正方法：①②家族共有パネル内に未ログイン時かんたん登録フォームを直接埋め込む（メールアドレス6文字パスワードで登録→招待コード自動発行）③コピーボタンをsp-btn-primaryの大ボタンに変更してLINEで送るボタンも追加④spJoinFamilyGroupのused/expired/not-found/self/catchパスでinp.value=''を追加⑤⑧アカウント連携の説明文をiPhone向けに改善しパスワード要件を8→6文字に緩和
+### v23.9.275
+- 仮説：URLにアクセスした奥さんが次に何をすればよいか不明で家族グループ参加ができない
+- 真因：FAMILY_SHARE_TEMPLATESの文面に「設定→②家族共有→招待コード入力」という具体的な手順が記載されておらず、受け取った側がsmapri.jpを開いた後のアクションがわからない（SP-260617-TEMPLATE-001）
+- 修正方法：FAMILY_SHARE_TEMPLATES全3案を手順ステップ付き文面に刷新。①リンクを開く②設定⚙→②家族共有③招待コード入力→参加する　の3ステップを明記
+### v23.9.274
+- 仮説：連絡先登録済みでもsmapri.jpへのリンクがSMSに付かないため受け取った側がどこにアクセスするか分からない
+- 真因：v273でurl=null→/nullバグを修正したが、spShareFamilyWithTextのurl引数がnullのままでURLが一切付かなくなった。連絡先登録済みならキャリアスパムフィルタは回避できるためURLを復活させてよい（SP-260617-URLRESTORE-001）
+- 修正方法：spShareFamilyWithTextのurl引数をnullからSP_SHARE_PUBLIC_URL（https://smapri.jp）に変更。v273の_spShareContent修正（url=nullなら渡さない）と組み合わせて正常なURLのみを付加する
+### v23.9.273
+- 仮説：家族共有SMSに「https://smapri.jp/null」というURLが付加されキャリアのスパムフィルタに遮断される
+- 真因：_spShareContent(title, text, null)でnavigator.share({url: null})を渡すとAndroid Chromeがnullを文字列"null"に変換しlocation.originと結合して「https://smapri.jp/null」を生成しSMS本文に付加する（SP-260617-NULLURL-001）
+- 修正方法：_spShareContentでurl引数がtruthy値の場合のみshareDataにurlプロパティを含める（urlがnull/undefined/空の場合はプロパティ自体を渡さない）
+### v23.9.272
+- 仮説：登録済み商品と未登録商品が別々に管理できない／誤修正時に元に戻せない
+- 真因：商品情報管理の統合UIが未実装、変更履歴保存が未実装
+- 修正方法：「商品情報管理」モードを新設し全商品管理・未登録商品管理の2タブ構成に。保存時確認ダイアログ・human_verified付与・削除はローカルのみ・変更履歴をglobal/jan_dict_historyに保存（SP-260617-PRODUCTMGR-001）
+### v23.9.271
+- 仮説：v270でURLのnavigator.share渡しを削除したが依然アラートが出る
+- 真因：テンプレート本文に「smapri.jp」という文字列が残っており、キャリアのスパムフィルタが*.jpドメイン文字列を検知してブロックする
+- 修正方法：FAMILY_SHARE_TEMPLATESから「smapri.jp」文字列を完全削除し「ブラウザで「スマプラ」と検索してね」に変更。FRIEND_SHARE_TEMPLATESのURL付加も削除（SP-260617-SHAREDOMAINREMOVE-001）
+### v23.9.270
+- 仮説：家族共有ボタンで送ったSMSがキャリアのスパムフィルタに遮断される
+- 真因：navigator.share()のurl引数にsmapri.jpを渡すとSMSアプリがクリッカブルリンクとして付加し、キャリアが「未知ドメイン＋アプリ誘導」と判定してアラートを表示する
+- 修正方法：spShareFamilyWithTextからURL引数を削除（家族招待はコードが主役）。FAMILY_SHARE_TEMPLATESをURLなし・「smapri.jp」テキスト表記に変更（SP-260617-SHAREURLREMOVE-001）
+### v23.9.269
+- 仮説：現在のカテゴリが少なくユーザーが適切に分類できない（サブカテゴリ不足・ユーザー追加不可）
+- 真因：_SP_SUBCATSのサブカテゴリが不足。ユーザー作成カテゴリ機能がなく、CATEGORY_MAPが手動管理で拡張性がない
+- 修正方法：_SP_SUBCATSサブカテゴリ拡充（7親カテゴリ計16項目追加）、「＋ 新しいサブカテゴリ」UI追加（Firebase global/custom_categories 共有・count>=10かつ5人以上で全体配布）、CATEGORY_MAP自動生成化（SP-260617-CATEGORYV2-001）
+### v23.9.268
+- 仮説：非JAN削除ボタンが00始まり・10始まり等のGS1日本外コードを削除できない
+- 真因：spEdBulkDeleteNonJANの「有効JAN」判定が /^\d{8}$|^\d{13}$/ で、13桁ならすべて有効扱いしていた。GS1日本（45x/49x）以外の13桁コードも通過してしまう
+- 修正方法：有効JAN定義を /^\d{8}$|^4\d{12}$|^89\d{11}$/ に厳格化（8桁、45x/49x等4始まり13桁、89x（中国/朝食ハム等）のみ有効）。それ以外（00x・10x等）は非JANとして削除対象に（SP-260617-NONJANSTRICT-001）
+### v23.9.267
+- 仮説：削除後に再スキャン（カメラ誤認識含む）が走ると dismissed がクリアされて Firebase に再登録される
+- 真因：v266のスキャン失敗ハンドラが _spClearDismissed(jan) を呼んでいたため、スキャン発生時点で dismissed が解除され、直後の Firebase 書き込み前チェック（.then内）は dismissed=false になっていた
+- 修正方法：①スキャン失敗時に dismissed をクリアしない（ユーザーが明示削除した商品は再スキャンで復活させない）②Firebase書き込み開始条件に !_spIsDismissed(jan) を同期チェックとして追加（Promise開始前）（SP-260616-NODISMISSCLEAR-001）
+### v23.9.266
+- 仮説：最新取得ボタン押下時にdismissedアイテムが復活する
+- 真因：①db.editorDismissedはdbオブジェクトが差し替わると失われる②スキャン失敗の非同期Firebaseチェーン（.once.then）が削除後に完了しglobal/unresolvedを再書き込みする競合
+- 修正方法：専用localStorageキー'sp_editor_dismissed'でdismissed状態を管理（db非依存）。スキャン失敗のFirebase書き込み前にdismissedチェックを追加（dismissed済みなら再書き込みしない）（SP-260616-DISMISSKEY-001）
+### v23.9.265
+- 仮説：editorDismissedは将来の削除に効くが現在の53件は消えない
+- 真因：v264はフラグ機構を導入したが既存件数を一括処理する手段がなく、件数が残り続ける
+- 修正方法：「🙈 全件非表示」ボタンを追加（SP-260616-DISMISSALL-001）。表示中の全JANにeditorDismissed=trueを設定＋Firebase削除＋ローカルDB削除＋saveLocalOnly()。2段階確認あり
+### v23.9.264
+- 仮説：削除してもリロードで何度でも復活する
+- 真因：v262/v263はdb.products・db.unresolvedProductsから削除したが、スキャン失敗フロー等で同一janがdb.productsに再書き込みされる経路が残っていた。またFirebase global/unresolvedも何らかの経路で復活していた。削除フラグによる「表示しない」制御が欠けていた
+- 修正方法：db.editorDismissed[jan]=trueフラグを導入。削除時に設定し、spEditorRefresh（Firebase取得）・listUnresolvedProducts（ローカルdb.products/unresolvedProducts）の全取得経路でフラグ確認。フラグがあればjson化してlocalStorageに永続保存するため、ページリロード後も有効。再スキャン時のみフラグをクリアして登録機会を復活させる（SP-260616-DISMISS-001）
+### v23.9.263
+- 仮説：v262で削除してもリロードで復活する
+- 真因：エディタの(空)表示はdb.unresolvedProductsではなくdb.products（スキャン履歴）から来ている。listUnresolvedProducts()はdb.productsを先に走査し、name が isWeakNameCandidate（空文字など）の項目を出力する。v262はdb.unresolvedProductsしか削除していなかったため、db.productsに残り続け復活していた
+- 修正方法：spEditorDeleteにdb.products[jan]削除を追加（nameが isWeakNameCandidate の場合のみ削除・name が正常なら保護）（SP-260616-LOCALDEL-002）
+### v23.9.262
+- 仮説：削除ボタンで消した未整備商品がリロード後に復活する
+- 真因①：spEditorDeleteがFirebase(global/unresolved)しか削除せず、ローカルdb.unresolvedProductsを削除していなかった。リロード時にローカルDBから再追加される
+- 真因②：ローカルDB取得時フィルタが/^\d{8,14}$/（緩い）で、10桁・12桁等の非JANコードも表示されていた
+- 修正方法①：spEditorDelete にローカルDB削除（delete db.unresolvedProducts[jan] + saveLocalOnly()）を追加（SP-260616-LOCALDEL-001）
+- 修正方法②：L15405フィルタを/^\d{8}$|^\d{13}$/に変更（SP-260616-LOCALFILTER-001）
 ### v23.9.248
 - 仮説：ストア名に◆◆◆が表示される
 - 真因：db.products[*].history[*].storeフィールドに過去保存されたサロゲートペア文字（絵文字・BMP外Unicode）が混入している。normalizeStoreLabelがそのまま通過させるため◆◆◆として表示される
@@ -92,8 +194,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.248";
-  const BUILD_ID    = "248";
+  const APP_VERSION = "v23.9.286";
+  const BUILD_ID    = "286";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -596,6 +698,8 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
 
 /* === PATCH: settings modal visibility & stacking (settingsnav-r3) === */
 #settingsModal.show-modal { z-index: 100500 !important; }
+/* v23.9.284: webModalをsettingsModalより前面に（設定画面内ボタンから開けるように） */
+#webModal { z-index: 100600 !important; }
 /* v23.9.165 SP-250528-001: ⑥生活圏設定ボタン経由でhomeCityModalを開くため、settingsModalより前面に出す必要がある */
 #homeCityModal { z-index: 100600 !important; }
 #settingsModal .modal-content { max-height: 80vh; overflow-y: auto; }
@@ -1407,9 +1511,119 @@ document.addEventListener('DOMContentLoaded', function() {
   </div>
 </div>
 
+<!-- v23.9.253 SP-260616-ADMSELECT-001: 管理メニュー選択ダイアログ（7秒長押し or 7タップ） -->
+<div id="sp-admin-select" style="display:none; position:fixed; inset:0; z-index:1000001; background:rgba(0,0,0,0.88); align-items:center; justify-content:center;">
+  <div style="background:#1a1a2e; border:2px solid #7c4dff; border-radius:14px; padding:28px 24px; max-width:340px; width:92%;">
+    <div style="font-size:1.1rem; font-weight:700; color:#ce93d8; margin-bottom:8px; text-align:center;">管理メニュー</div>
+    <div class="small text-secondary mb-4 text-center">モードを選択してください</div>
+    <button type="button" class="btn w-100 py-3 fw-bold mb-3"
+            style="background:rgba(74,74,255,0.2); border:1px solid #4a4aff; color:#9fa8da; font-size:1rem;"
+            onclick="spAdminSelectMode('operator')">🔑 管理モード</button>
+    <button type="button" class="btn w-100 py-3 fw-bold mb-3"
+            style="background:rgba(0,80,0,0.2); border:1px solid #4caf50; color:#a5d6a7; font-size:1rem;"
+            onclick="spAdminSelectMode('editor')">🔧 商品情報管理</button>
+    <button type="button" class="btn btn-outline-secondary w-100" onclick="spAdminSelectCancel()">キャンセル</button>
+  </div>
+</div>
+
+<!-- v23.9.252 SP-260616-EDITORTOKEN-001: スタッフ認証ダイアログ -->
+<div id="sp-editor-auth" style="display:none; position:fixed; inset:0; z-index:1000000; background:rgba(0,0,0,0.88); align-items:center; justify-content:center;">
+  <div style="background:#1a2a1a; border:2px solid #4caf50; border-radius:14px; padding:28px 24px; max-width:380px; width:92%;">
+    <div style="font-size:1.1rem; font-weight:700; color:#6fe06f; margin-bottom:12px;">🔐 スタッフ認証</div>
+    <div class="small text-secondary mb-3">管理者から受け取った認証コードを入力してください</div>
+    <div class="d-flex gap-2 mb-2">
+      <input id="sp-editor-auth-input" type="text" class="form-control sp-bg-card sp-border-muted flex-fill"
+             placeholder="EDIT-XXXXXX"
+             style="text-transform:uppercase; letter-spacing:3px; font-size:1.1rem; text-align:center; font-family:monospace;"
+             oninput="this.value=this.value.toUpperCase()"
+             onkeydown="if(event.key==='Enter')spEditorAuthSubmit()">
+      <button type="button" class="btn btn-outline-secondary" style="white-space:nowrap;"
+              onclick="navigator.clipboard.readText().then(function(t){var i=document.getElementById('sp-editor-auth-input');if(i){i.value=t.trim().toUpperCase();}}).catch(function(){})">📋</button>
+    </div>
+    <div id="sp-editor-auth-msg" class="small mb-3" style="min-height:1.2em;"></div>
+    <div class="d-flex gap-2">
+      <button type="button" class="btn btn-success flex-fill fw-bold" onclick="spEditorAuthSubmit()">認証して開く</button>
+      <button type="button" class="btn btn-outline-secondary" onclick="spEditorAuthCancel()">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+<!-- v23.9.272 SP-260617-PRODUCTMGR-001: 商品情報管理モード（2タブ：全商品管理・未登録商品管理） -->
+<div id="sp-editor-mode" style="display:none; position:fixed; inset:0; z-index:999999; background:var(--sp-bg,#1a1a2e); overflow:hidden; flex-direction:column;">
+  <!-- ヘッダー -->
+  <div style="position:sticky; top:0; background:var(--sp-bg,#1a1a2e); z-index:1; padding:10px 14px 0; border-bottom:1px solid var(--sp-border,#444);">
+    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+      <span style="font-weight:bold; font-size:1rem; color:var(--sp-text,#fff);">🔧 商品情報管理</span>
+      <span id="sp-editor-badge" style="background:#ffc107; color:#000; font-size:0.75rem; font-weight:bold; padding:2px 8px; border-radius:10px; display:none;">-件</span>
+      <div style="flex:1; display:flex; justify-content:flex-end; gap:6px; flex-wrap:wrap; align-items:center;">
+        <div id="sp-tab2-actions" style="display:none; gap:6px; flex-wrap:wrap;">
+          <button onclick="spEditorToggleView()" style="background:transparent; border:1px solid var(--sp-border,#666); color:var(--sp-text,#fff); padding:4px 10px; border-radius:6px; font-size:0.8rem; cursor:pointer;" id="sp-editor-view-btn">📊 テーブル表示</button>
+          <button onclick="spEditorRefresh()" style="background:transparent; border:1px solid var(--sp-border,#666); color:var(--sp-text,#fff); padding:4px 10px; border-radius:6px; font-size:0.8rem; cursor:pointer;">🔄 最新取得</button>
+          <button onclick="spEdBulkDeleteNonJAN()" style="background:transparent; border:1px solid #ff6b6b; color:#ff6b6b; padding:4px 10px; border-radius:6px; font-size:0.8rem; cursor:pointer;">🗑 非JAN削除</button>
+          <button id="sp-ed-dismiss-all-btn" onclick="spEditorDismissAll()" style="background:transparent; border:1px solid #ff9800; color:#ff9800; padding:4px 10px; border-radius:6px; font-size:0.8rem; cursor:pointer;">🙈 全件非表示</button>
+        </div>
+        <button onclick="spEditorClose()" style="background:#dc3545; border:none; color:#fff; padding:4px 12px; border-radius:6px; font-size:0.8rem; cursor:pointer; font-weight:bold;">✕ 閉じる</button>
+      </div>
+    </div>
+    <!-- タブ選択ボタン -->
+    <div style="display:flex; gap:4px;">
+      <button id="sp-tab-btn-all" onclick="spTabSwitch('all')" style="flex:1; padding:6px 8px; border-radius:6px 6px 0 0; border:1px solid #4caf50; border-bottom:none; background:rgba(76,175,80,0.2); color:#a5d6a7; font-size:0.82rem; font-weight:bold; cursor:pointer;">全商品管理</button>
+      <button id="sp-tab-btn-unresolved" onclick="spTabSwitch('unresolved')" style="flex:1; padding:6px 8px; border-radius:6px 6px 0 0; border:1px solid var(--sp-border,#444); border-bottom:none; background:transparent; color:var(--sp-text-secondary,#aaa); font-size:0.82rem; cursor:pointer;">未登録商品管理</button>
+    </div>
+  </div>
+  <!-- ステータス（タブ2のみ表示） -->
+  <div id="sp-editor-status" style="display:none; padding:6px 14px; font-size:0.78rem; color:var(--sp-text-secondary,#aaa); border-bottom:1px solid var(--sp-border,#444);"></div>
+  <!-- タブ1：全商品管理 -->
+  <div id="sp-tab-all" style="display:flex; flex:1; overflow:hidden; flex-direction:column;">
+    <div style="padding:8px 14px; border-bottom:1px solid var(--sp-border,#444);">
+      <input id="sp-allprod-search" type="text" placeholder="商品名・JAN・メーカーで絞り込み" oninput="spAllProdsFilter(this.value)" style="width:100%; padding:8px 10px; background:var(--sp-bg-card,#252540); border:1px solid var(--sp-border,#444); border-radius:6px; color:var(--sp-text,#fff); font-size:0.9rem; box-sizing:border-box; outline:none;">
+    </div>
+    <div id="sp-allprod-status" style="padding:4px 14px; font-size:0.78rem; color:var(--sp-text-secondary,#aaa); border-bottom:1px solid var(--sp-border,#444);"></div>
+    <div style="flex:1; overflow-y:auto; padding:12px 14px;">
+      <div id="sp-allprod-card-body"></div>
+      <div id="sp-allprod-loading" style="text-align:center; padding:40px; color:var(--sp-text-secondary,#aaa);">
+        <div style="font-size:1.5rem; margin-bottom:8px;">⏳</div>
+        <div>商品一覧を取得中...</div>
+      </div>
+    </div>
+  </div>
+  <!-- タブ2：未登録商品管理 -->
+  <div id="sp-tab-unresolved" style="display:none; flex:1; overflow:hidden; flex-direction:column;">
+    <div style="flex:1; overflow:auto; padding:12px 14px;">
+      <!-- テーブルビュー（PC向け） -->
+      <div id="sp-editor-table-view" style="display:none; overflow-x:auto;">
+        <table id="sp-editor-table" style="width:100%; border-collapse:collapse; min-width:680px; font-size:0.85rem;">
+          <thead>
+            <tr style="background:var(--sp-bg-card,#252540); border-bottom:2px solid var(--sp-border,#555);">
+              <th style="padding:8px 10px; text-align:left; white-space:nowrap; color:var(--sp-text-secondary,#aaa); font-weight:600; width:150px;">JAN</th>
+              <th style="padding:8px 10px; text-align:left; color:var(--sp-text,#fff); font-weight:600;">正しい商品名 <span style="color:#ffc107;">*</span></th>
+              <th style="padding:8px 10px; text-align:left; color:var(--sp-text-secondary,#aaa); font-weight:600; width:140px;">カテゴリ</th>
+              <th style="padding:8px 10px; text-align:left; color:var(--sp-text-secondary,#aaa); font-weight:600; width:220px;">メーカー / 画像URL</th>
+              <th style="padding:8px 10px; width:80px;"></th>
+            </tr>
+          </thead>
+          <tbody id="sp-editor-table-body"></tbody>
+        </table>
+      </div>
+      <!-- カードビュー（スマホ向け） -->
+      <div id="sp-editor-card-view" style="display:none;">
+        <div id="sp-editor-card-body"></div>
+      </div>
+      <!-- ローディング -->
+      <div id="sp-editor-loading" style="text-align:center; padding:40px; color:var(--sp-text-secondary,#aaa);">
+        <div style="font-size:1.5rem; margin-bottom:8px;">⏳</div>
+        <div>未整備商品を取得中...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="settingsModal" class="modal">
   <div class="modal-content">
-    <h5 class="sp-text-normal mb-4 text-center" id="settingsTitle" onclick="handleSettingsTitleClick()" style="cursor: pointer;">設定</h5>
+    <h5 class="sp-text-normal mb-4 text-center" id="settingsTitle"
+        onmousedown="spAdminLongPressStart()" onmouseup="spAdminLongPressCancel()" onmouseleave="spAdminLongPressCancel()"
+        ontouchstart="spAdminLongPressStart(event)" ontouchend="spAdminLongPressCancel()" ontouchcancel="spAdminLongPressCancel()"
+        style="cursor: pointer; user-select:none;">設定</h5>
 
     <!-- v23.9.172 SP-260601-006: 旧 settingsUserIdRow（h5 直下の ID 行）は削除。
          デバイスID表示は ⑦ デバイスID・端末照合 パネル＋ ① 友人紹介 パネル内へ移設 -->
@@ -1434,7 +1648,7 @@ document.addEventListener('DOMContentLoaded', function() {
           <!-- v23.9.172 SP-260601-006: デバイスID・端末照合 パネル（PC/スマホ照合用） -->
           <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelDeviceId" onclick="renderDeviceIdPanel()">⑦ デバイスID・端末照合</button>
           <!-- v23.9.173 SP-260601-007: アカウント連携（ログイン状態でラベル切替） -->
-          <button id="accountMenuBtn" type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelAccount" onclick="renderAccountPanel()">⑧ アカウント連携（ログイン）</button>
+          <button id="accountMenuBtn" type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelAccount" onclick="renderAccountPanel()">⑧ アカウント登録</button>
 </div>
       </div>
 
@@ -1495,43 +1709,72 @@ document.addEventListener('DOMContentLoaded', function() {
       </div>
         <!-- v23.9.165 SP-250528-001: パネル末尾[戻る]を settingsCommonBack に共通化（panelReferral） -->
 
-      <!-- v23.9.231 SP-250606-FAMILY-001: 家族招待機能（招待コード発行・参加）-->
+      <!-- v23.9.249 SP-260615-FAMILY-UX: panelFamily を友人紹介と同じフローに統一（自動発行＋即表示）-->
       <div id="panelFamily" class="sp-panel mt-3" style="display:none;">
         <div class="small text-secondary mb-2" style="opacity:.9;">個人ID：<span class="sp-text-normal fw-bold" id="sp-personal-id-panelFamily"></span></div>
 
+        <!-- v23.9.276 SP-260618-FAMUX-001: 未ログイン時かんたん登録フォーム -->
+        <div id="family-register-prompt" style="display:none;">
+          <div style="background:rgba(25,135,84,.12); border:1px solid rgba(25,135,84,.5); border-radius:10px; padding:14px 16px; margin-bottom:14px;">
+            <div class="fw-bold mb-1" style="font-size:0.95rem; color:#4caf50;">📧 無料登録して家族グループを使う</div>
+            <div class="small text-secondary mb-3" style="line-height:1.5;">
+              iCloud / Yahoo / Gmailどのメールでも OK。パスワードは6文字以上。
+            </div>
+            <div class="mb-2">
+              <input id="fam-quick-email" type="email" class="form-control sp-bg-card sp-border-muted" placeholder="メールアドレス" autocomplete="email">
+            </div>
+            <div class="mb-3" style="position:relative;">
+              <input id="fam-quick-pass" type="password" class="form-control sp-bg-card sp-border-muted" placeholder="パスワード（6文字以上）" autocomplete="new-password" style="padding-right:2.8rem;">
+              <button type="button" onclick="togglePasswordVisibility('fam-quick-pass', this)" aria-label="パスワード表示切替" style="position:absolute; right:6px; top:50%; transform:translateY(-50%); background:transparent; border:none; cursor:pointer; font-size:1.1rem; line-height:1; padding:4px 6px;">👁</button>
+            </div>
+            <div class="d-grid">
+              <button type="button" class="btn sp-btn-primary py-2 fw-bold" onclick="handleFamilyQuickRegister()">登録して招待コードを発行する</button>
+            </div>
+            <div class="text-center mt-2">
+              <small class="text-secondary">すでに登録済みの方は<button type="button" class="btn btn-link btn-sm p-0" style="color:var(--sp-muted,#aaa); font-size:0.82rem; text-decoration:underline; vertical-align:baseline;" onclick="spOpenAccountPanel()">⑧ アカウント登録</button>からログイン</small>
+            </div>
+            <div id="fam-quick-register-status" class="small mt-2" style="min-height:1.2em;"></div>
+          </div>
+        </div>
+
         <hr style="border-color:var(--sp-border,#444); margin:8px 0 12px;">
 
-        <!-- 招待コード発行 -->
+        <!-- 招待コード（パネル表示時に自動発行） -->
         <div class="mb-3">
-          <div class="small text-secondary mb-2 fw-bold">家族を招待する</div>
-          <button class="btn sp-btn-primary w-100 py-2" onclick="spCreateFamilyInvite()">招待コードを発行する</button>
-          <div id="family-invite-result" class="mt-2" style="display:none;">
-            <div class="small text-secondary mb-1">招待コード：</div>
-            <div class="mb-1">
-              <input id="family-invite-code-display" class="form-control sp-bg-card sp-border-muted fw-bold"
-                     readonly style="font-family:monospace; letter-spacing:0.12em; font-size:1rem;">
+          <div class="small text-secondary mb-1">招待コード <span style="opacity:.65; font-size:.78rem;">(24時間有効)</span></div>
+          <div class="d-flex gap-2 mb-3 align-items-center">
+            <input id="family-invite-code-display" class="form-control sp-bg-card sp-border-muted fw-bold"
+                   readonly style="font-family:monospace; letter-spacing:0.12em; font-size:1.05rem;" placeholder="発行中...">
+            <button class="btn sp-btn-primary btn-sm px-3 fw-bold" onclick="spCopyFamilyInvite()" style="white-space:nowrap;">📋 コピー</button>
+          </div>
+
+          <!-- v23.9.277 SP-260618-FAMUX-002: 送り方2択（横並び対等） -->
+          <div class="small text-secondary mb-2 fw-bold">送り方を選ぶ</div>
+          <div class="d-flex gap-2 mb-1">
+            <button class="btn sp-btn-primary py-2 flex-fill fw-bold" onclick="spShareFamilyWithText()">📩 ＋メッセージ<br><small style="font-weight:normal; font-size:.78rem;">SMS・その他</small></button>
+            <button class="btn py-2 flex-fill fw-bold" style="background:#06c755; color:#fff; border:none; border-radius:6px;" onclick="spLineFamilyInvite()">💚 LINE<br><small style="font-weight:normal; font-size:.78rem;">で送る</small></button>
+          </div>
+          <div class="small text-secondary mb-2" style="opacity:.65; font-size:.75rem; text-align:center;">どちらも招待コード＋手順をまとめて送ります</div>
+          <div class="small text-secondary" style="opacity:.7;" id="family-invite-expiry"></div>
+        </div>
+
+        <!-- 文面を変更する（折りたたみ） -->
+        <div class="mb-3">
+          <button class="btn btn-link btn-sm text-secondary p-0 mb-1" style="font-size:.82rem; text-decoration:none;" onclick="(function(b){var d=document.getElementById('fam-tmpl-wrap');if(!d)return;var open=d.style.display!=='none';d.style.display=open?'none':'block';b.textContent=open?'▶ 文面を変更する（オプション）':'▼ 文面を変更する（オプション）';})(this)">▶ 文面を変更する（オプション）</button>
+          <div id="fam-tmpl-wrap" style="display:none;">
+            <div class="d-flex gap-2 mb-2">
+              <button class="btn btn-sm sp-btn-primary" id="fam-tmpl-btn-0" onclick="spSelectFamilyTemplate(0)">案1</button>
+              <button class="btn btn-sm btn-outline-secondary" id="fam-tmpl-btn-1" onclick="spSelectFamilyTemplate(1)">案2</button>
+              <button class="btn btn-sm btn-outline-secondary" id="fam-tmpl-btn-2" onclick="spSelectFamilyTemplate(2)">案3</button>
             </div>
-            <div class="small text-secondary mb-2" style="opacity:.75;" id="family-invite-expiry"></div>
-            <!-- [v234 SP-250609-SHARE-002] 文章テンプレート選択 + テキストエリア + 共有ボタン -->
-            <div>
-              <div class="small text-secondary mb-2 fw-bold">共有文を選ぶ</div>
-              <div class="d-flex gap-2 mb-2">
-                <button class="btn btn-sm sp-btn-primary" id="fam-tmpl-btn-0" onclick="spSelectFamilyTemplate(0)">案1</button>
-                <button class="btn btn-sm btn-outline-secondary" id="fam-tmpl-btn-1" onclick="spSelectFamilyTemplate(1)">案2</button>
-                <button class="btn btn-sm btn-outline-secondary" id="fam-tmpl-btn-2" onclick="spSelectFamilyTemplate(2)">案3</button>
-              </div>
-              <textarea id="family-share-text" class="form-control sp-bg-card sp-border-muted mb-2" rows="5" style="font-size:0.82rem; resize:vertical;"></textarea>
-              <div class="d-grid gap-2">
-                <button class="btn sp-btn-primary py-1" onclick="spShareFamilyWithText()">📤 共有する</button>
-                <button class="btn btn-outline-secondary py-1" onclick="spCopyFamilyInvite()">📋 コピーだけする</button>
-              </div>
-            </div>
+            <textarea id="family-share-text" class="form-control sp-bg-card sp-border-muted mb-1" rows="5" style="font-size:0.82rem; resize:vertical;"></textarea>
+            <div class="small text-secondary mb-1" style="opacity:.6; font-size:.75rem;">↑ 文面を編集して上の「送り方を選ぶ」ボタンで送れます</div>
           </div>
         </div>
 
         <div class="small text-center text-secondary mb-3" style="opacity:.6;">── または ──</div>
 
-        <!-- 招待コード入力・参加 -->
+        <!-- 招待コードを入力して参加 -->
         <div class="mb-3">
           <div class="small text-secondary mb-1 fw-bold">招待コードを入力：</div>
           <div class="d-flex gap-2 mb-1">
@@ -1541,6 +1784,11 @@ document.addEventListener('DOMContentLoaded', function() {
             <button class="btn sp-btn-primary" onclick="spJoinFamilyGroup()" style="white-space:nowrap;">参加する</button>
           </div>
           <div id="family-join-status" class="small mt-1"></div>
+        </div>
+
+        <!-- 招待コードを更新（目立たない） -->
+        <div class="text-center mb-1">
+          <button class="btn btn-link btn-sm text-secondary py-0" style="font-size:.78rem; opacity:.6;" onclick="spCreateFamilyInvite()">招待コードを更新する</button>
         </div>
 
         <!-- v23.9.165 SP-250528-001: パネル末尾[戻る]を settingsCommonBack に共通化（panelFamily） -->
@@ -1666,6 +1914,18 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
           </details>
           
+          <!-- v23.9.252 SP-260616-EDITORTOKEN-001: スタッフ認証コード管理 -->
+          <div class="mb-3" style="border:2px solid #7c4dff; border-radius:8px; padding:12px; background:rgba(124,77,255,0.1);">
+            <div class="small fw-bold mb-2" style="color:#ce93d8;">🔐 スタッフ認証コード管理</div>
+            <div class="mb-2">
+              <input id="sp-token-label-input" type="text" class="form-control sp-bg-card sp-border-muted mb-2" placeholder="スタッフ名（例：山田さん）">
+              <button type="button" class="btn btn-outline-light w-100 py-2 fw-bold" onclick="spGenerateEditorToken()">➕ スタッフコードを発行</button>
+            </div>
+            <div id="sp-editor-token-new" class="mb-2"></div>
+            <button type="button" class="btn btn-outline-secondary w-100 py-2 mt-1" onclick="spListEditorTokens()">📋 発行済みコード一覧を表示</button>
+            <div id="sp-editor-token-list" class="mt-2"></div>
+          </div>
+
           <!-- 共有ユーザーID統合（PC・スマホ同期用） -->
           <div class="mt-3 mb-2 p-2" style="border:1px solid rgba(255,165,0,0.4); border-radius:8px;">
             <div class="small text-warning mb-1">⚠️ PC・スマホ同期統合（上級者向け）</div>
@@ -1738,7 +1998,9 @@ document.addEventListener('DOMContentLoaded', function() {
         <!-- 未ログイン時 -->
         <div id="panelAccountLoggedOut">
           <div class="small text-secondary mb-3" style="line-height:1.6;">
-            PCとスマホのデータを同期するにはアカウントの登録が必要です。
+            メールアドレスで無料登録できます。<br>
+            iCloud / Yahoo / Gmailどのメールでも OK。<br>
+            端末を変えてもデータが引き継げます。
           </div>
           <div class="mb-2">
             <label class="small text-secondary mb-1 d-block" for="accountEmailInput">メールアドレス</label>
@@ -1748,7 +2010,7 @@ document.addEventListener('DOMContentLoaded', function() {
             <label class="small text-secondary mb-1 d-block" for="accountPasswordInput">パスワード</label>
             <!-- v23.9.222 SP-250605-013 P0-03: パスワード表示切替 👁（ログイン/新規登録共用の単一欄） -->
             <div style="position:relative;">
-              <input id="accountPasswordInput" type="password" class="form-control sp-bg-card sp-border-muted" placeholder="8文字以上" autocomplete="current-password" style="padding-right:2.8rem;">
+              <input id="accountPasswordInput" type="password" class="form-control sp-bg-card sp-border-muted" placeholder="6文字以上" autocomplete="current-password" style="padding-right:2.8rem;">
               <button type="button" id="accountPasswordToggle" onclick="togglePasswordVisibility('accountPasswordInput', this)" aria-label="パスワード表示切替" title="パスワード表示切替" style="position:absolute; right:6px; top:50%; transform:translateY(-50%); background:transparent; border:none; cursor:pointer; font-size:1.1rem; line-height:1; padding:4px 6px;">👁</button>
             </div>
           </div>
@@ -1760,15 +2022,14 @@ document.addEventListener('DOMContentLoaded', function() {
               <button type="button" onclick="togglePasswordVisibility('accountPasswordConfirmInput', this)" aria-label="パスワード確認表示切替" title="パスワード確認表示切替" style="position:absolute; right:6px; top:50%; transform:translateY(-50%); background:transparent; border:none; cursor:pointer; font-size:1.1rem; line-height:1; padding:4px 6px;">👁</button>
             </div>
           </div>
+          <!-- v23.9.279 SP-260618-FAMUX-004: 1ボタンに統一（ログイン/新規登録を自動判別） -->
           <div class="d-grid gap-2 mb-2">
-            <button type="button" class="btn sp-btn-primary py-2" onclick="handleAccountLoginClick()">ログイン</button>
-            <button type="button" class="btn btn-outline-light py-2" onclick="handleAccountRegisterClick()">新規登録</button>
+            <button type="button" class="btn sp-btn-primary py-2 fw-bold" onclick="handleAccountStartClick()">はじめる（ログイン・新規登録）</button>
           </div>
-          <!-- v23.9.236: パスワードリセットリンク -->
           <div class="text-center mb-2">
             <button type="button" class="btn btn-link btn-sm text-secondary p-0" onclick="handlePasswordResetClick()" style="font-size:0.82rem; text-decoration:underline;">パスワードを忘れた場合</button>
           </div>
-          <div class="small text-secondary" style="opacity:.7;">※パスワードは8文字以上</div>
+          <div class="small text-secondary" style="opacity:.7;">※パスワードは6文字以上 ／ 初めての方も同じボタンで登録できます</div>
           <div id="accountStatusMsg" class="small mt-2" style="min-height:1.2em;"></div>
         </div>
 
@@ -1799,6 +2060,7 @@ document.addEventListener('DOMContentLoaded', function() {
     <button id="syncBtn" class="btn btn-primary w-100 py-2 fw-bold mb-2" onclick="startMigration()">設定保存と同期</button>
     <button id="clearCacheBtn" class="btn sp-btn-primary w-100 py-2 fw-bold mb-2" onclick="clearAllCache()">🔄 キャッシュクリア（表示崩れ修正）</button>
     <button id="webBtn" class="btn btn-outline-secondary w-100 py-2 fw-bold mb-2" onclick="openWebModal()">ブラウザ版へ（URL表示）</button>
+    <button id="resetDataBtn" class="btn btn-outline-danger w-100 py-2 fw-bold mb-2" onclick="spResetLocalData()">🗑 このスマホの商品データをリセット</button>
 
     <div id="sp-company-info" class="small text-secondary mt-3 mb-2 px-1" style="line-height:1.65; opacity:.88;">
       <div class="fw-bold mb-1">運営会社情報</div>
@@ -2113,18 +2375,25 @@ document.addEventListener('DOMContentLoaded', function() {
       <button class="btn sp-btn-primary flex-grow-1" onclick="openUrlFromBox('webUrlDebug')">開く</button>
     </div>
 
-    <div class="hint mb-3 sp-hint-box">
-      <b class="sp-text-accent">📱 アプリとして使う（PWA）</b><br>
-      <span style="font-size:0.7rem; color:#aaa;">
-      <b>Android（Chrome/Edge）：</b> ブラウザで開く → メニュー（⋮）→「ホーム画面に追加」<br>
-      <b>iOS（Safari）：</b> ブラウザで開く → 共有ボタン（□↑）→「ホーム画面に追加」<br>
-      <b>更新が反映されない時：</b> ホーム画面のアイコンを削除 → 再度追加してください
+    <div class="hint mb-3 sp-hint-box" style="border-radius:10px;padding:14px;">
+      <b class="sp-text-accent">📲 ホーム画面にアイコンを作る</b><br>
+      <span style="font-size:0.75rem;color:var(--sp-text-muted,#aaa);">✅ アプリのダウンロードは不要。ブラウザで使えます。</span><br><br>
+      <span style="font-size:0.78rem;">
+      <b>📱 iPhone（Safari）：</b><br>
+      &nbsp;① 画面下の <b>共有ボタン（□↑）</b> をタップ<br>
+      &nbsp;② 「<b>ホーム画面に追加</b>」をタップ → 完了！<br>
+      <br>
+      <b>🤖 Android（Chrome）：</b><br>
+      &nbsp;下の「ホーム画面にアイコンを追加する」ボタンをタップ<br>
+      &nbsp;またはメニュー（⋮）→「<b>ホーム画面に追加</b>」<br>
+      <br>
+      <span style="color:var(--sp-text-muted,#aaa);font-size:0.72rem;">更新が反映されない時はアイコンを削除して再度追加</span>
       </span>
     </div>
 
-    <!-- ✅ PWAインストールボタン（beforeinstallpromptがある時だけ表示） -->
+    <!-- ✅ PWAホーム画面追加ボタン（Android/Chrome: beforeinstallpromptがある時だけ表示） -->
     <button id="pwaInstallBtn" class="btn sp-btn-primary w-100 mb-2" style="display:none;" onclick="installPWA()">
-      📱 今すぐインストール
+      📲 ホーム画面にアイコンを追加する
     </button>
 
     <button class="btn btn-link text-secondary w-100" onclick="closeWebModal()">戻る</button>
@@ -2160,6 +2429,8 @@ document.addEventListener('DOMContentLoaded', function() {
   let firebaseDb = null;
   let currentAuthUid = null;
   let isFirebaseReady = false;
+  // v23.9.281 SP-260618-FAM-001: 家族グループID（nullなら個人パス）
+  let currentFamilyGroupId = (function(){ try { return localStorage.getItem('sp_family_group_id') || null; } catch(_){ return null; } })();
   try { window._isFirebaseReady = false; } catch (_fb0) {}
 
   async function initializeFirebase() {
@@ -2211,6 +2482,17 @@ document.addEventListener('DOMContentLoaded', function() {
       if (user) {
         currentAuthUid = user.uid;
         if (isDebug()) console.log('[Firebase] Auth state changed, UID:', currentAuthUid);
+        // v23.9.281: Firebaseから家族グループIDを取得してsyncパスを切り替え
+        try {
+          firebaseDb.ref('users/' + user.uid + '/familyGroupId').once('value').then(function(snap) {
+            var gid = snap.val();
+            if (gid && typeof gid === 'string') {
+              currentFamilyGroupId = gid;
+              try { localStorage.setItem('sp_family_group_id', gid); } catch(_) {}
+              if (isDebug()) console.log('[Firebase] familyGroupId loaded:', gid);
+            }
+          }).catch(function(){});
+        } catch(_) {}
       } else {
         currentAuthUid = null;
         isFirebaseReady = false;
@@ -2456,7 +2738,8 @@ document.addEventListener('DOMContentLoaded', function() {
   };
 
   // ========= v23.9.115: カテゴリ正規化（固定親カテゴリ） =========
-  const CATEGORY_MAP = {
+  // v23.9.269 SP-260617-CATEGORYV2-001: varに変更（_SP_SUBCATS定義後に自動生成で拡張するため）
+  var CATEGORY_MAP = {
     'ドリンク': '飲料', '水・お茶': '飲料', '炭酸飲料': '飲料',
     '果汁・野菜ジュース': '飲料', 'コーヒー・紅茶': '飲料', '乳飲料': '飲料',
     'スポーツ・栄養ドリンク': '飲料', '粉末・濃縮飲料': '飲料',
@@ -3360,7 +3643,7 @@ document.addEventListener('DOMContentLoaded', function() {
   let tempImgData = null; // {type:'key', key} or {type:'url', url}
   let scanner = null, editingHistIdx = null, isScanning = false;
   let _scanIdleTimer = null;  // ✅ P0-2: スキャンアイドル自動クローズタイマー
-  let deferredPrompt = null; // ✅ PWAインストールプロンプト
+  let deferredPrompt = null; // ✅ PWAホーム画面追加プロンプト
 
   // ✅ ここは必ず let（const にすると "Assignment to constant variable" の原因になる）
   // v23.9.239: FIREBASE_CONFIG.databaseURL を自動フォールバック（localStorage 未設定端末で同期不能になるバグ修正）
@@ -3534,6 +3817,12 @@ document.addEventListener('DOMContentLoaded', function() {
       await initializeFirebase();
       setupAuthListener();
       try { spDbg('[FIREBASE_INIT_DONE]', { uid: String(typeof currentAuthUid !== 'undefined' && currentAuthUid ? currentAuthUid : 'none') }); } catch (_) {}
+      // v23.9.278 SP-260618-FAMUX-003: ?fam= 招待URL処理
+      try { if (typeof spHandlePendingFamilyJoin === 'function') setTimeout(spHandlePendingFamilyJoin, 800); } catch(_) {}
+      // v23.9.280 SP-260618-PWA-001: 初回アクセス時ホーム画面アイコン案内
+      try { if (typeof showPwaGuideIfFirstAccess === 'function') showPwaGuideIfFirstAccess(); } catch(_) {}
+      // v23.9.269 SP-260617-CATEGORYV2-001: カスタムカテゴリをFirebaseから取得
+      try { if (typeof spLoadCustomCategories === 'function') spLoadCustomCategories(); } catch (_) {}
     } catch (e) {
       try { spDbg('[BOOT_STEP_ERROR]', { step: 'initializeFirebase', message: String(e && e.message), stack: String(e && e.stack) }); } catch (_) {}
     }
@@ -3801,7 +4090,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
 
-  // ✅ PWAインストールプロンプト（Android/PC Chrome/Edge）
+  // ✅ PWAホーム画面追加プロンプト（Android/PC Chrome/Edge）
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
@@ -3990,6 +4279,8 @@ function isQuotaError(e) {
     let o = (input && typeof input === "object") ? input : {};
     if (!o.products || typeof o.products !== "object") o.products = {};
     if (!o.config || typeof o.config !== "object") o.config = {};
+    // v23.9.250 SP-260616-JANDICT-001: JAN辞書（human_verified）
+    if (!o.jan_dict || typeof o.jan_dict !== "object") o.jan_dict = {};
 
     // categoryTree を正として整形（DEFAULT_CATEGORY_TREEから補完）
     if (!o.config.categoryTree || typeof o.config.categoryTree !== "object") {
@@ -4405,6 +4696,21 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     }catch(e){ return baseJsonUrl; }
   }
 
+  // v23.9.281 SP-260618-FAM-001: 家族グループがある場合は共有パスを返す
+  function getFamilySyncUrl(baseJsonUrl, uid) {
+    try {
+      var groupId = currentFamilyGroupId || localStorage.getItem('sp_family_group_id');
+      if (groupId) {
+        var u = baseJsonUrl || '';
+        if (u.endsWith('.json')) {
+          var i = u.lastIndexOf('/smart_price.json');
+          if (i !== -1) return u.slice(0, i) + '/familyGroups/' + encodeURIComponent(groupId) + '/smart_price.json';
+        }
+      }
+    } catch(e) {}
+    return scopeUrlByUser(baseJsonUrl, uid);
+  }
+
   function getImageUrl(url, code, imageId) {
     const base = getBaseUrl(url);
     if (!base) return "";
@@ -4512,7 +4818,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         throw new Error('DB integrity check failed: ' + dbCheck.reason);
       }
       const uid = getOrCreateUserId();
-      const targetUrl = scopeUrlByUser(getSafeUrl(fbUrl), uid);
+      // v23.9.281: 家族グループがある場合は共有パスに書き込む
+      const targetUrl = getFamilySyncUrl(getSafeUrl(fbUrl), uid);
       const payload = stripForCloud(db);
       const _putT0 = Date.now();
       await fetchWithTimeout(targetUrl, {
@@ -4594,6 +4901,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     fields.forEach(k => {
       if ((!base[k] || String(base[k]).trim() === '') && other[k]) base[k] = other[k];
     });
+    // v23.9.250: human_verified はどちらかが true なら true を継承
+    if (lp.human_verified || cp.human_verified) base.human_verified = true;
 
     // ✅ 画像情報：端末内imageKeyを最優先で保持、imageUrlはマージ
     if (lp.imageKey && typeof lp.imageKey === 'string') {
@@ -4648,6 +4957,24 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     return out;
   }
 
+  // v23.9.250 SP-260616-JANDICT-001: JAN辞書マージ（updated_at 新しい方を優先、human_verified は OR）
+  function mergeJanDict(local, cloud) {
+    const out = {};
+    const allJans = new Set([...Object.keys(local || {}), ...Object.keys(cloud || {})]);
+    allJans.forEach(jan => {
+      const lv = (local || {})[jan];
+      const cv = (cloud || {})[jan];
+      if (!lv) { out[jan] = cv; return; }
+      if (!cv) { out[jan] = lv; return; }
+      // どちらも存在 → updated_at 新しい方をベースに、human_verified は OR
+      const lnewer = (lv.updated_at || '') >= (cv.updated_at || '');
+      const base = Object.assign({}, lnewer ? cv : lv, lnewer ? lv : cv);
+      if (lv.human_verified || cv.human_verified) base.human_verified = true;
+      out[jan] = base;
+    });
+    return out;
+  }
+
   function mergeDb(localDb, cloudDb) {
     const ld = normalizeDb(deepClone(localDb || {}));
     const cd = normalizeDb(deepClone(cloudDb || {}));
@@ -4659,6 +4986,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       merged.products[code] = mergeProduct(ld.products[code], cd.products[code]);
     });
     merged.config = mergeConfig(ld.config, cd.config);
+    // v23.9.250: JAN辞書をマージ
+    merged.jan_dict = mergeJanDict(ld.jan_dict, cd.jan_dict);
     return normalizeDb(merged);
   }
 
@@ -4697,7 +5026,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       
       // 2. クラウドDBを取得
       const uid = getOrCreateUserId();
-      const targetUrl = scopeUrlByUser(getSafeUrl(fbUrl), uid);
+      // v23.9.281: 家族グループがある場合は共有パスから読み込む
+      const targetUrl = getFamilySyncUrl(getSafeUrl(fbUrl), uid);
       let cloudDb = null;
       try{
         const res = await fetchWithTimeout(targetUrl, {}, 12000);
@@ -4749,7 +5079,9 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       initCategorySelect();
       await renderHistory();
       renderStoreList();
-      
+      // v23.9.251: グローバル JAN辞書をマージ（Firebase同期成功後）
+      try { if (typeof window._spLoadGlobalJanDict === 'function') window._spLoadGlobalJanDict(); } catch (_gjd) {}
+
       syncResult.success = true;
       const elapsed = Date.now() - startTime;
       // v23.9.166 SP-250529-002: 動作ログ（Firebase同期GET 成功）
@@ -6240,6 +6572,20 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       p.category = safeCategory;
       p.subCategory = safeSubCategory;
       p.maker = safeMaker;
+
+      // v23.9.250 SP-260616-JANDICT-001: 手動保存時に human_verified フラグ + JAN辞書登録
+      if (!isWeakNameCandidate(safeName, jan)) {
+        p.human_verified = true;
+        if (!db.jan_dict) db.jan_dict = {};
+        db.jan_dict[jan] = {
+          name: safeName,
+          category: safeCategory,
+          maker: safeMaker,
+          human_verified: true,
+          updated_at: new Date().toISOString()
+        };
+        try { spDbg('[JAN_DICT_SAVE]', { jan, name: safeName, category: safeCategory, maker: safeMaker }); } catch (_) {}
+      }
 
       // ✅ デバッグログ
       if (isDebug()) {
@@ -8567,6 +8913,11 @@ function startScanner() {
         // v23.9.167 SP-250530-006: html5-qrcode の decodedResult から format 名を取得（誤読取り調査用）
         var fmt = '';
         try { fmt = (decodedResult && decodedResult.result && decodedResult.result.format && decodedResult.result.format.formatName) || ''; } catch (_) {}
+        // v23.9.261 SP-260616-SCANMISS-001: 非JANコード（8桁/13桁以外）はトーストで通知しカメラ継続
+        if (!/^\d{8}$|^\d{13}$/.test(code)) {
+          try { showToast('バーコードを読み取れませんでした。もう一度スキャンしてください', 2500); } catch(_) {}
+          return; // stopScanner を呼ばずカメラ継続
+        }
         await stopScanner();
         try { await processBarcodeData(code, 'scan', fmt); } catch(e) { showToast(`エラー: ${e.message}`, 8000); }
       }
@@ -9515,6 +9866,27 @@ function applyManualMasterPatches() {
 }
 window.applyManualMasterPatches = applyManualMasterPatches;
 
+// v23.9.266 SP-260616-DISMISSKEY-001: dismissed状態を専用localStorageキーで永続管理（db非依存）
+function _spGetDismissedMap() {
+  try { return JSON.parse(localStorage.getItem('sp_editor_dismissed') || '{}'); } catch(_) { return {}; }
+}
+function _spAddDismissed(jan) {
+  var m = _spGetDismissedMap(); m[jan] = true;
+  try { localStorage.setItem('sp_editor_dismissed', JSON.stringify(m)); } catch(_) {}
+}
+function _spClearDismissed(jan) {
+  var m = _spGetDismissedMap(); delete m[jan];
+  try { localStorage.setItem('sp_editor_dismissed', JSON.stringify(m)); } catch(_) {}
+}
+function _spIsDismissed(jan) {
+  try {
+    var m = JSON.parse(localStorage.getItem('sp_editor_dismissed') || '{}');
+    if (m[jan]) return true;
+    if (typeof db !== 'undefined' && db && db.editorDismissed && db.editorDismissed[jan]) return true;
+    return false;
+  } catch(_) { return false; }
+}
+
 // === v23.9.168 SP-250531-003: P0-2 未整備商品一覧 ===
 // db.products を走査して name が isWeakNameCandidate に該当する商品を抽出。
 // db.unresolvedProducts（fallback到達履歴）からも候補を併合（products に無い JAN を補足）。
@@ -9525,6 +9897,7 @@ function listUnresolvedProducts() {
     var products = db.products || {};
     var seen = {};
     Object.keys(products).forEach(function (jan) {
+      if (_spIsDismissed(jan)) return; // v23.9.266 SP-260616-DISMISSKEY-001
       var p = products[jan] || {};
       var name = String(p.name || '').trim();
       if (!isWeakNameCandidate(name, jan)) return;
@@ -9542,6 +9915,7 @@ function listUnresolvedProducts() {
     var unresolved = db.unresolvedProducts || {};
     Object.keys(unresolved).forEach(function (jan) {
       if (seen[jan]) return;
+      if (_spIsDismissed(jan)) return; // v23.9.266 SP-260616-DISMISSKEY-001
       var u = unresolved[jan] || {};
       out.push({ jan: jan, name: '(未保存)', count: 0, lastStore: u.store || '', source: 'unresolved' });
     });
@@ -10473,6 +10847,45 @@ function spVisibleTrace(tag, payload, cls) {
         } catch (_mmErr) {
           try { spDbg('[PRODUCT_LOOKUP_MASTER_ERR]', { message: _mmErr && _mmErr.message ? _mmErr.message : String(_mmErr) }); } catch (_) {}
         }
+        // v23.9.250 SP-260616-JANDICT-001: STEP0.5 JAN辞書（human_verified）を次優先でチェック
+        // ユーザーが手動編集した商品名を永続化・API検索をスキップ
+        try {
+          const _jd = (db.jan_dict && db.jan_dict[jan]) || null;
+          if (_jd && _jd.human_verified && _jd.name && !isWeakNameCandidate(_jd.name, jan)) {
+            try { spDbg('[JAN_DICT_HIT]', { jan, name: _jd.name, maker: _jd.maker || '', updated_at: _jd.updated_at || '' }); } catch (_) {}
+            try { if (typeof window.spOpLog === 'function') window.spOpLog('product_lookup', { jan, source: 'jan_dict', name: _jd.name }); } catch (_) {}
+            finalInfo.name = _jd.name;
+            if (_jd.maker) finalInfo.maker = _jd.maker;
+            if (_jd.category) finalInfo.category = normalizeCategory(_jd.category);
+            sourceUsed = 'jan_dict';
+            // フォームに即反映
+            const _jdJanCheck = String(curBarcode || '').trim();
+            if (_jdJanCheck === jan) {
+              if (nameInput && nameInput.value === nameAtStart && finalInfo.name) {
+                nameInput.value = finalInfo.name;
+                nameInput.placeholder = originalPlaceholder;
+              }
+              if (makerInput && makerInput.value === makerAtStart && finalInfo.maker) {
+                makerInput.value = finalInfo.maker;
+              }
+            }
+            // DB更新（弱い値のみ上書き）
+            if (p && (!p.name || isWeakNameCandidate(String(p.name).trim(), jan))) p.name = _jd.name;
+            if (p && _jd.maker && (!p.maker || !String(p.maker).trim())) p.maker = _jd.maker;
+            if (p && _jd.category && !p.category) p.category = normalizeCategory(_jd.category);
+            if (p) p.human_verified = true;
+            db.products[jan] = p;
+            saveLocalOnly();
+            markLookupPipelineStep(jan, 'localStorage', 'HIT', { name: _jd.name, reason: 'jan_dict_human_verified' });
+            markLookupPipelineStep(jan, 'Final', 'HIT', { name: finalInfo.name, reason: 'jan_dict_human_verified' });
+            processBarcodeInFlight.delete(jan);
+            try { spDbg('[PRODUCT_LOOKUP_FINAL]', { name: finalInfo.name, maker: finalInfo.maker, source: 'jan_dict' }); } catch (_) {}
+            try { if (typeof showLookupStageToast === 'function') showLookupStageToast(8, '商品情報を表示しました', { jan, ev: 'barcode_lookup_stage_done', source: 'jan_dict', final: true }); } catch (_) {}
+            return; // ✅ JAN辞書HIT → API をすべてスキップ
+          }
+        } catch (_jdErr) {
+          try { spDbg('[JAN_DICT_LOOKUP_ERR]', { message: String(_jdErr && _jdErr.message ? _jdErr.message : _jdErr) }); } catch (_) {}
+        }
         // db.products にも確定名があれば優先
         // v23.9.168 SP-250531-001: 「length > 3」だけだと name=JAN (13桁) が確定扱いされて再lookupが走らないバグの修正。
         //                          !isWeakNameCandidate（空/JAN/短/不明/数字記号）で堅牢化。
@@ -11323,9 +11736,28 @@ function spVisibleTrace(tag, payload, cls) {
               store: curStore,
               status: 'unresolved'
             };
+            // v23.9.267 SP-260616-NODISMISSCLEAR-001: dismissed状態はスキャン再試行でクリアしない
             saveLocalOnly();
             try { spDbg('[UNRESOLVED_PRODUCT_SAVED]', { jan: jan, store: curStore }); } catch (_urDbg) {}
           } catch (_urErr) {}
+          // v23.9.251 SP-260616-EDITOR-001: Firebase /global/unresolved/ に書き込み（全ユーザー共有）
+          // v23.9.260 SP-260616-NONJANWRITE-001: 8桁/13桁のJANコードのみ書き込む（二重防御）
+          try {
+            if (window.firebaseDb && jan && /^\d{8}$|^\d{13}$/.test(jan) && !_spIsDismissed(jan)) { // v23.9.267 SP-260616-NODISMISSCLEAR-001: dismissed済みならPromise自体起動しない
+              // global/jan_dict に既に修正済みならスキップ
+              window.firebaseDb.ref('global/jan_dict/' + jan).once('value').then(function(snap) {
+                if (snap && snap.val() && snap.val().human_verified) return; // 修正済み→書かない
+                if (_spIsDismissed(jan)) return; // v23.9.266 SP-260616-DISMISSKEY-001: dismissed済みなら再書き込みしない（削除後の非同期競合防止）
+                window.firebaseDb.ref('global/unresolved/' + jan).set({
+                  jan: jan,
+                  raw_name: String((db.products && db.products[jan] && db.products[jan].name) || jan),
+                  last_seen: Date.now(),
+                  store: curStore || '',
+                  source: 'barcode_lookup_failed'
+                });
+              }).catch(function(){});
+            }
+          } catch (_gur) {}
         }
 
         {
@@ -12882,7 +13314,7 @@ function spVisibleTrace(tag, payload, cls) {
   // v23.9.172 SP-260601-006: DeviceId パネル（PC/スマホ照合）を追加
   // v23.9.173 SP-260601-007: Account パネル（アカウント連携・ログイン）を追加
   const PANELS = { Main: 'settingsMainMenu', Referral: 'panelReferral', Family: 'panelFamily', Support: 'panelSupport', Operator: 'panelOperator', TaxSettings: 'panelTaxSettings', Theme: 'panelTheme', DeviceId: 'panelDeviceId', Account: 'panelAccount' };
-  const TITLES = { Main: '設定', Referral: '友人紹介', Family: '家族共有', Support: '運営者へ質問', Operator: '管理メニュー', TaxSettings: '店舗の税設定', Theme: 'テーマ設定', DeviceId: 'デバイスID・端末照合', Account: 'アカウント連携' };
+  const TITLES = { Main: '設定', Referral: '友人紹介', Family: '家族共有', Support: '運営者へ質問', Operator: '管理メニュー', TaxSettings: '店舗の税設定', Theme: 'テーマ設定', DeviceId: 'デバイスID・端末照合', Account: 'アカウント登録' };
   
   function init() {
     if (state.initialized) return;
@@ -12902,6 +13334,13 @@ function spVisibleTrace(tag, payload, cls) {
     });
     
     titleEl = modal.querySelector('.modal-title') || modal.querySelector('#settingsTitle') || modal.querySelector('h5');
+    // v23.9.253 SP-260616-ADMSELECT-001: タイトルクリックカウンターをJSで確実にバインド
+    if (titleEl && !titleEl._spTapBound) {
+      titleEl._spTapBound = true;
+      titleEl.addEventListener('click', function() {
+        if (typeof window.handleSettingsTitleClick === 'function') window.handleSettingsTitleClick();
+      });
+    }
     setupEventListeners();
     navigate('Main');
     state.initialized = true;
@@ -13072,6 +13511,10 @@ function spVisibleTrace(tag, payload, cls) {
     // ✅ 友人紹介パネル更新
     try{
       if (typeof window.updateReferralPanel === 'function') window.updateReferralPanel();
+    }catch(e){}
+    // ✅ 家族共有パネル更新（v249: 招待コード自動発行）
+    try{
+      if (typeof window.updateFamilyPanel === 'function') window.updateFamilyPanel();
     }catch(e){}
 
     setTimeout(function() { modal.classList.add('show'); }, 10);
@@ -13392,6 +13835,13 @@ function spVisibleTrace(tag, payload, cls) {
       refInput.placeholder = formatted ? '' : fallbackMsg;
     }
     try { spDbg('[PERSONAL_ID_DISPLAY_UPDATE]', { hasCode: !!code, codeHead: code ? code.slice(0, 4) : '' }); } catch (_) {}
+    // v23.9.276 SP-260618-FAMUX-001: 未ログイン時かんたん登録フォームの表示制御
+    try {
+      var isLoggedIn = (typeof currentAuthUid !== 'undefined' && !!currentAuthUid)
+                    || (window.firebaseAuth && !!window.firebaseAuth.currentUser && !window.firebaseAuth.currentUser.isAnonymous);
+      var prompt = document.getElementById('family-register-prompt');
+      if (prompt) prompt.style.display = isLoggedIn ? 'none' : 'block';
+    } catch (_) {}
   }
   window._spUpdatePersonalIdDisplay = _spUpdatePersonalIdDisplay;
 
@@ -13411,7 +13861,7 @@ function spVisibleTrace(tag, payload, cls) {
 
     // ⑧ ボタンのラベル更新
     var btn = document.getElementById('accountMenuBtn');
-    if (btn) btn.textContent = loggedIn ? '⑧ アカウント設定' : '⑧ アカウント連携（ログイン）';
+    if (btn) btn.textContent = loggedIn ? '⑧ アカウント設定' : '⑧ アカウント登録';
 
     // v23.9.236: パスワード確認欄をリセット（パネル再描画時）
     try { var _cw2 = document.getElementById('accountPasswordConfirmWrap'); if (_cw2) _cw2.style.display = 'none'; } catch (_) {}
@@ -13569,6 +14019,80 @@ function spVisibleTrace(tag, payload, cls) {
     }
   }
   window.handleAccountRegisterClick = handleAccountRegisterClick;
+
+  // v23.9.279 SP-260618-FAMUX-004: 「はじめる」1ボタン（ログイン→未登録なら自動で新規登録）
+  async function handleAccountStartClick() {
+    var emailEl = document.getElementById('accountEmailInput');
+    var passEl  = document.getElementById('accountPasswordInput');
+    var msg     = document.getElementById('accountStatusMsg');
+    var email    = emailEl ? String(emailEl.value || '').trim() : '';
+    var password = passEl  ? String(passEl.value  || '')        : '';
+    function setMsg(t, cls) { if (msg) { msg.textContent = t; msg.className = 'small mt-2 ' + cls; } }
+    if (!email)    { setMsg('メールアドレスを入力してください', 'text-warning'); return; }
+    if (!password) { setMsg('パスワードを入力してください', 'text-warning'); return; }
+    if (password.length < 6) { setMsg('パスワードは6文字以上にしてください', 'text-warning'); return; }
+
+    setMsg('確認中…', 'text-secondary');
+    // まずログインを試みる
+    var ret = await spAccountLogin(email, password);
+    if (ret.ok) {
+      // v23.9.282: 初回ログインまたは前回と別メールなら既存商品データをリセット（他人データ混入防止）
+      try {
+        var prevEmail = localStorage.getItem('sp_auth_email') || '';
+        if (!prevEmail || prevEmail !== email) {
+          db.products = {};
+          saveLocalOnly();
+          renderHistory();
+          renderStoreList();
+        }
+      } catch(_) {}
+      setMsg('✓ ログインしました', 'text-success');
+      try { spDbg('[ACCOUNT_START_LOGIN_OK]', { email: email }); } catch(_) {}
+      renderAccountPanel(); renderStartupBannerIfNeeded();
+      try { if (typeof window.linkAccountUid === 'function') window.linkAccountUid('login'); } catch(_) {}
+      return;
+    }
+    if (ret.networkError) { setMsg('通信エラーです。電波の良い場所でお試しください', 'text-danger'); return; }
+
+    // ログイン失敗 → パスワード間違いか未登録かを判定
+    var errText = String((ret.body && (ret.body.detail || ret.body.error)) || '').toLowerCase();
+    var isCredentialError = ret.status === 400 || ret.status === 401
+      || errText.includes('invalid') || errText.includes('credentials') || errText.includes('not found');
+    if (!isCredentialError) {
+      setMsg('エラーが発生しました（' + (ret.status || '') + '）。しばらく待ってお試しください', 'text-danger'); return;
+    }
+
+    // 未登録の可能性 → 自動で新規登録を試みる
+    setMsg('新規登録を試みています…', 'text-secondary');
+    var ret2 = await spAccountRegister(email, password);
+    if (ret2.ok) {
+      // v23.9.281: 新規登録成功 → このスマホの既存商品データをリセット（他人のデータが見えないように）
+      try { db.products = {}; saveLocalOnly(); renderHistory(); renderStoreList(); } catch(_) {}
+      if (ret2.body && ret2.body.session && ret2.body.session.access_token) {
+        try { localStorage.setItem('sp_auth_token', ret2.body.session.access_token); } catch(_) {}
+        try { localStorage.setItem('sp_auth_email', (ret2.body.user && ret2.body.user.email) || email); } catch(_) {}
+        try { _spStorePublicCodeFromUser(ret2.body.user); } catch(_) {}
+        setMsg('✓ 登録してログインしました', 'text-success');
+        renderAccountPanel(); renderStartupBannerIfNeeded();
+        try { if (typeof window.linkAccountUid === 'function') window.linkAccountUid('register'); } catch(_) {}
+      } else {
+        setMsg('✓ 登録しました。ログインボタンでログインしてください', 'text-success');
+      }
+      try { spDbg('[ACCOUNT_START_REGISTER_OK]', { email: email }); } catch(_) {}
+      return;
+    }
+    if (ret2.networkError) { setMsg('通信エラーです。電波の良い場所でお試しください', 'text-danger'); return; }
+
+    // 登録も失敗 → そのメールは既存＆パスワード間違い
+    var err2Text = String((ret2.body && (ret2.body.detail || ret2.body.error)) || '').toLowerCase();
+    if (err2Text.includes('already') || err2Text.includes('exist') || ret2.status === 409 || ret2.status === 422) {
+      setMsg('パスワードが間違っています。「パスワードを忘れた場合」からリセットできます', 'text-danger');
+    } else {
+      setMsg('ログインまたは登録に失敗しました。メールアドレスとパスワードを確認してください', 'text-danger');
+    }
+    try { spDbg('[ACCOUNT_START_ERR]', { loginStatus: ret.status, regStatus: ret2.status }); } catch(_) {}
+  }
+  window.handleAccountStartClick = handleAccountStartClick;
 
   // ログアウト ボタン
   function handleAccountLogoutClick() {
@@ -14754,24 +15278,1207 @@ window.testFirebaseConnection = testFirebaseConnection;
 let settingsTitleTapCount = 0;
 let settingsTitleTapTimer = null;
 
+// v23.9.253 SP-260616-ADMSELECT-001: 7タップ or 7秒長押し → 管理メニュー選択ダイアログ
 function handleSettingsTitleClick() {
   settingsTitleTapCount++;
-  
   if (settingsTitleTapTimer) clearTimeout(settingsTitleTapTimer);
-  
-  settingsTitleTapTimer = setTimeout(() => {
+  settingsTitleTapTimer = setTimeout(() => { settingsTitleTapCount = 0; }, 2000);
+  if (settingsTitleTapCount === 7) {
     settingsTitleTapCount = 0;
-  }, 2000);
-  
-  if (settingsTitleTapCount === 5) {
-    settingsTitleTapCount = 0;
+    spShowAdminSelect();
+  }
+}
+window.handleSettingsTitleClick = handleSettingsTitleClick;
+
+// 管理メニュー選択ダイアログを表示
+function spShowAdminSelect() {
+  try {
+    var sm = document.getElementById('settingsModal');
+    if (sm) { sm.classList.remove('show-modal', 'show'); sm.style.display = 'none'; }
+  } catch (_) {}
+  var dlg = document.getElementById('sp-admin-select');
+  if (dlg) dlg.style.display = 'flex';
+}
+window.spShowAdminSelect = spShowAdminSelect;
+
+// モード選択
+function spAdminSelectMode(mode) {
+  var dlg = document.getElementById('sp-admin-select');
+  if (dlg) dlg.style.display = 'none';
+  if (mode === 'operator') {
+    // 設定モーダルを再度開いてから Operator パネルへ遷移
+    var sm = document.getElementById('settingsModal');
+    if (sm) { sm.style.display = 'block'; sm.classList.add('show-modal'); }
     if (typeof window.SmartPriceModal !== 'undefined') {
       window.SmartPriceModal.navigate('Operator');
     }
+  } else if (mode === 'editor') {
+    if (typeof window.spEditorOpen === 'function') window.spEditorOpen();
+  }
+}
+window.spAdminSelectMode = spAdminSelectMode;
+
+function spAdminSelectCancel() {
+  var dlg = document.getElementById('sp-admin-select');
+  if (dlg) dlg.style.display = 'none';
+}
+window.spAdminSelectCancel = spAdminSelectCancel;
+
+// 7秒長押し検出（preventDefault不使用 → クリックイベントを妨げない）
+var _spLongPressTimer = null;
+var _spLongPressDidFire = false;
+function spAdminLongPressStart(e) {
+  _spLongPressDidFire = false;
+  _spLongPressTimer = setTimeout(function() {
+    _spLongPressDidFire = true;
+    _spLongPressTimer = null;
+    settingsTitleTapCount = 0;
+    spShowAdminSelect();
+  }, 7000);
+}
+function spAdminLongPressCancel() {
+  if (_spLongPressTimer) { clearTimeout(_spLongPressTimer); _spLongPressTimer = null; }
+}
+window.spAdminLongPressStart = spAdminLongPressStart;
+window.spAdminLongPressCancel = spAdminLongPressCancel;
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// v23.9.251 SP-260616-EDITOR-001: 未整備商品修正モード
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+var _spEditorViewMode = 'card'; // 'table' | 'card'
+var _spEditorItems = [];
+
+// v23.9.269 SP-260617-CATEGORYV2-001: サブカテゴリ定義（拡充版）
+var _SP_SUBCATS = {
+  '食品':   ['青果・野菜','果物','きのこ','肉類','魚介類','乳製品・卵','豆腐・大豆製品','パン','米・穀物','麺類','即席・レトルト','缶詰・瓶詰','惣菜・チルド','乾物・乾燥食品','漬物・佃煮','シリアル・グラノーラ'],
+  '飲料':   ['水・炭酸水','お茶','コーヒー・紅茶','ジュース・清涼飲料','乳飲料・豆乳'],
+  '菓子':   ['チョコレート','スナック菓子','クッキー・ビスケット','キャンディ・グミ','アイス・冷菓','和菓子','ナッツ・ドライフルーツ'],
+  '酒':     ['ビール・発泡酒','日本酒','ワイン','焼酎','チューハイ・カクテル','ウイスキー'],
+  '調味料': ['醤油・みりん・酢','ソース・ケチャップ','塩・砂糖','油・ドレッシング','味噌','だし・スープの素','スパイス・香辛料','小麦粉・粉類'],
+  '冷凍食品':['冷凍野菜','冷凍肉・魚','冷凍弁当・おかず','アイスクリーム','冷凍麺・ご飯','冷凍デザート'],
+  '日用品': ['洗剤・柔軟剤','掃除用品','キッチン用品','トイレ用品','収納・雑貨','文具'],
+  '衛生用品':['シャンプー・リンス','ボディソープ・石鹸','歯ブラシ・歯磨き粉','生理用品','マスク・衛生材料','洗顔・スキンケア','ひげ剃り用品'],
+  '医薬品': ['風邪薬','胃腸薬','栄養補助・サプリメント','外用薬・絆創膏','目薬','鎮痛剤','アレルギー薬'],
+  'ペット用品':['ドッグフード','キャットフード','ペット用品・グッズ','ペット衛生用品','ペットおやつ'],
+  'その他': ['その他']
+};
+
+// v23.9.269 SP-260617-CATEGORYV2-001: CATEGORY_MAP を _SP_SUBCATS から自動生成（手動管理廃止）
+(function() {
+  Object.keys(_SP_SUBCATS).forEach(function(parent) {
+    (_SP_SUBCATS[parent] || []).forEach(function(sub) {
+      if (sub && sub !== 'その他') CATEGORY_MAP[sub] = parent;
+    });
+  });
+})();
+
+// v23.9.269: カスタムカテゴリ定数
+var CUSTOM_CAT_THRESHOLD_COUNT = 10;
+var CUSTOM_CAT_THRESHOLD_USERS = 5;
+
+// v23.9.269: Firebaseからカスタムカテゴリを読み込み _SP_SUBCATS に結合
+function spLoadCustomCategories() {
+  if (!window.firebaseDb) return;
+  try {
+    window.firebaseDb.ref('global/custom_categories').once('value').then(function(snap) {
+      var data = snap && snap.val();
+      if (!data) return;
+      // count降順でソートして追加
+      var entries = Object.values(data).filter(function(e) { return e && e.parent && e.name; });
+      entries.sort(function(a, b) { return (b.count || 0) - (a.count || 0); });
+      entries.forEach(function(e) {
+        var parent = e.parent;
+        var name = e.name;
+        if (!_SP_SUBCATS[parent]) return;
+        if (_SP_SUBCATS[parent].indexOf(name) === -1) {
+          _SP_SUBCATS[parent].push(name);
+          CATEGORY_MAP[name] = parent;
+        }
+      });
+    }).catch(function(){});
+  } catch(_) {}
+}
+window.spLoadCustomCategories = spLoadCustomCategories;
+
+// v23.9.269: カスタムサブカテゴリをFirebaseに保存
+function spSaveCustomCategory(parent, name) {
+  if (!window.firebaseDb || !parent || !name) return;
+  // 全角→半角数字正規化（名前は文字列そのまま、キーのみsanitize）
+  var key = name.replace(/[^\w぀-ヿ一-鿿・]/g, '_').replace(/__+/g, '_');
+  var ref = window.firebaseDb.ref('global/custom_categories/' + key);
+  ref.once('value').then(function(snap) {
+    var existing = snap && snap.val();
+    if (existing) {
+      // 既存：countをインクリメント、last_used更新
+      var updates = { count: (existing.count || 0) + 1, last_used: Math.floor(Date.now() / 1000) };
+      // unique_usersカウント（uidが違えば追加）
+      var uid = (window.db && window.db.uid) ? window.db.uid : '';
+      if (uid && existing.parent === parent) {
+        var users = existing.users || {};
+        if (!users[uid]) {
+          users[uid] = true;
+          updates.users = users;
+        }
+      }
+      ref.update(updates).catch(function(){});
+    } else {
+      var uid = (window.db && window.db.uid) ? window.db.uid : '';
+      var newEntry = {
+        parent: parent,
+        name: name,
+        count: 0,
+        creator_uid: uid,
+        created_at: Math.floor(Date.now() / 1000),
+        last_used: Math.floor(Date.now() / 1000),
+        users: uid ? { [uid]: true } : {}
+      };
+      ref.set(newEntry).catch(function(){});
+    }
+  }).catch(function(){});
+}
+window.spSaveCustomCategory = spSaveCustomCategory;
+
+// v23.9.269: 「＋ 新しいサブカテゴリ」選択時の処理
+function spAddCustomSubcatUI(jan, parent) {
+  var name = (window.prompt('新しいサブカテゴリ名を入力（親：' + parent + '）', '') || '').trim();
+  if (!name) {
+    // キャンセルされたらselectを空に戻す
+    var el = document.getElementById('sp-ed-subcat-' + jan);
+    if (el) el.value = '';
+    return;
+  }
+  // ローカル追加
+  if (!_SP_SUBCATS[parent]) _SP_SUBCATS[parent] = [];
+  if (_SP_SUBCATS[parent].indexOf(name) === -1) {
+    _SP_SUBCATS[parent].push(name);
+    CATEGORY_MAP[name] = parent;
+  }
+  // selectを再描画して新しいサブカテゴリを選択状態にする
+  spEdSubcatUpdate(jan, parent);
+  var el = document.getElementById('sp-ed-subcat-' + jan);
+  if (el) el.value = name;
+  // Firebase保存（非同期）
+  spSaveCustomCategory(parent, name);
+  try { showToast('サブカテゴリ「' + name + '」を追加しました', 2000); } catch(_) {}
+}
+window.spAddCustomSubcatUI = spAddCustomSubcatUI;
+
+function spEdSubcatUpdate(jan, mainCat) {
+  var el = document.getElementById('sp-ed-subcat-' + jan);
+  if (!el) return;
+  var subs = _SP_SUBCATS[mainCat] || [];
+  el.innerHTML = '<option value="">' + (subs.length ? 'サブカテゴリ' : '') + '</option>' +
+    subs.map(function(s) { return '<option value="' + s + '">' + s + '</option>'; }).join('') +
+    (mainCat && mainCat !== 'その他' ? '<option value="__add__">＋ 新しいサブカテゴリ…</option>' : '');
+  el.style.display = subs.length ? '' : 'none';
+  // 「＋」選択時ハンドラ
+  el.onchange = function() {
+    if (el.value === '__add__') {
+      el.value = '';
+      spAddCustomSubcatUI(jan, mainCat);
+    }
+  };
+}
+window.spEdSubcatUpdate = spEdSubcatUpdate;
+
+// カテゴリ <select> HTML を生成
+function _spEditorCatOptions(selected) {
+  var cats = (typeof PARENT_CATEGORY_LIST !== 'undefined') ? PARENT_CATEGORY_LIST : ['食品','飲料','菓子','酒','日用品','衛生用品','医薬品','冷凍食品','調味料','ペット用品','その他'];
+  return '<option value="">カテゴリ選択</option>' + cats.map(function(c) {
+    return '<option value="' + c + '"' + (c === selected ? ' selected' : '') + '>' + c + '</option>';
+  }).join('');
+}
+
+// 安全エスケープ
+function _spEdEsc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// テーブル行を生成
+function _spEdTableRow(it) {
+  var jan = _spEdEsc(it.jan);
+  var rawName = _spEdEsc(it.raw_name || it.name || '');
+  var hint = _spEdEsc(it.hint_name || '');
+  var store = _spEdEsc(it.store || it.lastStore || '-');
+  var cnt = it.count || it.seen_count || 0;
+  var validJAN = /^\d{8}$|^\d{13}$/.test(it.jan);
+  var janColor = validJAN ? 'var(--sp-text-secondary,#aaa)' : '#ff6b6b';
+  var showRaw = rawName && rawName !== jan;
+  var makerSuggest = spMakerLookup(it.jan);
+  var makerPlaceholder = makerSuggest ? '提案：' + makerSuggest : 'メーカー';
+  return '<tr id="sp-ed-row-' + jan + '"' +
+    ' onmouseover="this.style.background=\'rgba(124,77,255,0.13)\'"' +
+    ' onmouseout="this.style.background=\'\'"' +
+    ' style="border-bottom:1px solid var(--sp-border,#333); transition:background 0.1s;">' +
+    '<td style="padding:7px 10px; white-space:nowrap; font-size:0.75rem; font-family:monospace;" title="' + store + ' / ' + cnt + '回">' +
+      '<span style="color:' + janColor + ';">' + jan + '</span> ' +
+      '<a href="https://www.google.com/search?q=' + jan + '" target="_blank" rel="noopener" style="color:#ce93d8; text-decoration:none;" title="Google検索">🔍</a>' +
+      (showRaw ? '<div style="color:#ffc107; font-size:0.72rem; margin-top:2px; max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="' + rawName + '">' + rawName + '</div>' : '') +
+    '</td>' +
+    '<td style="padding:4px 8px;"><input id="sp-ed-name-' + jan + '" type="text" placeholder="商品名 *" value="' + hint + '" style="width:100%; background:var(--sp-bg-card,#252540); border:1px solid var(--sp-border,#555); color:var(--sp-text,#fff); padding:5px 8px; border-radius:4px; font-size:0.85rem; box-sizing:border-box; min-width:160px;" onkeydown="if(event.key===\'Enter\')spEditorSave(\'' + jan + '\')"></td>' +
+    '<td style="padding:4px 6px; width:140px;">' +
+      '<select id="sp-ed-cat-' + jan + '" onchange="spEdSubcatUpdate(\'' + jan + '\',this.value)" style="width:100%; background:var(--sp-bg-card,#252540); border:1px solid var(--sp-border,#555); color:var(--sp-text,#fff); padding:5px 4px; border-radius:4px; font-size:0.8rem;">' + _spEditorCatOptions('') + '</select>' +
+      '<select id="sp-ed-subcat-' + jan + '" style="width:100%; background:var(--sp-bg-card,#252540); border:1px solid var(--sp-border,#555); color:var(--sp-text,#fff); padding:5px 4px; border-radius:4px; font-size:0.8rem; margin-top:3px; display:none;"><option value="">サブカテゴリ</option></select>' +
+    '</td>' +
+    '<td style="padding:4px 6px; width:220px;">' +
+      '<div style="display:flex; gap:4px;">' +
+        '<input id="sp-ed-maker-' + jan + '" type="text" placeholder="' + makerPlaceholder + '" style="flex:1; min-width:0; background:var(--sp-bg-card,#252540); border:1px solid var(--sp-border,#555); color:var(--sp-text,#fff); padding:5px 6px; border-radius:4px; font-size:0.8rem;">' +
+        '<input id="sp-ed-img-' + jan + '" type="text" placeholder="画像URL" style="flex:1.5; min-width:0; background:var(--sp-bg-card,#252540); border:1px solid var(--sp-border,#555); color:var(--sp-text,#fff); padding:5px 6px; border-radius:4px; font-size:0.75rem;">' +
+      '</div>' +
+    '</td>' +
+    '<td style="padding:4px 8px; text-align:center; white-space:nowrap; width:80px;">' +
+      '<button onclick="spEditorSave(\'' + jan + '\')" style="background:#28a745; border:none; color:#fff; padding:5px 9px; border-radius:4px; font-size:0.8rem; cursor:pointer; margin-right:3px;">✓</button>' +
+      '<button id="sp-ed-del-' + jan + '" onclick="spEditorDelete(\'' + jan + '\')" style="background:rgba(220,53,69,0.2); border:1px solid #dc3545; color:#ff6b6b; padding:5px 8px; border-radius:4px; font-size:0.8rem; cursor:pointer;">🗑</button>' +
+    '</td>' +
+    '</tr>';
+}
+
+// カードを生成
+function _spEdCard(it) {
+  var jan = _spEdEsc(it.jan);
+  var rawName = _spEdEsc(it.raw_name || it.name || '');
+  var hint = _spEdEsc(it.hint_name || '');
+  var store = _spEdEsc(it.store || it.lastStore || '-');
+  var cnt = it.count || it.seen_count || 0;
+  var makerSuggest = spMakerLookup(it.jan);
+  var makerPlaceholder = makerSuggest ? '提案：' + makerSuggest : 'メーカー';
+  return '<div id="sp-ed-row-' + jan + '" style="border:1px solid var(--sp-border,#444); border-radius:8px; padding:10px 12px; margin-bottom:10px;">' +
+    '<div style="font-size:0.75rem; font-family:monospace; color:var(--sp-text-secondary,#aaa); margin-bottom:2px;">' +
+      jan + ' <a href="https://www.google.com/search?q=' + encodeURIComponent(jan) + '" target="_blank" rel="noopener" style="color:#ce93d8; text-decoration:none;">🔍</a>' +
+      ' / ' + store + (cnt ? ' / ' + cnt + '回' : '') +
+    '</div>' +
+    '<div style="font-size:0.85rem; color:#ffc107; margin-bottom:6px; word-break:break-all;">' + (rawName || '<em style="opacity:.5">名前なし</em>') + '</div>' +
+    '<div style="display:flex; gap:5px; margin-bottom:8px; flex-wrap:wrap;">' +
+      '<a href="https://www.google.com/search?q=' + encodeURIComponent(jan) + '" target="_blank" rel="noopener" style="flex:1; text-align:center; padding:5px 4px; background:rgba(255,255,255,0.08); border:1px solid #555; border-radius:6px; color:#aaa; text-decoration:none; font-size:0.78rem;">🔍 Google</a>' +
+      '<a href="https://shopping.yahoo.co.jp/search?p=' + encodeURIComponent(jan) + '" target="_blank" rel="noopener" style="flex:1; text-align:center; padding:5px 4px; background:rgba(255,0,0,0.08); border:1px solid #555; border-radius:6px; color:#aaa; text-decoration:none; font-size:0.78rem;">🛒 Yahoo!</a>' +
+      '<a href="https://search.rakuten.co.jp/search/mall/' + encodeURIComponent(jan) + '/" target="_blank" rel="noopener" style="flex:1; text-align:center; padding:5px 4px; background:rgba(255,0,0,0.08); border:1px solid #555; border-radius:6px; color:#aaa; text-decoration:none; font-size:0.78rem;">🔴 楽天</a>' +
+      '<a href="https://www.google.com/search?q=' + encodeURIComponent(jan) + '&tbm=isch" target="_blank" rel="noopener" style="flex:1; text-align:center; padding:5px 4px; background:rgba(0,100,255,0.08); border:1px solid #555; border-radius:6px; color:#aaa; text-decoration:none; font-size:0.78rem;">🖼 画像</a>' +
+    '</div>' +
+    '<input id="sp-ed-name-' + jan + '" type="text" placeholder="正しい商品名 *" value="' + hint + '" style="width:100%; background:var(--sp-bg-card,#252540); border:1px solid var(--sp-border,#555); color:var(--sp-text,#fff); padding:7px 10px; border-radius:6px; font-size:0.9rem; margin-bottom:6px; box-sizing:border-box;">' +
+    '<div style="display:flex; gap:6px; margin-bottom:4px;">' +
+      '<select id="sp-ed-cat-' + jan + '" onchange="spEdSubcatUpdate(\'' + jan + '\',this.value)" style="flex:1; background:var(--sp-bg-card,#252540); border:1px solid var(--sp-border,#555); color:var(--sp-text,#fff); padding:6px 8px; border-radius:6px; font-size:0.85rem;">' + _spEditorCatOptions('') + '</select>' +
+      '<input id="sp-ed-maker-' + jan + '" type="text" placeholder="' + makerPlaceholder + '" style="flex:1; background:var(--sp-bg-card,#252540); border:1px solid var(--sp-border,#555); color:var(--sp-text,#fff); padding:6px 8px; border-radius:6px; font-size:0.85rem;">' +
+    '</div>' +
+    '<select id="sp-ed-subcat-' + jan + '" style="width:100%; background:var(--sp-bg-card,#252540); border:1px solid var(--sp-border,#555); color:var(--sp-text,#fff); padding:6px 8px; border-radius:6px; font-size:0.85rem; margin-bottom:4px; display:none; box-sizing:border-box;"><option value="">サブカテゴリ</option></select>' +
+    '<input id="sp-ed-img-' + jan + '" type="text" placeholder="画像URL（任意）" style="width:100%; background:var(--sp-bg-card,#252540); border:1px solid var(--sp-border,#555); color:var(--sp-text,#fff); padding:6px 8px; border-radius:6px; font-size:0.85rem; margin-bottom:6px; box-sizing:border-box;">' +
+    '<div style="display:flex; gap:6px;">' +
+      '<button onclick="spEditorSave(\'' + jan + '\')" style="flex:1; background:#28a745; border:none; color:#fff; padding:8px; border-radius:6px; font-size:0.9rem; font-weight:bold; cursor:pointer;">商品情報を登録</button>' +
+      '<button id="sp-ed-del-' + jan + '" onclick="spEditorDelete(\'' + jan + '\')" style="background:rgba(220,53,69,0.2); border:1px solid #dc3545; color:#ff6b6b; padding:8px 14px; border-radius:6px; font-size:0.9rem; cursor:pointer;">🗑</button>' +
+    '</div>' +
+    '</div>';
+}
+
+// v23.9.257 SP-260616-DELETE-001: 未整備商品を削除（2段階確認）
+async function spEditorDelete(jan) {
+  var btn = document.getElementById('sp-ed-del-' + jan);
+  if (!btn) return;
+  if (btn.dataset.confirm !== '1') {
+    btn.dataset.confirm = '1';
+    btn.textContent = '本当に？';
+    btn.style.background = '#dc3545';
+    btn.style.color = '#fff';
+    btn.style.border = 'none';
+    var timer = setTimeout(function() {
+      if (btn && btn.dataset.confirm === '1') {
+        btn.dataset.confirm = '';
+        btn.textContent = '🗑';
+        btn.style.background = 'rgba(220,53,69,0.2)';
+        btn.style.color = '#ff6b6b';
+        btn.style.border = '1px solid #dc3545';
+      }
+    }, 3000);
+    btn._spDelTimer = timer;
+    return;
+  }
+  if (btn._spDelTimer) clearTimeout(btn._spDelTimer);
+  btn.disabled = true;
+  btn.textContent = '…';
+  try {
+    if (window.firebaseDb) await window.firebaseDb.ref('global/unresolved/' + jan).remove();
+    // v23.9.264 SP-260616-DISMISS-001: editorDismissed フラグで永続的に非表示（復活防止の根本解決）
+    try {
+      if (!db.editorDismissed) db.editorDismissed = {};
+      db.editorDismissed[jan] = true;
+      _spAddDismissed(jan); // v23.9.266 SP-260616-DISMISSKEY-001: 専用キーにも保存（db非依存）
+      // db.products: name が弱い場合も削除（v263継承）
+      if (db.products && db.products[jan]) {
+        var _p = db.products[jan];
+        var _n = String((_p && _p.name) || '').trim();
+        if (typeof isWeakNameCandidate === 'function' && isWeakNameCandidate(_n, jan)) {
+          delete db.products[jan];
+        }
+      }
+      // db.unresolvedProducts: 常に削除（v262継承）
+      if (db.unresolvedProducts && db.unresolvedProducts[jan]) {
+        delete db.unresolvedProducts[jan];
+      }
+      saveLocalOnly();
+    } catch(_ld) {}
+    var row = document.getElementById('sp-ed-row-' + jan);
+    if (row) row.remove();
+    try { showToast('削除しました', 1500); } catch(_) {}
+  } catch(e) {
+    btn.disabled = false;
+    btn.dataset.confirm = '';
+    btn.textContent = '🗑';
+    try { showToast('削除エラー', 2000); } catch(_) {}
+  }
+}
+window.spEditorDelete = spEditorDelete;
+
+// v23.9.257 SP-260616-NONJANDEL-001: 非JANコードを一括削除
+// v23.9.268 SP-260617-NONJANSTRICT-001: 有効JAN定義を厳格化（8桁 / 4始まり13桁 / 89始まり13桁）
+var _spValidJanRe = /^\d{8}$|^4\d{12}$|^89\d{11}$/;
+async function spEdBulkDeleteNonJAN() {
+  var nonJan = (_spEditorItems || []).filter(function(it) {
+    return !_spValidJanRe.test(it.jan);
+  });
+  if (!nonJan.length) {
+    try { showToast('GS1日本外コードはありません', 2000); } catch(_) {}
+    return;
+  }
+  if (!confirm('GS1日本外コード ' + nonJan.length + '件を削除しますか？\n（00始まり・10始まり等、日本JAN範囲外の番号）')) return;
+  var ok = 0, ng = 0;
+  for (var i = 0; i < nonJan.length; i++) {
+    var _j = nonJan[i].jan;
+    try {
+      if (window.firebaseDb) await window.firebaseDb.ref('global/unresolved/' + _j).remove();
+      _spAddDismissed(_j); // v23.9.268: dismissed登録で再出現防止
+      if (db.products && db.products[_j]) {
+        var _n = String((db.products[_j].name) || '').trim();
+        if (typeof isWeakNameCandidate === 'function' && isWeakNameCandidate(_n, _j)) delete db.products[_j];
+      }
+      if (db.unresolvedProducts && db.unresolvedProducts[_j]) delete db.unresolvedProducts[_j];
+      var row = document.getElementById('sp-ed-row-' + _j);
+      if (row) row.remove();
+      ok++;
+    } catch(_) { ng++; }
+  }
+  try { saveLocalOnly(); } catch(_) {}
+  _spEditorItems = (_spEditorItems || []).filter(function(it) { return _spValidJanRe.test(it.jan); });
+  var badge = document.getElementById('sp-editor-badge');
+  if (badge) badge.textContent = _spEditorItems.length + '件';
+  try { showToast(ok + '件削除' + (ng ? ' / エラー' + ng + '件' : ''), 2500); } catch(_) {}
+}
+window.spEdBulkDeleteNonJAN = spEdBulkDeleteNonJAN;
+
+// v23.9.265 SP-260616-DISMISSALL-001: 現在表示中の全件を非表示（editorDismissed登録 + Firebase削除）
+async function spEditorDismissAll() {
+  var items = (_spEditorItems || []);
+  if (!items.length) {
+    try { showToast('非表示にする項目がありません', 2000); } catch(_) {}
+    return;
+  }
+  var btn = document.getElementById('sp-ed-dismiss-all-btn');
+  if (btn) {
+    if (btn.dataset.confirm !== '1') {
+      btn.dataset.confirm = '1';
+      btn.textContent = '本当に全件？';
+      btn.style.background = '#ff9800';
+      btn.style.color = '#000';
+      setTimeout(function() {
+        if (btn && btn.dataset.confirm === '1') {
+          btn.dataset.confirm = '';
+          btn.textContent = '🙈 全件非表示';
+          btn.style.background = 'transparent';
+          btn.style.color = '#ff9800';
+        }
+      }, 4000);
+      return;
+    }
+    btn.dataset.confirm = '';
+    btn.disabled = true;
+    btn.textContent = '処理中…';
+  }
+  if (!db.editorDismissed) db.editorDismissed = {};
+  var ok = 0;
+  for (var i = 0; i < items.length; i++) {
+    var jan = items[i].jan;
+    db.editorDismissed[jan] = true;
+    _spAddDismissed(jan); // v23.9.266 SP-260616-DISMISSKEY-001: 専用キーにも保存
+    if (db.products && db.products[jan]) {
+      var _n = String((db.products[jan].name) || '').trim();
+      if (typeof isWeakNameCandidate === 'function' && isWeakNameCandidate(_n, jan)) delete db.products[jan];
+    }
+    if (db.unresolvedProducts && db.unresolvedProducts[jan]) delete db.unresolvedProducts[jan];
+    try { if (window.firebaseDb) await window.firebaseDb.ref('global/unresolved/' + jan).remove(); } catch(_) {}
+    var row = document.getElementById('sp-ed-row-' + jan);
+    if (row) row.remove();
+    ok++;
+  }
+  try { saveLocalOnly(); } catch(_) {}
+  _spEditorItems = [];
+  var badge = document.getElementById('sp-editor-badge');
+  if (badge) badge.textContent = '0件';
+  var st = document.getElementById('sp-editor-status');
+  if (st) st.textContent = '全' + ok + '件を非表示にしました';
+  if (btn) { btn.disabled = false; btn.textContent = '🙈 全件非表示'; }
+  try { showToast(ok + '件を非表示にしました', 2500); } catch(_) {}
+}
+window.spEditorDismissAll = spEditorDismissAll;
+
+// v23.9.261 SP-260616-MAKERDICT-001: JAN prefix → メーカー辞書
+
+// prefix5/6/7 でグルーピング → 2件以上一致かつ60%超のメーカーを辞書に登録
+function spBuildMakerPrefixDict(janDict) {
+  var groups = {}; // 'len:prefix' → { maker: count }
+  var stats = { total: 0, withMaker: 0, p5: 0, p6: 0, p7: 0, conflicts: 0, registered: 0 };
+  Object.keys(janDict).forEach(function(jan) {
+    stats.total++;
+    var maker = ((janDict[jan] && janDict[jan].maker) || '').trim();
+    if (!maker || maker.length < 2) return;
+    stats.withMaker++;
+    [5, 6, 7].forEach(function(len) {
+      if (jan.length < len) return;
+      var key = len + ':' + jan.substring(0, len);
+      if (!groups[key]) groups[key] = {};
+      groups[key][maker] = (groups[key][maker] || 0) + 1;
+    });
+  });
+  var dict = {};
+  [7, 6, 5].forEach(function(len) { // 長い prefix を優先
+    Object.keys(groups).forEach(function(key) {
+      var parts = key.split(':');
+      if (parseInt(parts[0]) !== len) return;
+      var prefix = parts[1];
+      if (dict[prefix]) return; // 既登録スキップ
+      var mc = groups[key];
+      var makers = Object.keys(mc);
+      var top = makers.reduce(function(a, b) { return mc[a] > mc[b] ? a : b; });
+      var topCnt = mc[top];
+      var total = makers.reduce(function(s, m) { return s + mc[m]; }, 0);
+      if (topCnt < 2) return;
+      if (topCnt < total * 0.6) { stats.conflicts++; return; }
+      dict[prefix] = top;
+      stats['p' + len]++;
+      stats.registered++;
+    });
+  });
+  console.log('[MakerDict] total:', stats.total, 'withMaker:', stats.withMaker,
+    'registered:', stats.registered, 'p5:', stats.p5, 'p6:', stats.p6, 'p7:', stats.p7, 'conflicts:', stats.conflicts);
+  window._spMakerPrefixStats = stats;
+  return { dict: dict, stats: stats };
+}
+window.spBuildMakerPrefixDict = spBuildMakerPrefixDict;
+
+// JANコードからメーカー候補を返す（7桁→6桁→5桁の順で探索）
+function spMakerLookup(jan) {
+  var d = window._spMakerPrefixDict || {};
+  return d[jan.substring(0, 7)] || d[jan.substring(0, 6)] || d[jan.substring(0, 5)] || '';
+}
+window.spMakerLookup = spMakerLookup;
+
+// Firebase global/maker_prefix に保存（全ユーザー共有）
+function spSaveMakerPrefixToFirebase(dict) {
+  if (!window.firebaseDb || !dict || !Object.keys(dict).length) return;
+  window.firebaseDb.ref('global/maker_prefix').set(dict).catch(function(e) {
+    console.warn('[MakerDict] Firebase save error', e);
+  });
+}
+window.spSaveMakerPrefixToFirebase = spSaveMakerPrefixToFirebase;
+
+// v23.9.255 SP-260616-JANSEARCH-001: JAN検索ポップアップ（テーブル用）
+function spEditorSearch(jan, rawName, ev) {
+  var pop = document.getElementById('sp-ed-search-pop');
+  if (!pop) {
+    pop = document.createElement('div');
+    pop.id = 'sp-ed-search-pop';
+    pop.style.cssText = 'position:fixed;z-index:9999999;background:#1e1e3a;border:1px solid #7c4dff;border-radius:10px;padding:10px;box-shadow:0 4px 20px rgba(0,0,0,0.6);min-width:210px;';
+    document.body.appendChild(pop);
+    document.addEventListener('click', function(e) {
+      if (!pop.contains(e.target) && !e.target.closest('[onclick*="spEditorSearch"]')) pop.style.display = 'none';
+    }, true);
+  }
+  var q = encodeURIComponent(jan);
+  var links = [
+    ['🔍 Google 検索',       'https://www.google.com/search?q=' + q],
+    ['🛒 Yahoo!ショッピング', 'https://shopping.yahoo.co.jp/search?p=' + q],
+    ['🔴 楽天市場',           'https://search.rakuten.co.jp/search/mall/' + q + '/'],
+    ['🖼 Google 画像',        'https://www.google.com/search?q=' + q + '&tbm=isch'],
+  ];
+  var html = '<div style="font-size:0.72rem;color:#888;margin-bottom:8px;font-family:monospace;">' + jan + '</div>';
+  links.forEach(function(l) {
+    html += '<a href="' + l[1] + '" target="_blank" rel="noopener" onclick="document.getElementById(\'sp-ed-search-pop\').style.display=\'none\'" ' +
+      'style="display:block;padding:7px 10px;color:#ddd;text-decoration:none;border-radius:5px;margin-bottom:3px;background:rgba(255,255,255,0.05);font-size:0.85rem;">' + l[0] + '</a>';
+  });
+  html += '<button onclick="document.getElementById(\'sp-ed-search-pop\').style.display=\'none\'" style="width:100%;margin-top:6px;background:transparent;border:1px solid #444;color:#777;padding:4px;border-radius:5px;cursor:pointer;font-size:0.75rem;">✕ 閉じる</button>';
+  pop.innerHTML = html;
+  var x = ev ? Math.min(ev.clientX, window.innerWidth - 230) : 100;
+  var y = ev ? Math.min(ev.clientY + 10, window.innerHeight - 220) : 100;
+  pop.style.left = x + 'px';
+  pop.style.top  = y + 'px';
+  pop.style.display = 'block';
+}
+window.spEditorSearch = spEditorSearch;
+
+// 画面を描画（現在の viewMode で）
+function _spEditorRender(items) {
+  _spEditorItems = items || [];
+  var badge = document.getElementById('sp-editor-badge');
+  if (badge) badge.textContent = _spEditorItems.length + '件';
+  var loading = document.getElementById('sp-editor-loading');
+  if (loading) loading.style.display = 'none';
+  var tableView = document.getElementById('sp-editor-table-view');
+  var cardView  = document.getElementById('sp-editor-card-view');
+  var tbody = document.getElementById('sp-editor-table-body');
+  var cbody = document.getElementById('sp-editor-card-body');
+  if (!_spEditorItems.length) {
+    if (tableView) tableView.style.display = 'none';
+    if (cardView)  cardView.style.display  = 'none';
+    var st = document.getElementById('sp-editor-status');
+    if (st) st.textContent = '✅ 未整備商品はありません';
+    return;
+  }
+  var rows = _spEditorItems.map(_spEdTableRow).join('');
+  var cards = _spEditorItems.map(_spEdCard).join('');
+  if (tbody) tbody.innerHTML = rows;
+  if (cbody) cbody.innerHTML = cards;
+  // viewMode に従って表示切替
+  _spEditorApplyView();
+}
+
+function _spEditorApplyView() {
+  var tableView = document.getElementById('sp-editor-table-view');
+  var cardView  = document.getElementById('sp-editor-card-view');
+  var btn = document.getElementById('sp-editor-view-btn');
+  if (_spEditorViewMode === 'table') {
+    if (tableView) tableView.style.display = 'block';
+    if (cardView)  cardView.style.display  = 'none';
+    if (btn) btn.textContent = '📱 カード表示';
+  } else {
+    if (tableView) tableView.style.display = 'none';
+    if (cardView)  cardView.style.display  = 'block';
+    if (btn) btn.textContent = '📊 テーブル表示';
   }
 }
 
-window.handleSettingsTitleClick = handleSettingsTitleClick;
+// 表示切替ボタン
+function spEditorToggleView() {
+  _spEditorViewMode = (_spEditorViewMode === 'table') ? 'card' : 'table';
+  _spEditorApplyView();
+}
+window.spEditorToggleView = spEditorToggleView;
+
+// Firebase から全ユーザーの未整備商品を取得して描画
+async function spEditorRefresh() {
+  var st = document.getElementById('sp-editor-status');
+  var loading = document.getElementById('sp-editor-loading');
+  if (st) st.textContent = '取得中...';
+  if (loading) loading.style.display = 'block';
+  var tableView = document.getElementById('sp-editor-table-view');
+  var cardView  = document.getElementById('sp-editor-card-view');
+  if (tableView) tableView.style.display = 'none';
+  if (cardView)  cardView.style.display  = 'none';
+
+  var globalItems = [];
+  var fixedJans = {};
+
+  try {
+    // 1. 修正済み (global/jan_dict) を取得してスキップリストを作成
+    if (window.firebaseDb) {
+      var dictSnap = await window.firebaseDb.ref('global/jan_dict').once('value');
+      var dictVal = (dictSnap && dictSnap.val()) || {};
+      Object.keys(dictVal).forEach(function(j) { fixedJans[j] = true; });
+      // v23.9.261 SP-260616-MAKERDICT-001: jan_dict からメーカー辞書を生成してFirebase共有
+      try {
+        var _mdr = spBuildMakerPrefixDict(dictVal);
+        window._spMakerPrefixDict = _mdr.dict;
+        spSaveMakerPrefixToFirebase(_mdr.dict);
+        // Q5 統計をステータスに反映
+        var _ms = _mdr.stats;
+        var _stEl = document.getElementById('sp-editor-status');
+        if (_stEl) _stEl.dataset.makerStats = 'jan_dict:' + _ms.total + '件 maker付:' + _ms.withMaker + '件 prefix登録:' + _ms.registered + '件';
+      } catch(_mde) { console.warn('[MakerDict] build error', _mde); }
+    }
+  } catch (_gd) {}
+
+  try {
+    // 2. global/unresolved から全ユーザー分を取得
+    if (window.firebaseDb) {
+      var urSnap = await window.firebaseDb.ref('global/unresolved').once('value');
+      var urVal = (urSnap && urSnap.val()) || {};
+      Object.keys(urVal).forEach(function(jan) {
+        if (fixedJans[jan]) return;
+        if (!/^\d{8}$|^\d{13}$/.test(jan)) return; // 非JANコードは取得時点で除外（削除しても再出現しないよう）
+        if (_spIsDismissed(jan)) return; // v23.9.266 SP-260616-DISMISSKEY-001: 専用キーで判定（db非依存・最新取得でも復活しない）
+        var d = urVal[jan] || {};
+        globalItems.push({ jan: jan, raw_name: d.raw_name || jan, store: d.store || '', seen_count: d.seen_count || 1, source: 'global' });
+      });
+    }
+  } catch (_gu) {}
+
+  // 3. ローカルの未整備商品も合わせる（JANが数字のもの限定）
+  try {
+    var localItems = (typeof listUnresolvedProducts === 'function') ? listUnresolvedProducts() : [];
+    localItems.forEach(function(it) {
+      if (fixedJans[it.jan]) return;
+      if (!globalItems.find(function(g) { return g.jan === it.jan; }) && /^\d{8}$|^\d{13}$/.test(it.jan)) { // v23.9.262 SP-260616-LOCALFILTER-001: 8桁/13桁のみ（ローカルDBも統一）
+        globalItems.push({ jan: it.jan, raw_name: it.name || it.jan, store: it.lastStore || '', count: it.count || 0, source: 'local' });
+      }
+    });
+  } catch (_lc) {}
+
+  // 購入回数・seen_count 多い順
+  globalItems.sort(function(a, b) { return ((b.count || b.seen_count || 0) - (a.count || a.seen_count || 0)); });
+
+  if (st) st.textContent = '全ユーザー未整備: ' + globalItems.length + '件（修正済み除く）| 最終取得: ' + new Date().toLocaleTimeString('ja-JP');
+  _spEditorRender(globalItems);
+}
+window.spEditorRefresh = spEditorRefresh;
+
+// 1件を保存 → Firebase /global/jan_dict + ローカル db.jan_dict
+async function spEditorSave(jan) {
+  try {
+    var nameEl  = document.getElementById('sp-ed-name-'  + jan);
+    var catEl   = document.getElementById('sp-ed-cat-'   + jan);
+    var makerEl = document.getElementById('sp-ed-maker-' + jan);
+    var name  = nameEl  ? nameEl.value.trim()  : '';
+    var cat   = catEl   ? catEl.value.trim()   : '';
+    var maker = makerEl ? makerEl.value.trim() : '';
+    var subcatEl = document.getElementById('sp-ed-subcat-' + jan);
+    var imgEl    = document.getElementById('sp-ed-img-'    + jan);
+    var subcat   = subcatEl ? subcatEl.value.trim() : '';
+    var imgUrl   = imgEl    ? imgEl.value.trim()    : '';
+    if (!name || name.length < 2) {
+      try { showToast('商品名を入力してください（2文字以上）', 2000); } catch(_) {}
+      if (nameEl) { nameEl.style.borderColor = '#dc3545'; setTimeout(function(){ nameEl.style.borderColor = ''; }, 2000); }
+      return;
+    }
+    // v23.9.254 SP-260616-AUDITLOG-001: 編集者トークンを記録
+    var _editToken = localStorage.getItem('sp_editor_token') || '';
+    var entry = { name: name, category: cat, subcategory: subcat, maker: maker, human_verified: true, updated_at: new Date().toISOString(),
+      editedBy: _editToken };
+    if (imgUrl) entry.image_url = imgUrl;
+    // 1. Firebase /global/jan_dict
+    if (window.firebaseDb) {
+      await window.firebaseDb.ref('global/jan_dict/' + jan).set(entry);
+      // 2. /global/unresolved から削除
+      await window.firebaseDb.ref('global/unresolved/' + jan).remove();
+    }
+    // 3. ローカル db.jan_dict
+    try {
+      if (typeof db !== 'undefined') {
+        if (!db.jan_dict) db.jan_dict = {};
+        db.jan_dict[jan] = entry;
+        // db.products も更新
+        if (db.products && db.products[jan]) {
+          db.products[jan].name = name;
+          if (maker) db.products[jan].maker = maker;
+          if (cat)   db.products[jan].category = cat;
+          db.products[jan].human_verified = true;
+        }
+        if (typeof saveLocalOnly === 'function') saveLocalOnly();
+      }
+    } catch (_loc) {}
+    // 4. 行を消す
+    var row = document.getElementById('sp-ed-row-' + jan);
+    if (row) { row.style.opacity = '0.4'; setTimeout(function(){ if (row.parentNode) row.parentNode.removeChild(row); }, 400); }
+    // カウント更新
+    _spEditorItems = _spEditorItems.filter(function(it) { return it.jan !== jan; });
+    var badge = document.getElementById('sp-editor-badge');
+    if (badge) badge.textContent = _spEditorItems.length + '件';
+    try { showToast('保存: ' + name, 2000); } catch(_) {}
+    try { spDbg('[EDITOR_SAVE]', { jan: jan, name: name, category: cat, maker: maker }); } catch(_) {}
+    // v23.9.261 SP-260616-MAKERDICT-001: maker付き保存時にprefix辞書を非同期で再ビルド・Firebase更新
+    if (maker && window.firebaseDb) {
+      window.firebaseDb.ref('global/jan_dict').once('value').then(function(snap) {
+        var d = (snap && snap.val()) || {};
+        var r = spBuildMakerPrefixDict(d);
+        window._spMakerPrefixDict = r.dict;
+        spSaveMakerPrefixToFirebase(r.dict);
+      }).catch(function(){});
+    }
+  } catch (e) {
+    try { showToast('保存失敗: ' + ((e && e.message) || e), 3000); } catch(_) {}
+    try { spDbg('[EDITOR_SAVE_ERR]', { jan: jan, message: String(e && e.message ? e.message : e) }); } catch(_) {}
+  }
+}
+window.spEditorSave = spEditorSave;
+
+// v23.9.252 SP-260616-EDITORTOKEN-001: 認証チェック付きエディタ起動
+async function spEditorOpen() {
+  try {
+    var saved = localStorage.getItem('sp_editor_token');
+    if (saved) {
+      if (window.firebaseDb) {
+        try {
+          var snap = await window.firebaseDb.ref('global/editor_tokens/' + saved).once('value');
+          var tok = snap && snap.val();
+          if (tok && tok.active === true) { _spEditorActualOpen(); return; }
+        } catch (_) {}
+        // 無効化済み → クリアしてダイアログ
+        localStorage.removeItem('sp_editor_token');
+      } else {
+        // Firebase未接続: キャッシュを信頼（オフライン許容）
+        _spEditorActualOpen(); return;
+      }
+    }
+    _spEditorShowAuthDialog();
+  } catch (_e) { _spEditorShowAuthDialog(); }
+}
+window.spEditorOpen = spEditorOpen;
+
+// 認証ダイアログを表示
+function _spEditorShowAuthDialog() {
+  var dlg = document.getElementById('sp-editor-auth');
+  if (!dlg) return;
+  dlg.style.display = 'flex';
+  var inp = document.getElementById('sp-editor-auth-input');
+  if (inp) { inp.value = ''; setTimeout(function(){ inp.focus(); }, 80); }
+  var msg = document.getElementById('sp-editor-auth-msg');
+  if (msg) { msg.textContent = ''; msg.style.color = '#aaa'; }
+}
+window._spEditorShowAuthDialog = _spEditorShowAuthDialog;
+
+// 認証ダイアログ: 送信
+async function spEditorAuthSubmit() {
+  var inp = document.getElementById('sp-editor-auth-input');
+  var msg = document.getElementById('sp-editor-auth-msg');
+  if (!inp || !msg) return;
+  var code = (inp.value || '').trim().toUpperCase();
+  if (!/^EDIT-[A-Z0-9]{6}$/.test(code)) {
+    msg.style.color = '#ff6b6b'; msg.textContent = '形式が正しくありません（EDIT-XXXXXX）'; return;
+  }
+  msg.style.color = '#aaa'; msg.textContent = '確認中...';
+  try {
+    if (!window.firebaseDb) throw new Error('Firebase未接続');
+    var snap = await window.firebaseDb.ref('global/editor_tokens/' + code).once('value');
+    var tok = snap && snap.val();
+    if (!tok) { msg.style.color = '#ff6b6b'; msg.textContent = 'このコードは存在しません'; return; }
+    if (tok.active !== true) { msg.style.color = '#ff6b6b'; msg.textContent = 'このコードは無効化されています'; return; }
+    localStorage.setItem('sp_editor_token', code);
+    var dlg = document.getElementById('sp-editor-auth');
+    if (dlg) dlg.style.display = 'none';
+    _spEditorActualOpen();
+  } catch (_e) {
+    msg.style.color = '#ff6b6b'; msg.textContent = 'エラー: ' + (_e.message || '確認できませんでした');
+  }
+}
+window.spEditorAuthSubmit = spEditorAuthSubmit;
+
+// 認証ダイアログ: キャンセル
+function spEditorAuthCancel() {
+  var dlg = document.getElementById('sp-editor-auth');
+  if (dlg) dlg.style.display = 'none';
+}
+window.spEditorAuthCancel = spEditorAuthCancel;
+
+// エディタ本体を開く（認証後に呼ばれる）
+function _spEditorActualOpen() {
+  _spEditorViewMode = (window.innerWidth >= 768) ? 'table' : 'card';
+  var el = document.getElementById('sp-editor-mode');
+  if (el) { el.style.display = 'flex'; }
+  // v23.9.272 SP-260617-PRODUCTMGR-001: 2タブ初期化（タブ1：全商品管理から開始）
+  _spActiveTab = 'all';
+  _spAllProdsLoaded = false;
+  _spTab1Dirty = false;
+  _spTab2Dirty = false;
+  var panelAll = document.getElementById('sp-tab-all');
+  var panelUn  = document.getElementById('sp-tab-unresolved');
+  var tab2act  = document.getElementById('sp-tab2-actions');
+  var badge    = document.getElementById('sp-editor-badge');
+  var status   = document.getElementById('sp-editor-status');
+  var btnAll   = document.getElementById('sp-tab-btn-all');
+  var btnUn    = document.getElementById('sp-tab-btn-unresolved');
+  if (panelAll) panelAll.style.display = 'flex';
+  if (panelUn)  panelUn.style.display  = 'none';
+  if (tab2act)  tab2act.style.display  = 'none';
+  if (badge)    badge.style.display    = 'none';
+  if (status)   status.style.display   = 'none';
+  if (btnAll) { btnAll.style.background='rgba(76,175,80,0.2)'; btnAll.style.color='#a5d6a7'; btnAll.style.fontWeight='bold'; btnAll.style.border='1px solid #4caf50'; }
+  if (btnUn)  { btnUn.style.background='transparent'; btnUn.style.color='var(--sp-text-secondary,#aaa)'; btnUn.style.fontWeight='normal'; btnUn.style.border='1px solid var(--sp-border,#444)'; }
+  spAllProdsOpen();
+}
+window._spEditorActualOpen = _spEditorActualOpen;
+
+// エディタを閉じる
+function spEditorClose() {
+  var el = document.getElementById('sp-editor-mode');
+  if (el) el.style.display = 'none';
+}
+window.spEditorClose = spEditorClose;
+
+// === v23.9.272 SP-260617-PRODUCTMGR-001: 商品情報管理 2タブ制御 ===
+var _spActiveTab = 'all';
+var _spAllProdsData = [];
+var _spAllProdsLoaded = false;
+var _spAllProdsFilterStr = '';
+var _spTab1Dirty = false;
+var _spTab2Dirty = false;
+
+// タブ切替（未保存チェック付き）
+function spTabSwitch(tab) {
+  if (tab === _spActiveTab) return;
+  var currentDirty = (_spActiveTab === 'all') ? _spTab1Dirty : _spTab2Dirty;
+  if (currentDirty && !confirm('保存されていない変更があります。移動しますか？')) return;
+  _spActiveTab = tab;
+  _spTab1Dirty = false;
+  _spTab2Dirty = false;
+  var panelAll = document.getElementById('sp-tab-all');
+  var panelUn  = document.getElementById('sp-tab-unresolved');
+  var tab2act  = document.getElementById('sp-tab2-actions');
+  var badge    = document.getElementById('sp-editor-badge');
+  var status   = document.getElementById('sp-editor-status');
+  var btnAll   = document.getElementById('sp-tab-btn-all');
+  var btnUn    = document.getElementById('sp-tab-btn-unresolved');
+  if (tab === 'all') {
+    if (panelAll) panelAll.style.display = 'flex';
+    if (panelUn)  panelUn.style.display  = 'none';
+    if (tab2act)  tab2act.style.display  = 'none';
+    if (badge)    badge.style.display    = 'none';
+    if (status)   status.style.display   = 'none';
+    if (btnAll) { btnAll.style.background='rgba(76,175,80,0.2)'; btnAll.style.color='#a5d6a7'; btnAll.style.fontWeight='bold'; btnAll.style.border='1px solid #4caf50'; }
+    if (btnUn)  { btnUn.style.background='transparent'; btnUn.style.color='var(--sp-text-secondary,#aaa)'; btnUn.style.fontWeight='normal'; btnUn.style.border='1px solid var(--sp-border,#444)'; }
+    if (!_spAllProdsLoaded) spAllProdsOpen();
+  } else {
+    if (panelAll) panelAll.style.display = 'none';
+    if (panelUn)  panelUn.style.display  = 'flex';
+    if (tab2act)  tab2act.style.display  = 'flex';
+    if (badge)    badge.style.display    = 'inline-block';
+    if (status)   status.style.display   = 'block';
+    if (btnAll) { btnAll.style.background='transparent'; btnAll.style.color='var(--sp-text-secondary,#aaa)'; btnAll.style.fontWeight='normal'; btnAll.style.border='1px solid var(--sp-border,#444)'; }
+    if (btnUn)  { btnUn.style.background='rgba(255,152,0,0.15)'; btnUn.style.color='#ffcc80'; btnUn.style.fontWeight='bold'; btnUn.style.border='1px solid #ff9800'; }
+    spEditorRefresh();
+  }
+}
+window.spTabSwitch = spTabSwitch;
+
+// タブ1：全商品管理ロード（db.products から最大200件）
+function spAllProdsOpen() {
+  _spAllProdsLoaded = true;
+  var body    = document.getElementById('sp-allprod-card-body');
+  var loading = document.getElementById('sp-allprod-loading');
+  var status  = document.getElementById('sp-allprod-status');
+  if (body)    body.innerHTML = '';
+  if (loading) loading.style.display = 'block';
+  if (status)  status.textContent = '';
+  try {
+    var prods = (typeof db !== 'undefined' && db.products) ? db.products : {};
+    var items = Object.keys(prods).map(function(jan) {
+      var p = prods[jan];
+      return { jan: jan, name: p.name || '', category: p.category || '', subcategory: p.subcategory || '', maker: p.maker || '', image_url: p.image_url || p.imageUrl || '', updated_at: p.updated_at || '' };
+    });
+    items.sort(function(a, b) {
+      if (!a.updated_at && !b.updated_at) return 0;
+      if (!a.updated_at) return 1;
+      if (!b.updated_at) return -1;
+      return b.updated_at > a.updated_at ? 1 : b.updated_at < a.updated_at ? -1 : 0;
+    });
+    if (items.length > 200) items = items.slice(0, 200);
+    _spAllProdsData = items;
+    _spAllProdsFilterStr = '';
+    var searchEl = document.getElementById('sp-allprod-search');
+    if (searchEl) searchEl.value = '';
+    spAllProdsRender(items);
+  } catch(e) {
+    if (loading) loading.style.display = 'none';
+    try { showToast('商品一覧の取得に失敗しました', 2000); } catch(_) {}
+  }
+}
+window.spAllProdsOpen = spAllProdsOpen;
+
+// タブ1：商品カード描画
+function spAllProdsRender(items) {
+  var body    = document.getElementById('sp-allprod-card-body');
+  var loading = document.getElementById('sp-allprod-loading');
+  var status  = document.getElementById('sp-allprod-status');
+  if (loading) loading.style.display = 'none';
+  if (!body) return;
+  if (!items.length) {
+    body.innerHTML = '<div style="text-align:center; padding:40px; color:var(--sp-text-secondary,#aaa);">商品が見つかりません</div>';
+    if (status) status.textContent = '0件';
+    return;
+  }
+  if (status) status.textContent = items.length + '件表示';
+  body.innerHTML = items.map(function(it) { return _spApCard(it); }).join('');
+  items.forEach(function(it) {
+    var catEl = document.getElementById('sp-ap-cat-' + it.jan);
+    if (catEl && it.category) {
+      catEl.value = it.category;
+      spApSubcatUpdate(it.jan, it.category, it.subcategory);
+    }
+  });
+}
+window.spAllProdsRender = spAllProdsRender;
+
+// タブ1：カード HTML 生成
+function _spApCard(it) {
+  var esc = function(s) { return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
+  var jan = esc(it.jan);
+  return '<div id="sp-ap-row-' + jan + '" style="border:1px solid var(--sp-border,#444); border-radius:8px; padding:10px 12px; margin-bottom:10px;">' +
+    '<div style="font-size:0.75rem; font-family:monospace; color:var(--sp-text-secondary,#aaa); margin-bottom:4px;">' + jan + '</div>' +
+    '<input id="sp-ap-name-' + jan + '" type="text" value="' + esc(it.name) + '" placeholder="商品名 *" oninput="_spTab1Dirty=true" style="width:100%; background:var(--sp-bg-card,#252540); border:1px solid var(--sp-border,#555); color:var(--sp-text,#fff); padding:7px 10px; border-radius:6px; font-size:0.9rem; margin-bottom:6px; box-sizing:border-box;">' +
+    '<div style="display:flex; gap:6px; margin-bottom:4px;">' +
+      '<select id="sp-ap-cat-' + jan + '" onchange="spApSubcatUpdate(\'' + jan + '\',this.value,\'\')" style="flex:1; background:var(--sp-bg-card,#252540); border:1px solid var(--sp-border,#555); color:var(--sp-text,#fff); padding:6px 8px; border-radius:6px; font-size:0.85rem;">' + _spEditorCatOptions(esc(it.category)) + '</select>' +
+      '<input id="sp-ap-maker-' + jan + '" type="text" value="' + esc(it.maker) + '" placeholder="メーカー" oninput="_spTab1Dirty=true" style="flex:1; background:var(--sp-bg-card,#252540); border:1px solid var(--sp-border,#555); color:var(--sp-text,#fff); padding:6px 8px; border-radius:6px; font-size:0.85rem;">' +
+    '</div>' +
+    '<select id="sp-ap-subcat-' + jan + '" onchange="_spTab1Dirty=true" style="width:100%; background:var(--sp-bg-card,#252540); border:1px solid var(--sp-border,#555); color:var(--sp-text,#fff); padding:6px 8px; border-radius:6px; font-size:0.85rem; margin-bottom:4px; display:none; box-sizing:border-box;"><option value="">サブカテゴリ</option></select>' +
+    '<input id="sp-ap-img-' + jan + '" type="text" value="' + esc(it.image_url) + '" placeholder="画像URL（任意）" oninput="_spTab1Dirty=true" style="width:100%; background:var(--sp-bg-card,#252540); border:1px solid var(--sp-border,#555); color:var(--sp-text,#fff); padding:6px 8px; border-radius:6px; font-size:0.85rem; margin-bottom:6px; box-sizing:border-box;">' +
+    '<div style="display:flex; gap:6px;">' +
+      '<button onclick="spAllProdsSave(\'' + jan + '\')" style="flex:2; background:#1565c0; border:none; color:#fff; padding:8px; border-radius:6px; font-size:0.85rem; font-weight:bold; cursor:pointer;">💾 保存して全体辞書へ反映</button>' +
+      '<button id="sp-ap-del-' + jan + '" onclick="spAllProdsDelete(\'' + jan + '\')" style="flex:1; background:rgba(220,53,69,0.1); border:1px solid #dc3545; color:#ff6b6b; padding:8px 4px; border-radius:6px; font-size:0.78rem; cursor:pointer;">この端末から削除</button>' +
+    '</div>' +
+    '</div>';
+}
+
+// タブ1：サブカテゴリ更新（sp-ap-* プレフィックス用）
+function spApSubcatUpdate(jan, mainCat, defaultSubcat) {
+  var el = document.getElementById('sp-ap-subcat-' + jan);
+  if (!el) return;
+  var subs = (typeof _SP_SUBCATS !== 'undefined' && _SP_SUBCATS[mainCat]) || [];
+  el.innerHTML = '<option value="">' + (subs.length ? 'サブカテゴリ' : '') + '</option>' +
+    subs.map(function(s) { return '<option value="' + s + '">' + s + '</option>'; }).join('') +
+    (mainCat && mainCat !== 'その他' ? '<option value="__add__">＋ 新しいサブカテゴリ…</option>' : '');
+  el.style.display = subs.length ? '' : 'none';
+  if (defaultSubcat) el.value = defaultSubcat;
+  el.onchange = function() {
+    _spTab1Dirty = true;
+    if (el.value === '__add__') { el.value = ''; try { spAddCustomSubcatUI(jan, mainCat); } catch(_) {} }
+  };
+}
+window.spApSubcatUpdate = spApSubcatUpdate;
+
+// タブ1：保存（確認ダイアログ + 変更履歴 + global/jan_dict 書き込み）
+async function spAllProdsSave(jan) {
+  try {
+    var nameEl   = document.getElementById('sp-ap-name-'   + jan);
+    var catEl    = document.getElementById('sp-ap-cat-'    + jan);
+    var subcatEl = document.getElementById('sp-ap-subcat-' + jan);
+    var makerEl  = document.getElementById('sp-ap-maker-'  + jan);
+    var imgEl    = document.getElementById('sp-ap-img-'    + jan);
+    var name   = nameEl   ? nameEl.value.trim()   : '';
+    var cat    = catEl    ? catEl.value.trim()    : '';
+    var subcat = subcatEl ? subcatEl.value.trim() : '';
+    var maker  = makerEl  ? makerEl.value.trim()  : '';
+    var imgUrl = imgEl    ? imgEl.value.trim()    : '';
+    if (!name || name.length < 2) {
+      try { showToast('商品名を入力してください（2文字以上）', 2000); } catch(_) {}
+      if (nameEl) { nameEl.style.borderColor = '#dc3545'; setTimeout(function(){ nameEl.style.borderColor = ''; }, 2000); }
+      return;
+    }
+    if (!confirm('この修正は全ユーザーの商品辞書にも反映されます。保存しますか？')) return;
+    var userId = localStorage.getItem('sp_editor_token') || '';
+    var nowTs  = Math.floor(Date.now() / 1000);
+    var nowIso = new Date().toISOString();
+    // 変更前データ取得
+    var beforeData = {};
+    try {
+      var bsrc = (typeof db !== 'undefined') ? (db.jan_dict && db.jan_dict[jan] ? db.jan_dict[jan] : (db.products && db.products[jan] ? db.products[jan] : null)) : null;
+      if (bsrc) beforeData = { name: bsrc.name || '', category: bsrc.category || '', subcategory: bsrc.subcategory || '', maker: bsrc.maker || '' };
+    } catch(_b) {}
+    var afterData = { name: name, category: cat, subcategory: subcat, maker: maker };
+    var entry = { name: name, category: cat, subcategory: subcat, maker: maker, human_verified: true, updated_by: userId, updated_at: nowIso };
+    if (imgUrl) entry.image_url = imgUrl;
+    if (window.firebaseDb) {
+      // 変更履歴保存
+      try { await window.firebaseDb.ref('global/jan_dict_history/' + jan + '/' + nowTs).set({ before: beforeData, after: afterData, updated_by: userId, updated_at: nowTs }); } catch(_h) {}
+      // global/jan_dict 書き込み
+      await window.firebaseDb.ref('global/jan_dict/' + jan).set(entry);
+    }
+    // ローカル更新
+    try {
+      if (typeof db !== 'undefined') {
+        if (!db.jan_dict) db.jan_dict = {};
+        db.jan_dict[jan] = entry;
+        if (db.products && db.products[jan]) {
+          db.products[jan].name = name;
+          if (maker) db.products[jan].maker = maker;
+          if (cat)   db.products[jan].category = cat;
+          if (subcat) db.products[jan].subcategory = subcat;
+          if (imgUrl) db.products[jan].image_url = imgUrl;
+          db.products[jan].human_verified = true;
+          db.products[jan].updated_at = nowIso;
+        }
+        if (typeof saveLocalOnly === 'function') saveLocalOnly();
+      }
+    } catch(_lc) {}
+    _spTab1Dirty = false;
+    try { showToast('保存しました: ' + name, 2000); } catch(_) {}
+  } catch(e) {
+    try { showToast('保存失敗: ' + ((e && e.message) || String(e)), 3000); } catch(_) {}
+  }
+}
+window.spAllProdsSave = spAllProdsSave;
+
+// タブ1：削除（ローカルのみ、global/jan_dict は触らない）
+function spAllProdsDelete(jan) {
+  var btn = document.getElementById('sp-ap-del-' + jan);
+  if (!btn) return;
+  if (btn.dataset.confirm !== '1') {
+    btn.dataset.confirm = '1';
+    btn.textContent = '本当に削除？';
+    btn.style.background = '#dc3545'; btn.style.color = '#fff'; btn.style.border = 'none';
+    setTimeout(function() {
+      if (btn && btn.dataset.confirm === '1') {
+        btn.dataset.confirm = '';
+        btn.textContent = 'この端末から削除';
+        btn.style.background = 'rgba(220,53,69,0.1)'; btn.style.color = '#ff6b6b'; btn.style.border = '1px solid #dc3545';
+      }
+    }, 3000);
+    return;
+  }
+  try {
+    if (typeof db !== 'undefined' && db.products && db.products[jan]) {
+      delete db.products[jan];
+      if (typeof saveLocalOnly === 'function') saveLocalOnly();
+    }
+  } catch(_) {}
+  _spAllProdsData = (_spAllProdsData || []).filter(function(it) { return it.jan !== jan; });
+  var row = document.getElementById('sp-ap-row-' + jan);
+  if (row) { row.style.opacity = '0.4'; setTimeout(function(){ if (row && row.parentNode) row.parentNode.removeChild(row); }, 400); }
+  var st = document.getElementById('sp-allprod-status');
+  if (st) st.textContent = _spAllProdsData.length + '件表示';
+  try { showToast('この端末の商品一覧から削除しました', 2000); } catch(_) {}
+}
+window.spAllProdsDelete = spAllProdsDelete;
+
+// タブ1：フィルター（商品名・JAN・メーカー）
+function spAllProdsFilter(query) {
+  _spAllProdsFilterStr = (query || '').toLowerCase();
+  var filtered = (_spAllProdsData || []).filter(function(it) {
+    if (!_spAllProdsFilterStr) return true;
+    return (it.name  || '').toLowerCase().indexOf(_spAllProdsFilterStr) >= 0 ||
+           (it.jan   || '').indexOf(_spAllProdsFilterStr) >= 0 ||
+           (it.maker || '').toLowerCase().indexOf(_spAllProdsFilterStr) >= 0;
+  });
+  spAllProdsRender(filtered);
+}
+window.spAllProdsFilter = spAllProdsFilter;
+
+// 起動時に /global/jan_dict を取得してローカル db.jan_dict にマージ
+async function _spLoadGlobalJanDict() {
+  try {
+    if (!window.firebaseDb) return;
+    var snap = await window.firebaseDb.ref('global/jan_dict').once('value');
+    var gd = (snap && snap.val()) || {};
+    if (!Object.keys(gd).length) return;
+    if (typeof db === 'undefined') return;
+    if (!db.jan_dict) db.jan_dict = {};
+    var merged = 0;
+    Object.keys(gd).forEach(function(jan) {
+      var gv = gd[jan];
+      var lv = db.jan_dict[jan];
+      // グローバルの方が新しければ上書き
+      if (!lv || (gv.updated_at && (!lv.updated_at || gv.updated_at > lv.updated_at))) {
+        db.jan_dict[jan] = gv;
+        // db.products も更新（弱い名前の場合のみ）
+        if (db.products && db.products[jan] && gv.name) {
+          var p = db.products[jan];
+          if (!p.name || (typeof isWeakNameCandidate === 'function' && isWeakNameCandidate(String(p.name).trim(), jan))) {
+            p.name = gv.name;
+            if (gv.maker) p.maker = gv.maker;
+            if (gv.category) p.category = gv.category;
+            p.human_verified = true;
+          }
+        }
+        merged++;
+      }
+    });
+    if (merged > 0) {
+      if (typeof saveLocalOnly === 'function') saveLocalOnly();
+      try { spDbg('[GLOBAL_JANDICT_MERGED]', { count: merged }); } catch(_) {}
+    }
+  } catch (_e) {}
+}
+window._spLoadGlobalJanDict = _spLoadGlobalJanDict;
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// v23.9.252 SP-260616-EDITORTOKEN-001: スタッフ認証トークン管理
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// EDIT-XXXXXX コードを発行して Firebase に保存（v23.9.254: ラベル必須化）
+async function spGenerateEditorToken() {
+  var newDiv = document.getElementById('sp-editor-token-new');
+  var labelInp = document.getElementById('sp-token-label-input');
+  var label = labelInp ? (labelInp.value || '').trim() : '';
+  if (!label) {
+    if (newDiv) newDiv.innerHTML = '<span class="small" style="color:#ff6b6b;">⚠ スタッフ名を入力してください</span>';
+    if (labelInp) labelInp.focus();
+    return;
+  }
+  if (newDiv) newDiv.innerHTML = '<span class="small text-secondary">発行中...</span>';
+  try {
+    if (!window.firebaseDb) throw new Error('Firebase未接続');
+    var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    var suffix = '';
+    if (window.crypto && window.crypto.getRandomValues) {
+      var arr = new Uint8Array(6);
+      window.crypto.getRandomValues(arr);
+      for (var i = 0; i < 6; i++) suffix += chars[arr[i] % chars.length];
+    } else {
+      for (var i = 0; i < 6; i++) suffix += chars[Math.floor(Math.random() * chars.length)];
+    }
+    var code = 'EDIT-' + suffix;
+    var uid = (typeof db !== 'undefined' && db && db.config && db.config.userId) || 'unknown';
+    await window.firebaseDb.ref('global/editor_tokens/' + code).set({
+      createdAt: new Date().toISOString(), createdBy: uid, label: label, active: true
+    });
+    if (newDiv) {
+      newDiv.innerHTML =
+        '<div style="background:rgba(0,80,0,0.3);border:1px solid #4caf50;border-radius:8px;padding:12px;text-align:center;margin-top:6px;">' +
+        '<div class="small text-secondary mb-1">発行完了 ✓</div>' +
+        '<div style="font-family:monospace;font-size:1.35rem;font-weight:700;color:#6fe06f;letter-spacing:3px;">' + code + '</div>' +
+        (label ? '<div class="small text-secondary mt-1">' + label + 'さん用</div>' : '') +
+        '<button type="button" class="btn btn-sm btn-outline-success mt-2" onclick="if(navigator.clipboard){navigator.clipboard.writeText(\'' + code + '\');if(typeof showToast===\'function\')showToast(\'コードをコピーしました\',1500);}">📋 コピー</button>' +
+        '</div>';
+    }
+    if (labelInp) labelInp.value = '';
+  } catch (_e) {
+    if (newDiv) newDiv.innerHTML = '<span class="small" style="color:#ff6b6b;">エラー: ' + (_e.message || '発行失敗') + '</span>';
+  }
+}
+window.spGenerateEditorToken = spGenerateEditorToken;
+
+// 発行済みコード一覧を表示
+async function spListEditorTokens() {
+  var listDiv = document.getElementById('sp-editor-token-list');
+  if (!listDiv) return;
+  listDiv.innerHTML = '<span class="small text-secondary">読み込み中...</span>';
+  try {
+    if (!window.firebaseDb) throw new Error('Firebase未接続');
+    var snap = await window.firebaseDb.ref('global/editor_tokens').once('value');
+    var tokens = (snap && snap.val()) || {};
+    var codes = Object.keys(tokens);
+    if (!codes.length) { listDiv.innerHTML = '<span class="small text-secondary">発行済みコードはありません</span>'; return; }
+    codes.sort();
+    var html = '<div style="margin-top:6px;">';
+    codes.forEach(function(code) {
+      var t = tokens[code];
+      var isActive = t.active === true;
+      var label = t.label || '';
+      var createdAt = t.createdAt ? t.createdAt.slice(0,16).replace('T',' ') : '';
+      html += '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;margin-bottom:6px;border-radius:7px;' +
+        'background:' + (isActive ? 'rgba(0,80,0,0.2)' : 'rgba(60,0,0,0.2)') + ';' +
+        'border:1px solid ' + (isActive ? '#4caf50' : '#555') + ';">' +
+        '<div style="flex:1;min-width:0;">' +
+        '<div style="font-family:monospace;font-size:0.9rem;color:' + (isActive ? '#6fe06f' : '#888') + ';">' + code + '</div>' +
+        (label ? '<div class="small text-secondary" style="opacity:.85;">' + label + '</div>' : '') +
+        (createdAt ? '<div class="small" style="opacity:.55;font-size:0.75rem;">' + createdAt + '</div>' : '') +
+        '</div>' +
+        (isActive
+          ? '<button type="button" class="btn btn-sm btn-outline-danger" style="white-space:nowrap;" onclick="spRevokeEditorToken(\'' + code + '\')">無効化</button>'
+          : '<span class="small" style="color:#666;white-space:nowrap;">無効</span>') +
+        '</div>';
+    });
+    html += '</div>';
+    listDiv.innerHTML = html;
+  } catch (_e) {
+    listDiv.innerHTML = '<span class="small" style="color:#ff6b6b;">エラー: ' + (_e.message || '取得失敗') + '</span>';
+  }
+}
+window.spListEditorTokens = spListEditorTokens;
+
+// コードを無効化
+async function spRevokeEditorToken(code) {
+  if (!confirm(code + ' を無効化しますか？\nこのコードではアクセスできなくなります。')) return;
+  try {
+    if (!window.firebaseDb) throw new Error('Firebase未接続');
+    await window.firebaseDb.ref('global/editor_tokens/' + code + '/active').set(false);
+    var saved = localStorage.getItem('sp_editor_token');
+    if (saved === code) localStorage.removeItem('sp_editor_token');
+    spListEditorTokens();
+    if (typeof showToast === 'function') showToast(code + ' を無効化しました', 2000);
+  } catch (_e) { alert('エラー: ' + (_e.message || '無効化失敗')); }
+}
+window.spRevokeEditorToken = spRevokeEditorToken;
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // v22.0: 友人紹介トラッキングシステム
@@ -15081,7 +16788,10 @@ async function _spShareContent(title, text, url) {
   try {
     if (navigator.share) {
       try {
-        await navigator.share({ title: title || 'Smart Price', text: text, url: url });
+        // SP-260617-NULLURL-001: url=nullをnavigator.shareに渡すとAndroid Chromeが"null"文字列に変換するため、truthy値のみ渡す
+        const _shareData = { title: title || 'Smart Price', text: text };
+        if (url) _shareData.url = url;
+        await navigator.share(_shareData);
       } catch(e) {
         // AbortError（キャンセル）は無視
       }
@@ -15252,16 +16962,18 @@ window.spReferralShare1Tap = spReferralShare1Tap;
 // ========== [v234 SP-250609-SHARE-002] 共有テンプレート ==========
 
 var FRIEND_SHARE_TEMPLATES = [
-  '最近使い始めた「スマプラ」っていうアプリが結構便利だよ♪\nお店ごとの値段を比べられるから、どこで買うのが安いかすぐ分かるの。\n無料で使えるから良かったら試してみてね！',
-  '買い物前にスマプラを見るようにしたら、同じ商品でもお店によって値段が違うのが分かって面白いよ！\nバーコードで簡単に登録できるし、節約にも役立つからおすすめ♪',
-  '節約したい人におすすめの「スマプラ」を紹介するね。\nよく買う商品の値段を記録して、お得なお店を見つけやすくなるよ！\n無料だから気軽に使ってみてね。'
+  '最近使い始めた「スマプラ」っていうアプリが結構便利だよ♪\nお店ごとの値段を比べられるから、どこで買うのが安いかすぐ分かるの。\n無料で使えるから良かったら試してみてね！\n\nhttps://smapri.jp',
+  '買い物前にスマプラを見るようにしたら、同じ商品でもお店によって値段が違うのが分かって面白いよ！\nバーコードで簡単に登録できるし、節約にも役立つからおすすめ♪\n\nhttps://smapri.jp',
+  '節約したい人におすすめの「スマプラ」を紹介するね。\nよく買う商品の値段を記録して、お得なお店を見つけやすくなるよ！\n無料だから気軽に使ってみてね。\n\nhttps://smapri.jp'
 ];
 window.FRIEND_SHARE_TEMPLATES = FRIEND_SHARE_TEMPLATES;
 
+// v23.9.275 SP-260617-TEMPLATE-001: 手順ステップ付き文面に刷新（①リンク開く②設定→家族共有③招待コード入力）
+// v23.9.278 SP-260618-FAMUX-003: URLタップだけで参加できる短文テンプレート
 var FAMILY_SHARE_TEMPLATES = [
-  'スマプラで家族グループを作ったよ！\n招待コードは【[招待コード]】です。\nアプリを開いて「家族グループに参加」から入力してね。\n家族みんなで価格情報を共有できるよ。',
-  '買い物情報を家族で共有できるようにしたよ。\n招待コードは【[招待コード]】です。\nスマプラの「家族グループに参加」から入力して参加してね♪',
-  'スーパーの価格情報を家族でまとめて見られるようにしたよ！\n招待コードは【[招待コード]】です。\nスマプラを開いて入力すると参加できるので、時間のある時に登録してね。'
+  'スマプラの家族グループに招待するよ！\n下のURLをタップするだけで参加できます😊\n\n[招待URL]',
+  '家族みんなでスーパーの値段を共有できるアプリに招待するね🛒\nURLをタップすると参加画面が自動で開くよ！\n\n[招待URL]',
+  'スマプラに招待します。\n下のURLをタップして「参加する」を押してください。\n\n[招待URL]'
 ];
 window.FAMILY_SHARE_TEMPLATES = FAMILY_SHARE_TEMPLATES;
 
@@ -15269,8 +16981,8 @@ window.FAMILY_SHARE_TEMPLATES = FAMILY_SHARE_TEMPLATES;
 var _spRefTmplIdx = 0;
 function spSelectReferralTemplate(idx) {
   _spRefTmplIdx = idx;
-  var url = SP_SHARE_PUBLIC_URL;
-  var text = FRIEND_SHARE_TEMPLATES[idx] + (url ? '\n\n' + url : '');
+  // v23.9.271 SP-260617-SHAREDOMAINREMOVE-001: URLをテキストに付加しない（キャリアスパム回避）
+  var text = FRIEND_SHARE_TEMPLATES[idx];
   var ta = document.getElementById('referral-share-text');
   if (ta) ta.value = text;
   for (var i = 0; i < 3; i++) {
@@ -15282,11 +16994,12 @@ function spSelectReferralTemplate(idx) {
 window.spSelectReferralTemplate = spSelectReferralTemplate;
 
 // 友人紹介：テキストエリアの内容で共有
+// v23.9.271 SP-260617-SHAREDOMAINREMOVE-001: URLなし（キャリアスパム回避）
 async function spShareReferralWithText() {
   var ta = document.getElementById('referral-share-text');
   var text = ta ? ta.value : (FRIEND_SHARE_TEMPLATES[0] || '');
-  var url = SP_SHARE_PUBLIC_URL;
-  await _spShareContent('Smart Price 友人紹介', text, url);
+  // v23.9.283: URLをnullからSP_SHARE_PUBLIC_URLに変更（友人がアクセスできるよう）
+  await _spShareContent('Smart Price 友人紹介', text, SP_SHARE_PUBLIC_URL || null);
 }
 window.spShareReferralWithText = spShareReferralWithText;
 
@@ -15296,7 +17009,13 @@ function spSelectFamilyTemplate(idx) {
   _spFamTmplIdx = idx;
   var codeEl = document.getElementById('family-invite-code-display');
   var code = codeEl ? codeEl.value : '';
-  var text = FAMILY_SHARE_TEMPLATES[idx].replace(/\[招待コード\]/g, code || 'FAM-XXXXXX');
+  // v23.9.278: [招待URL] = https://smapri.jp?fam=FAM-XXXXXX
+  var inviteUrl = (code && code.startsWith('FAM-'))
+    ? (SP_SHARE_PUBLIC_URL + '?fam=' + code)
+    : SP_SHARE_PUBLIC_URL;
+  var text = FAMILY_SHARE_TEMPLATES[idx]
+    .replace(/\[招待コード\]/g, code || 'FAM-XXXXXX')
+    .replace(/\[招待URL\]/g, inviteUrl);
   var ta = document.getElementById('family-share-text');
   if (ta) ta.value = text;
   for (var i = 0; i < 3; i++) {
@@ -15308,17 +17027,32 @@ function spSelectFamilyTemplate(idx) {
 window.spSelectFamilyTemplate = spSelectFamilyTemplate;
 
 // 家族共有：テキストエリアの内容で共有
+// v23.9.278 SP-260618-FAMUX-003: テキスト内に招待URL（?fam=）が含まれているため url引数はnull
 async function spShareFamilyWithText() {
   var ta = document.getElementById('family-share-text');
   var text = ta ? ta.value.trim() : '';
   if (!text) { try { showToast('先に招待コードを発行してください', 2000); } catch(e) {} return; }
-  var url = SP_SHARE_PUBLIC_URL;
-  await _spShareContent('Smart Price 家族招待', text, url);
+  await _spShareContent('Smart Price 家族招待', text, null);
 }
 window.spShareFamilyWithText = spShareFamilyWithText;
 
 // ========== 招待リンク受信処理（起動時）==========
 // トークン受信 → Firebaseでtoken→uid解決 → invitedByに保存
+// v23.9.278 SP-260618-FAMUX-003: ?fam=FAM-XXXXXX を検出してlocalStorageに保存（Firebase接続前に実行）
+(function parseFamilyJoinUrl() {
+  try {
+    var q = new URL(location.href).searchParams;
+    var famCode = q.get('fam');
+    if (!famCode || !famCode.startsWith('FAM-') || famCode.length !== 10) return;
+    localStorage.setItem('sp_pending_fam_code', famCode);
+    // URLをクリーンにする（ブラウザ履歴に ?fam= を残さない）
+    try {
+      var clean = location.pathname + location.hash;
+      history.replaceState(null, '', clean);
+    } catch(_) {}
+  } catch(e) {}
+})();
+
 (function parseInviteCode() {
   try {
     const q = new URL(location.href).searchParams;
@@ -15363,7 +17097,7 @@ async function spShareFamilyId(){
     const code = (typeof window._spGetPublicCode === 'function') ? window._spGetPublicCode() : '';
     const formatted = (code && typeof window.formatPublicCode === 'function') ? window.formatPublicCode(code) : '';
     if(!formatted){
-      const guideText = '【Smart Price 家族共有】\n個人IDを発行するには、設定→「⑧ アカウント連携」からログインしてください。';
+      const guideText = '【Smart Price 家族共有】\n個人IDを発行するには、設定→「⑧ アカウント登録」からログインしてください。';
       try { showToast('ログインすると個人IDが発行されます', 4000); } catch(_){}
       const ok = await spShareText('Smart Price 家族共有', guideText);
       if(!ok) spCopyTextFallback(guideText);
@@ -15382,6 +17116,38 @@ window.spShareFamilyId = spShareFamilyId;
 /* === 未定義関数の補完 (v22.7 fix) === */
 
 // ブラウザ版URLモーダル
+// v23.9.286: リセット後にlocation.reload()で確実に画面反映
+function spResetLocalData() {
+  try {
+    var btn = document.getElementById('resetDataBtn');
+    if (!btn) return;
+    if (btn.dataset.confirming === '1') {
+      // 2回目のタップ → 実行
+      btn.dataset.confirming = '';
+      db.products = {};
+      saveLocalOnly();
+      btn.textContent = '✅ リセット完了。再起動します...';
+      btn.className = 'btn btn-secondary w-100 py-2 fw-bold mb-2';
+      btn.disabled = true;
+      showToast('このスマホのデータをリセットしました。再起動します...', 2000);
+      setTimeout(function() { location.reload(); }, 1800);
+    } else {
+      // 1回目のタップ → 確認状態に変化
+      btn.dataset.confirming = '1';
+      btn.textContent = '⚠️ もう一度タップで実行（元に戻せません）';
+      btn.className = 'btn btn-danger w-100 py-2 fw-bold mb-2';
+      setTimeout(function() {
+        if (btn.dataset.confirming === '1') {
+          btn.dataset.confirming = '';
+          btn.textContent = '🗑 このスマホの商品データをリセット';
+          btn.className = 'btn btn-outline-danger w-100 py-2 fw-bold mb-2';
+        }
+      }, 4000);
+    }
+  } catch(e) {}
+}
+window.spResetLocalData = spResetLocalData;
+
 function openWebModal() {
   try {
     const m = document.getElementById('webModal');
@@ -15393,6 +17159,9 @@ function openWebModal() {
     const b = window.BUILD_ID || '';
     if (debugEl) debugEl.value = base + '?b=' + b + '&debug=1';
     if (normalEl) normalEl.value = base + (b ? '?b=' + b : '');
+    // v23.9.280: beforeinstallpromptがある時だけAndroid用ボタンを表示
+    const installBtn = document.getElementById('pwaInstallBtn');
+    if (installBtn) installBtn.style.display = (typeof deferredPrompt !== 'undefined' && deferredPrompt) ? 'block' : 'none';
     m.style.display = 'flex';
   } catch(e) {}
 }
@@ -15425,8 +17194,62 @@ function installPWA() {
       deferredPrompt.prompt();
       deferredPrompt.userChoice.then(() => { deferredPrompt = null; });
     } else {
-      showToast('インストールプロンプトが利用できません', 3000);
+      showToast('Androidまたは対応ブラウザで開いてください', 3000);
     }
+  } catch(e) {}
+}
+
+// v23.9.280 SP-260618-PWA-001: 初回アクセス時にホーム画面アイコン追加ガイドを表示
+function showPwaGuideIfFirstAccess() {
+  try {
+    // スタンドアロン（既にホーム画面に追加済み）なら不要
+    if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return;
+    if (window.navigator.standalone) return;
+    // 既に表示済みならスキップ
+    if (localStorage.getItem('sp_pwa_guide_shown')) return;
+    var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+    var isAndroid = /android/i.test(navigator.userAgent);
+    if (!isIOS && !isAndroid) return;
+    setTimeout(function() { showPwaGuideDialog(isIOS, isAndroid); }, 2500);
+  } catch(e) {}
+}
+
+function showPwaGuideDialog(isIOS, isAndroid) {
+  try {
+    localStorage.setItem('sp_pwa_guide_shown', '1');
+    var overlay = document.createElement('div');
+    overlay.id = 'pwaGuideOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:19999;display:flex;align-items:flex-end;justify-content:center;';
+
+    var androidSteps = isAndroid && typeof deferredPrompt !== 'undefined' && deferredPrompt
+      ? '<p style="font-size:0.88rem;margin:0 0 6px;">下のボタンをタップするだけで追加できます 👇</p>'
+      : '<p style="font-size:0.88rem;margin:0 0 6px;">Chrome のメニュー（⋮）→「<b>ホーム画面に追加</b>」をタップ</p>';
+
+    var steps = isIOS
+      ? '<p style="font-size:0.88rem;margin:0 0 4px;"><b>① Safari</b> で開いていることを確認</p>'
+        + '<p style="font-size:0.88rem;margin:0 0 4px;"><b>② 画面下の 共有ボタン（□↑）</b> をタップ</p>'
+        + '<p style="font-size:0.88rem;margin:0 0 4px;"><b>③「ホーム画面に追加」</b> をタップ</p>'
+        + '<p style="font-size:0.88rem;margin:0;">④「追加」→ 完了！</p>'
+      : androidSteps;
+
+    var addBtn = (isAndroid && typeof deferredPrompt !== 'undefined' && deferredPrompt)
+      ? '<button onclick="installPWA();document.getElementById(\'pwaGuideOverlay\').remove();" style="width:100%;padding:13px;background:var(--sp-primary,#4CAF50);color:#fff;border:none;border-radius:8px;font-size:1rem;font-weight:bold;cursor:pointer;margin-bottom:8px;">📲 ホーム画面にアイコンを追加する</button>'
+      : '';
+
+    overlay.innerHTML = '<div style="background:var(--sp-bg-card,#1a1a2e);color:var(--sp-text,#eee);border-radius:16px 16px 0 0;padding:20px 20px 24px;width:100%;max-width:480px;">'
+      + '<div style="text-align:center;margin-bottom:14px;">'
+      + '<div style="font-size:2.2rem;margin-bottom:6px;">📱</div>'
+      + '<h5 style="margin:0 0 4px;font-size:1.05rem;font-weight:bold;">ホーム画面にアイコンを作れます</h5>'
+      + '<p style="font-size:0.8rem;color:var(--sp-text-muted,#aaa);margin:0;">✅ アプリのダウンロードは不要。ブラウザで使えます。</p>'
+      + '</div>'
+      + '<div style="background:var(--sp-bg-section,rgba(255,255,255,0.07));border-radius:8px;padding:12px 14px;margin-bottom:14px;">'
+      + steps
+      + '</div>'
+      + addBtn
+      + '<button onclick="document.getElementById(\'pwaGuideOverlay\').remove();" style="width:100%;padding:11px;background:transparent;color:var(--sp-text-muted,#aaa);border:1px solid var(--sp-border,#444);border-radius:8px;font-size:0.9rem;cursor:pointer;">あとで設定する</button>'
+      + '</div>';
+
+    document.body.appendChild(overlay);
   } catch(e) {}
 }
 function exportBackup() {
@@ -15527,18 +17350,19 @@ function _spGenInviteCode() {
   return code;
 }
 
-async function spCreateFamilyInvite() {
+// v23.9.249 SP-260615-FAMILY-UX: silent=true で自動発行時はトースト抑制・result div 表示不要
+async function spCreateFamilyInvite(silent) {
   try {
     // UID 取得
     var uid = (typeof currentAuthUid !== 'undefined' && currentAuthUid)
            || (window.firebaseAuth && window.firebaseAuth.currentUser && window.firebaseAuth.currentUser.uid)
            || null;
     if (!uid) {
-      showToast('ログインが必要です（設定→⑧ アカウント連携）', 3500);
+      if (!silent) showToast('ログインが必要です（設定→⑧ アカウント登録）', 3500);
       return;
     }
     if (!window.firebaseDb) {
-      showToast('Firebase未接続です。しばらく待って再試行してください', 3000);
+      if (!silent) showToast('Firebase未接続です。しばらく待って再試行してください', 3000);
       return;
     }
     var code = _spGenInviteCode();
@@ -15557,22 +17381,32 @@ async function spCreateFamilyInvite() {
     if (window.location.search.includes('debug=1')) {
       console.log('[FAMILY] FAMILY_INVITE_CREATED', { code: code, ownerUid: uid });
     }
-    // 発行結果 UI 表示
+    // UI 更新（v249: family-invite-result は常時表示になったため show 不要）
     var display = document.getElementById('family-invite-code-display');
     if (display) display.value = code;
     var expiry = document.getElementById('family-invite-expiry');
     if (expiry) expiry.textContent = '有効期限：24時間';
-    var result = document.getElementById('family-invite-result');
-    if (result) result.style.display = 'block';
-    // [v234 SP-250609-SHARE-002] テンプレート初期化（案1をコード入りで表示）
+    // テンプレート初期化（案1をコード入りで表示）
     try { if (typeof spSelectFamilyTemplate === 'function') spSelectFamilyTemplate(0); } catch(e) {}
-    showToast('招待コードを発行しました', 2000);
+    if (!silent) showToast('招待コードを更新しました', 2000);
   } catch(e) {
-    showToast('発行に失敗しました', 2000);
+    if (!silent) showToast('発行に失敗しました', 2000);
     if (window.location.search.includes('debug=1')) console.error('[FAMILY] invite create error', e);
   }
 }
 window.spCreateFamilyInvite = spCreateFamilyInvite;
+
+// v23.9.249 SP-260615-FAMILY-UX: パネル表示時の自動初期化（updateReferralPanel と対称）
+async function updateFamilyPanel() {
+  var codeEl = document.getElementById('family-invite-code-display');
+  // 既に有効なコードが表示済みならテンプレートだけ更新してスキップ
+  if (codeEl && codeEl.value && codeEl.value.startsWith('FAM-')) {
+    try { if (typeof spSelectFamilyTemplate === 'function') spSelectFamilyTemplate(0); } catch(e) {}
+    return;
+  }
+  await spCreateFamilyInvite(true); // silent
+}
+window.updateFamilyPanel = updateFamilyPanel;
 
 function spCopyFamilyInvite() {
   try {
@@ -15639,7 +17473,7 @@ async function spJoinFamilyGroup() {
     var uid = (typeof currentAuthUid !== 'undefined' && currentAuthUid)
            || (window.firebaseAuth && window.firebaseAuth.currentUser && window.firebaseAuth.currentUser.uid)
            || null;
-    if (!uid) { setStatus('ログインが必要です（設定→⑧ アカウント連携）', true); return; }
+    if (!uid) { setStatus('ログインが必要です（設定→⑧ アカウント登録）', true); return; }
     if (!window.firebaseDb) { setStatus('Firebase未接続です', true); return; }
 
     setStatus('確認中…', false);
@@ -15647,10 +17481,10 @@ async function spJoinFamilyGroup() {
     // 招待コード検証
     var inviteSnap = await window.firebaseDb.ref('familyInvites/' + code).once('value');
     var invite = inviteSnap.val();
-    if (!invite)                      { setStatus('招待コードが見つかりません', true); return; }
-    if (invite.used)                  { setStatus('この招待コードはすでに使用済みです', true); return; }
-    if (Date.now() > invite.expiresAt){ setStatus('招待コードの有効期限が切れています', true); return; }
-    if (invite.ownerUid === uid)      { setStatus('自分の招待コードには参加できません', true); return; }
+    if (!invite)                      { if (inp) inp.value = ''; setStatus('招待コードが見つかりません', true); return; }
+    if (invite.used)                  { if (inp) inp.value = ''; setStatus('この招待コードはすでに使用済みです', true); return; }
+    if (Date.now() > invite.expiresAt){ if (inp) inp.value = ''; setStatus('招待コードの有効期限が切れています', true); return; }
+    if (invite.ownerUid === uid)      { if (inp) inp.value = ''; setStatus('自分の招待コードには参加できません', true); return; }
 
     // グループID（発行者 UID 先頭8文字をキーに）
     var groupId = 'G-' + invite.ownerUid.slice(0, 8);
@@ -15681,11 +17515,159 @@ async function spJoinFamilyGroup() {
     if (inp) inp.value = '';
 
   } catch(e) {
+    var inp2 = document.getElementById('family-join-code');
+    if (inp2) inp2.value = '';
     setStatus('エラーが発生しました', true);
     if (window.location.search.includes('debug=1')) console.error('[FAMILY] join error', e);
   }
 }
 window.spJoinFamilyGroup = spJoinFamilyGroup;
+
+// v23.9.276 SP-260618-FAMUX-001: 家族共有パネル内かんたん登録
+async function handleFamilyQuickRegister() {
+  var emailEl = document.getElementById('fam-quick-email');
+  var passEl  = document.getElementById('fam-quick-pass');
+  var statusEl = document.getElementById('fam-quick-register-status');
+  function setStatus(msg, isErr) {
+    if (!statusEl) return;
+    statusEl.textContent = msg;
+    statusEl.style.color = isErr ? '#f44336' : '#4caf50';
+  }
+  var email = emailEl ? emailEl.value.trim() : '';
+  var pass  = passEl  ? passEl.value : '';
+  if (!email) { setStatus('メールアドレスを入力してください', true); return; }
+  if (pass.length < 6) { setStatus('パスワードは6文字以上で入力してください', true); return; }
+  setStatus('登録中...', false);
+  try {
+    var auth = window.firebaseAuth;
+    if (!auth) { setStatus('認証システムが使えません。しばらく待って再試行してください', true); return; }
+    await auth.createUserWithEmailAndPassword(email, pass);
+    setStatus('', false);
+    var prompt = document.getElementById('family-register-prompt');
+    if (prompt) prompt.style.display = 'none';
+    // v23.9.278: 招待URL経由ならそのまま参加、そうでなければ招待コード発行
+    var pendingCode = '';
+    try { pendingCode = localStorage.getItem('sp_pending_fam_code') || ''; } catch(_) {}
+    if (pendingCode && pendingCode.startsWith('FAM-')) {
+      await spAcceptFamilyInvite(pendingCode, null);
+    } else {
+      await spCreateFamilyInvite(false);
+      showToast('登録しました！招待コードを発行しました 🎉', 3500);
+    }
+  } catch(e) {
+    var msg = '登録に失敗しました';
+    if (e.code === 'auth/email-already-in-use') msg = 'このメールは登録済みです。ログインしてください';
+    else if (e.code === 'auth/invalid-email')   msg = 'メールアドレスの形式が正しくありません';
+    else if (e.code === 'auth/weak-password')   msg = 'パスワードが短すぎます（6文字以上）';
+    setStatus(msg, true);
+  }
+}
+window.handleFamilyQuickRegister = handleFamilyQuickRegister;
+
+// v23.9.276: ⑧アカウント連携パネルへ移動するヘルパー
+function spOpenAccountPanel() {
+  try {
+    if (typeof settingsShowPanel === 'function') { settingsShowPanel('Account'); return; }
+    var btn = document.getElementById('accountMenuBtn');
+    if (btn) btn.click();
+  } catch(e) {}
+}
+window.spOpenAccountPanel = spOpenAccountPanel;
+
+// v23.9.278 SP-260618-FAMUX-003: 招待ダイアログ表示
+function showFamilyInviteDialog(inviterName, code) {
+  try {
+    var existing = document.getElementById('sp-fam-invite-dialog');
+    if (existing) existing.remove();
+    var overlay = document.createElement('div');
+    overlay.id = 'sp-fam-invite-dialog';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.65);z-index:99990;display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
+    var safeName = String(inviterName || 'ご家族').replace(/[<>"'&]/g, function(c){ return {'<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','&':'&amp;'}[c]; });
+    var safeCode = String(code || '').replace(/[^A-Z0-9\-]/g, '');
+    overlay.innerHTML =
+      '<div style="background:#1e1e2e;border:1px solid rgba(255,255,255,.18);border-radius:16px;padding:28px 24px;max-width:320px;width:100%;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.5);">' +
+        '<div style="font-size:2.4rem;margin-bottom:10px;">👨‍👩‍👧‍👦</div>' +
+        '<div style="font-size:1.05rem;font-weight:bold;color:#fff;margin-bottom:8px;">家族グループへの招待</div>' +
+        '<div style="font-size:0.9rem;color:#aaa;margin-bottom:22px;line-height:1.6;">' +
+          '<span style="color:#4caf50;font-weight:bold;">' + safeName + 'さん</span>から<br>家族グループに招待されました' +
+        '</div>' +
+        '<button onclick="spAcceptFamilyInvite(\'' + safeCode + '\',document.getElementById(\'sp-fam-invite-dialog\'))" ' +
+          'style="background:#4caf50;color:#fff;border:none;border-radius:10px;padding:14px 20px;font-size:1rem;font-weight:bold;width:100%;margin-bottom:10px;cursor:pointer;letter-spacing:.02em;">✅ 参加する</button>' +
+        '<button onclick="document.getElementById(\'sp-fam-invite-dialog\').remove()" ' +
+          'style="background:transparent;color:#888;border:none;font-size:0.85rem;cursor:pointer;padding:6px;">あとで</button>' +
+      '</div>';
+    document.body.appendChild(overlay);
+  } catch(e) {}
+}
+window.showFamilyInviteDialog = showFamilyInviteDialog;
+
+// v23.9.278 SP-260618-FAMUX-003: Firebase接続後に ?fam= 招待を処理
+async function spHandlePendingFamilyJoin() {
+  var code = '';
+  try { code = localStorage.getItem('sp_pending_fam_code') || ''; } catch(_) {}
+  if (!code || !code.startsWith('FAM-')) return;
+  if (!window.firebaseDb) return; // Firebase未接続なら待機
+  try {
+    var snap = await window.firebaseDb.ref('familyInvites/' + code).once('value');
+    var invite = snap.val();
+    if (!invite || invite.used || Date.now() > invite.expiresAt) {
+      try { localStorage.removeItem('sp_pending_fam_code'); } catch(_) {}
+      showToast('招待リンクが無効か期限切れです', 3000);
+      return;
+    }
+    var inviterName = invite.ownerName || 'ご家族';
+    showFamilyInviteDialog(inviterName, code);
+  } catch(e) {
+    if (window.location.search.includes('debug=1')) console.error('[FAMILY] pending join error', e);
+  }
+}
+window.spHandlePendingFamilyJoin = spHandlePendingFamilyJoin;
+
+// v23.9.279 SP-260618-FAMUX-004: 匿名Firebase UIDでも参加できる（登録不要）
+async function spAcceptFamilyInvite(code, overlay) {
+  if (overlay) overlay.style.pointerEvents = 'none';
+  // Firebase匿名UIDは起動時に自動付与されるため登録なしで参加可能
+  var uid = (typeof currentAuthUid !== 'undefined' && currentAuthUid)
+         || (window.firebaseAuth && window.firebaseAuth.currentUser && window.firebaseAuth.currentUser.uid)
+         || null;
+  if (!uid) {
+    if (overlay) overlay.remove();
+    showToast('アプリの準備中です。少し待ってから再度お試しください', 3000);
+    return;
+  }
+  try {
+    var snap = await window.firebaseDb.ref('familyInvites/' + code).once('value');
+    var invite = snap.val();
+    if (!invite)                      { if (overlay) overlay.remove(); showToast('招待コードが見つかりません', 3000); localStorage.removeItem('sp_pending_fam_code'); return; }
+    if (invite.used)                  { if (overlay) overlay.remove(); showToast('この招待コードはすでに使用済みです', 3000); localStorage.removeItem('sp_pending_fam_code'); return; }
+    if (Date.now() > invite.expiresAt){ if (overlay) overlay.remove(); showToast('招待コードの有効期限が切れています', 3000); localStorage.removeItem('sp_pending_fam_code'); return; }
+    if (invite.ownerUid === uid)       { if (overlay) overlay.remove(); showToast('自分の招待コードには参加できません', 3000); localStorage.removeItem('sp_pending_fam_code'); return; }
+    var groupId = 'G-' + invite.ownerUid.slice(0, 8);
+    var groupRef = window.firebaseDb.ref('familyGroups/' + groupId);
+    var groupSnap = await groupRef.once('value');
+    var group = groupSnap.val() || { groupId: groupId, members: [], ownerUid: invite.ownerUid, createdAt: Date.now() };
+    if (!Array.isArray(group.members)) group.members = [];
+    if (group.members.indexOf(invite.ownerUid) < 0) group.members.push(invite.ownerUid);
+    if (group.members.indexOf(uid) < 0)              group.members.push(uid);
+    await groupRef.set(group);
+    await window.firebaseDb.ref('users/' + uid + '/familyGroupId').set(groupId);
+    await window.firebaseDb.ref('familyInvites/' + code + '/used').set(true);
+    // v23.9.281: グループIDをlocalStorageに保存してsyncパスを切り替え
+    currentFamilyGroupId = groupId;
+    try { localStorage.setItem('sp_family_group_id', groupId); } catch(_) {}
+    // v23.9.283: PUT（上書き）をやめてsyncFirebase（読み込みマージ）に変更
+    // → グループの既存データ（オーナーのデータ）を壊さずに取り込む
+    try { setTimeout(function(){ try { syncFirebase(); } catch(_){} }, 1500); } catch(_) {}
+    try { localStorage.removeItem('sp_pending_fam_code'); } catch(_) {}
+    if (overlay) overlay.remove();
+    showToast('家族グループに参加しました 🎉', 3500);
+  } catch(e) {
+    if (overlay) { overlay.style.pointerEvents = ''; overlay.remove(); }
+    showToast('参加に失敗しました。もう一度お試しください', 3000);
+  }
+}
+window.spAcceptFamilyInvite = spAcceptFamilyInvite;
+
 // ======= 家族招待 ここまで =======
 
 // サポート送信系
