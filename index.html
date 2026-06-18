@@ -13,9 +13,13 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.289  BUILD_ID=289
+APP_VERSION=v23.9.290  BUILD_ID=290
 
 === ChangeLog B-2 ===
+### v23.9.290
+- 仮説：v289でwindow.location.hrefに変更したがAndroid PWAスタンドアロンでsetTimeoutコールバック自体が実行されない
+- 真因：Android PWAスタンドアロンモードでは非同期処理完了後にsetTimeoutが実行されないケースがある（Webビューの制限）。また全リロードに依存しているためリロードが失敗すると画面が変わらない（SP-260618-RESET-005）
+- 修正方法：①リロードに依存せずリセット直後にrenderHistory()/renderStoreList()を呼んで画面を即座に空に更新②localStorage.setItem('sp_skip_sync_once','1')フラグを立てて次回起動時のsyncFirebase()をスキップ（Firebaseからデータが戻ってこない）③リロードも3秒後に試みる（SW/キャッシュ削除目的）が失敗しても画面はすでに空になっている
 ### v23.9.289
 - 仮説：「完全リセット完了。再起動します...」トーストは表示されるが自動再起動しない。またリセット後も古いデータが残る
 - 真因：①location.reload(true)のtrueパラメータがdeprecatedでAndroid PWAスタンドアロンで動作しない②Firebase SDK/fetchのawaitがネットワーク不安定時にタイムアウトなしでハングし後続のshowToast/setTimeoutまで到達しない（SP-260618-RESET-004）
@@ -206,8 +210,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.289";
-  const BUILD_ID    = "289";
+  const APP_VERSION = "v23.9.290";
+  const BUILD_ID    = "290";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -3928,11 +3932,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
     try {
       if (fbUrl) {
-        try { spDbg('[SYNC_FIREBASE_START]', {}); } catch (_) {}
-        await syncFirebase();
-        await renderHistory();
-        renderStoreList();
-        try { spDbg('[SYNC_FIREBASE_DONE]', {}); } catch (_) {}
+        // v23.9.290: リセット後フラグがある場合はsyncFirebaseをスキップ（Firebaseからデータが戻らないように）
+        if (localStorage.getItem('sp_skip_sync_once') === '1') {
+          localStorage.removeItem('sp_skip_sync_once');
+        } else {
+          try { spDbg('[SYNC_FIREBASE_START]', {}); } catch (_) {}
+          await syncFirebase();
+          await renderHistory();
+          renderStoreList();
+          try { spDbg('[SYNC_FIREBASE_DONE]', {}); } catch (_) {}
+        }
       }
     } catch (e) {
       try { spDbg('[BOOT_STEP_ERROR]', { step: 'syncFirebase', message: String(e && e.message), stack: String(e && e.stack) }); } catch (_) {}
@@ -14295,7 +14304,7 @@ function spVisibleTrace(tag, payload, cls) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // キャッシュクリア機能
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// v23.9.289: Firebaseタイムアウト追加・location.reload(true)→window.location.href変更
+// v23.9.290: リロード依存をやめ即座にrenderHistory()で画面を空に更新 + sp_skip_sync_onceフラグ
 async function clearAllCache() {
   var btn = document.getElementById('clearCacheBtn');
   if (!btn) return;
@@ -14308,14 +14317,13 @@ async function clearAllCache() {
     function _spWt(p) {
       return Promise.race([p, new Promise(function(_, rej){ setTimeout(function(){ rej(new Error('timeout')); }, 3000); })]);
     }
+    // 1. Firebase削除（バックグラウンド・失敗しても続行）
     try {
-      // 1. Firebase SDK: 家族グループメンバーシップ削除 + 個人パス削除
       var uid = (typeof currentAuthUid !== 'undefined') ? currentAuthUid : null;
       if (uid && typeof firebaseDb !== 'undefined' && firebaseDb) {
         try { await _spWt(firebaseDb.ref('users/' + uid + '/familyGroupId').remove()); } catch(_) {}
         try { await _spWt(firebaseDb.ref('users/' + uid + '/smart_price').remove()); } catch(_) {}
       }
-      // 2. Firebase REST API DELETE: 個人パス（AbortControllerで3秒タイムアウト）
       if (typeof fbUrl !== 'undefined' && fbUrl && uid && typeof scopeUrlByUser === 'function') {
         try {
           var personalUrl = scopeUrlByUser(fbUrl, uid);
@@ -14327,37 +14335,33 @@ async function clearAllCache() {
           }
         } catch(_) {}
       }
-      // 3. Service Worker削除
-      if ('serviceWorker' in navigator) {
-        try {
-          var regs = await navigator.serviceWorker.getRegistrations();
-          for (var r of regs) { try { await r.unregister(); } catch(_) {} }
-        } catch(_) {}
-      }
-      // 4. Cache Storage削除
-      if ('caches' in window) {
-        try {
-          var names = await caches.keys();
-          for (var n of names) { try { await caches.delete(n); } catch(_) {} }
-        } catch(_) {}
-      }
     } catch(_) {}
-    // 5. localStorage全削除
+    // 2. localStorageクリア + sp_skip_sync_onceフラグ（次回起動時にsyncFirebaseをスキップ）
     try {
       db.products = {};
       localStorage.removeItem('sp_family_group_id');
       if (typeof currentFamilyGroupId !== 'undefined') currentFamilyGroupId = null;
+      localStorage.setItem('sp_skip_sync_once', '1');
       saveLocalOnly();
     } catch(_) {}
-    showToast('完全リセット完了。再起動します...', 2000);
-    // location.reload(true)はAndroid PWAで動作しないためwindow.location.href変更（キャッシュバスト付き）
-    setTimeout(function() {
-      try {
-        window.location.href = window.location.origin + window.location.pathname + '?reset=' + (+new Date());
-      } catch(_) {
-        try { window.location.reload(); } catch(__) {}
+    // 3. 画面を即座に空に更新（リロード不要・Android PWAでも確実に動く）
+    try { await renderHistory(); } catch(_) {}
+    try { if (typeof renderStoreList === 'function') renderStoreList(); } catch(_) {}
+    showToast('✅ リセット完了！', 3000);
+    // 4. SW/キャッシュ削除 + リロードを試みる（失敗しても画面はすでに空）
+    try {
+      if ('serviceWorker' in navigator) {
+        var regs = await navigator.serviceWorker.getRegistrations();
+        for (var r of regs) { try { await r.unregister(); } catch(_) {} }
       }
-    }, 1800);
+      if ('caches' in window) {
+        var names = await caches.keys();
+        for (var n of names) { try { await caches.delete(n); } catch(_) {} }
+      }
+    } catch(_) {}
+    try {
+      window.location.href = window.location.origin + window.location.pathname + '?reset=' + (+new Date());
+    } catch(_) {}
   } else {
     btn.dataset.confirming = '1';
     btn.textContent = '⚠️ もう一度タップで実行（データ全削除）';
@@ -17161,7 +17165,7 @@ window.spShareFamilyId = spShareFamilyId;
 <script>
 /* === 未定義関数の補完 (v22.7 fix) === */
 
-// v23.9.289: Firebaseタイムアウト追加・location.reload()→window.location.href変更
+// v23.9.290: リロード依存をやめ即座にrenderHistory()で画面を空に更新 + sp_skip_sync_onceフラグ
 function spResetLocalData() {
   try {
     var btn = document.getElementById('resetDataBtn');
@@ -17172,18 +17176,16 @@ function spResetLocalData() {
       btn.className = 'btn btn-secondary w-100 py-2 fw-bold mb-2';
       btn.disabled = true;
       (async function() {
-        // 3秒タイムアウト付きPromiseラッパー（Firebase/fetchハング防止）
         function _spWt2(p) {
           return Promise.race([p, new Promise(function(_, rej){ setTimeout(function(){ rej(new Error('timeout')); }, 3000); })]);
         }
+        // 1. Firebase削除（バックグラウンド・失敗しても続行）
         try {
           var uid = (typeof currentAuthUid !== 'undefined') ? currentAuthUid : null;
-          // 1. Firebase SDK: 家族グループメンバーシップ削除 + 個人パス削除
           if (uid && typeof firebaseDb !== 'undefined' && firebaseDb) {
             try { await _spWt2(firebaseDb.ref('users/' + uid + '/familyGroupId').remove()); } catch(_) {}
             try { await _spWt2(firebaseDb.ref('users/' + uid + '/smart_price').remove()); } catch(_) {}
           }
-          // 2. Firebase REST API DELETE: 個人パス（AbortControllerで3秒タイムアウト）
           if (typeof fbUrl !== 'undefined' && fbUrl && uid && typeof scopeUrlByUser === 'function') {
             try {
               var personalUrl = scopeUrlByUser(fbUrl, uid);
@@ -17196,26 +17198,25 @@ function spResetLocalData() {
             } catch(_) {}
           }
         } catch(_) {}
-        // 3. localStorageクリア（グループIDも削除）
+        // 2. localStorageクリア + sp_skip_sync_onceフラグ
         try {
           db.products = {};
           try { localStorage.removeItem('sp_family_group_id'); } catch(_) {}
           if (typeof currentFamilyGroupId !== 'undefined') currentFamilyGroupId = null;
+          localStorage.setItem('sp_skip_sync_once', '1');
           saveLocalOnly();
         } catch(_) {}
-        btn.textContent = '✅ リセット完了。再起動します...';
-        showToast('このスマホのデータをリセットしました。再起動します...', 2000);
-        // location.reload()をwindow.location.href変更（Android PWA対応・キャッシュバスト付き）
-        setTimeout(function() {
-          try {
-            window.location.href = window.location.origin + window.location.pathname + '?reset=' + (+new Date());
-          } catch(_) {
-            try { window.location.reload(); } catch(__) {}
-          }
-        }, 1800);
+        // 3. 画面を即座に空に更新（リロード不要）
+        try { await renderHistory(); } catch(_) {}
+        try { if (typeof renderStoreList === 'function') renderStoreList(); } catch(_) {}
+        btn.textContent = '✅ リセット完了！';
+        showToast('✅ このスマホのデータをリセットしました！', 3000);
+        // 4. リロードを試みる（失敗しても画面はすでに空）
+        try {
+          window.location.href = window.location.origin + window.location.pathname + '?reset=' + (+new Date());
+        } catch(_) {}
       })();
     } else {
-      // 1回目のタップ → 確認状態に変化
       btn.dataset.confirming = '1';
       btn.textContent = '⚠️ もう一度タップで実行（元に戻せません）';
       btn.className = 'btn btn-danger w-100 py-2 fw-bold mb-2';
