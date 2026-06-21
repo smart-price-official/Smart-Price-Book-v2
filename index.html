@@ -48,9 +48,13 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.299  BUILD_ID=299
+APP_VERSION=v23.9.300  BUILD_ID=300
 
 === ChangeLog B-2 ===
+### v23.9.300
+- 仮説：回復コード設定の成否がユーザーに伝わらず、保存されたか不明なままになっている
+- 真因：setRecoveryCode()の成功/失敗表示が未実装、Firebase保存確認がない、同期状態が見えない
+- 修正方法：回復コード設定結果の明示・Firebase保存確認・最終バックアップ日時表示・クラウド同期状態表示を追加
 ### v23.9.299
 - 仮説：v298ではバックアップ失敗がconsole.warnのみで、バックアップの件数・schema情報も残らない
 - 真因：backupPurchases()がpurchases.jsonのみ保存し、失敗時のユーザー通知と検証メタ情報が不足していた
@@ -277,8 +281,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.299";
-  const BUILD_ID    = "299";
+  const APP_VERSION = "v23.9.300";
+  const BUILD_ID    = "300";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -1459,6 +1463,7 @@ document.addEventListener('DOMContentLoaded', function() {
       <button type="button" class="btn btn-sm btn-primary py-1 px-2" style="font-size:0.78rem; white-space:nowrap;" onclick="openAccountFromBanner()">登録する</button>
       <button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2" style="font-size:0.78rem; line-height:1;" onclick="dismissStartupBanner()" aria-label="閉じる">×</button>
     </div>
+    <div id="cloudSyncStatusBanner" class="mb-3 p-2" style="display:none; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:8px; font-size:0.82rem; line-height:1.4;"></div>
     <div class="row g-2 mb-4">
       <div class="col-7"><button id="scanBtnTop" class="btn sp-btn-primary w-100 py-3 rounded-4 shadow" onclick="startScanner()"><i class="bi bi-upc-scan fs-1"></i><br>スキャン</button></div>
       <div class="col-5"><button class="btn sp-btn-secondary w-100 py-3 rounded-4 shadow" onclick="window.openBarcodeManual && window.openBarcodeManual()"><i class="bi bi-keyboard fs-1"></i><br>手入力</button></div>
@@ -2147,13 +2152,14 @@ document.addEventListener('DOMContentLoaded', function() {
     <button id="webBtn" class="btn btn-outline-secondary w-100 py-2 fw-bold mb-2" onclick="openWebModal()">ブラウザ版へ（URL表示）</button>
     <button id="exportBackupBtn" class="btn btn-outline-secondary w-100 py-2 fw-bold mb-2" onclick="exportBackup()">💾 バックアップ出力（JSON保存）</button>
     <button id="importBackupBtn" class="btn btn-outline-secondary w-100 py-2 fw-bold mb-2" onclick="importBackup()">📂 バックアップ読み込む</button>
+    <div class="small text-secondary mb-2" id="lastBackupStatus">最終バックアップ：確認中...</div>
     <!-- v23.9.297 Step2: 回復コード設定UI -->
     <div class="border rounded p-2 mb-2" style="border-color:#555 !important;">
       <div class="small fw-bold mb-1">🔑 回復コード（データ復元用）</div>
       <div class="small text-secondary mb-2" id="recoveryCodeStatus">読み込み中...</div>
       <div class="input-group input-group-sm mb-1">
         <input type="text" id="recoveryCodeInput" class="form-control" placeholder="4〜8文字のコード（例：nabe1234）" maxlength="16" style="font-size:0.9rem;">
-        <button class="btn btn-outline-primary btn-sm" onclick="onSetRecoveryCode()">設定</button>
+        <button id="recoveryCodeSetBtn" class="btn btn-outline-primary btn-sm" onclick="onSetRecoveryCode()">設定</button>
       </div>
       <div class="small text-secondary" style="font-size:0.75rem;">このコードを覚えておくとデータ消去後も復元できます</div>
     </div>
@@ -3928,6 +3934,7 @@ document.addEventListener('DOMContentLoaded', function() {
       try { spDbg('[LOAD_LOCAL_START]', {}); } catch (_) {}
       await loadLocal();
       try { spDbg('[LOAD_LOCAL_DONE]', { productCount: Object.keys((db && db.products) || {}).length }); } catch (_) {}
+      try { if (typeof updateCloudSyncStatus === 'function') updateCloudSyncStatus(); } catch (_) {}
     } catch (e) {
       try { spDbg('[BOOT_STEP_ERROR]', { step: 'loadLocal', message: String(e && e.message), stack: String(e && e.stack) }); } catch (_) {}
     }
@@ -3936,6 +3943,7 @@ document.addEventListener('DOMContentLoaded', function() {
       try { spDbg('[NORMALIZE_DB_START]', {}); } catch (_) {}
       db = normalizeDb(db);
       try { spDbg('[NORMALIZE_DB_DONE]', { productCount: Object.keys((db && db.products) || {}).length }); } catch (_) {}
+      try { if (typeof updateCloudSyncStatus === 'function') updateCloudSyncStatus(); } catch (_) {}
     } catch (e) {
       try { spDbg('[BOOT_STEP_ERROR]', { step: 'normalizeDb', message: String(e && e.message) }); } catch (_) {}
     }
@@ -4028,6 +4036,7 @@ document.addEventListener('DOMContentLoaded', function() {
     try {
       try { spDbg('[RENDER_HISTORY_START_BOOT]', {}); } catch (_) {}
       await renderHistory();
+      try { if (typeof updateCloudSyncStatus === 'function') updateCloudSyncStatus(); } catch (_) {}
       try { spDbg('[RENDER_HISTORY_DONE_BOOT]', {}); } catch (_) {}
     } catch (e) {
       try { spDbg('[BOOT_STEP_ERROR]', { step: 'renderHistory', message: String(e && e.message), stack: String(e && e.stack) }); } catch (_) {}
@@ -5317,12 +5326,16 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         localStorage.setItem('sp_last_backup_count', String(meta.recordCount));
         localStorage.removeItem('sp_last_backup_error');
         localStorage.removeItem('sp_last_backup_error_at');
+        try { if (typeof updateLastBackupStatus === 'function') updateLastBackupStatus(); } catch (_) {}
+        try { if (typeof updateCloudSyncStatus === 'function') updateCloudSyncStatus(); } catch (_) {}
         console.log('[backup]', today, Object.keys(payload).length + '件 saved → backups/' + uid.slice(0,12) + '.../' + today + ' + latest');
       }
     } catch (e) {
       const msg = e && e.message ? e.message : String(e);
       localStorage.setItem('sp_last_backup_error', msg);
       localStorage.setItem('sp_last_backup_error_at', new Date().toISOString());
+      try { if (typeof updateLastBackupStatus === 'function') updateLastBackupStatus(); } catch (_) {}
+      try { if (typeof updateCloudSyncStatus === 'function') updateCloudSyncStatus(); } catch (_) {}
       console.warn('[backup] failed:', msg);
       showToast('⚠️ バックアップに失敗しました。通信状態を確認してください。', 5000);
     }
@@ -5346,6 +5359,12 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ uid: uid, created_at: new Date().toISOString() })
     });
+    // v23.9.300 P0-2: Firebaseへ保存できたか読み返して確認する
+    const verify = await fetch(codeUrl);
+    const saved = await verify.json();
+    if (!saved || saved.uid !== uid) {
+      throw new Error('保存確認失敗');
+    }
     localStorage.setItem('sp_recovery_code', code);
   }
 
@@ -13577,8 +13596,22 @@ function spVisibleTrace(tag, payload, cls) {
   window.startMigration = startMigration;
 
   // v23.9.297 Step2: 回復コードUI操作
+  function maskRecoveryCode(code) {
+    const s = String(code || '');
+    if (!s) return '';
+    return '****' + s.slice(-2);
+  }
+
+  function setRecoveryButtonBusy(isBusy) {
+    const btn = document.getElementById('recoveryCodeSetBtn');
+    if (!btn) return;
+    btn.disabled = !!isBusy;
+    btn.textContent = isBusy ? '設定中...' : '設定';
+  }
+
   async function onSetRecoveryCode() {
     const input = document.getElementById('recoveryCodeInput');
+    const status = document.getElementById('recoveryCodeStatus');
     const code = (input ? input.value : '').trim();
     if (!code || code.length < 4) {
       showToast('4文字以上のコードを入力してください', 4000);
@@ -13586,12 +13619,23 @@ function spVisibleTrace(tag, payload, cls) {
     }
     const uid = getOrCreateUserId();
     try {
+      setRecoveryButtonBusy(true);
+      if (status) {
+        status.textContent = '回復コードを設定中...';
+        status.style.color = '#ffc107';
+      }
       await setRecoveryCode(code, uid);
       localStorage.setItem('sp_recovery_code', code);
-      showToast('回復コードを設定しました: ' + code, 5000);
+      showToast('✅ 回復コードを設定しました', 5000);
       updateRecoveryCodeStatus();
     } catch (e) {
-      showToast('エラー: ' + e.message, 6000);
+      showToast('⚠️ 回復コードの保存に失敗しました。通信状態を確認してください。', 6000);
+      if (status) {
+        status.textContent = '保存失敗: ' + (e && e.message ? e.message : String(e));
+        status.style.color = '#dc3545';
+      }
+    } finally {
+      setRecoveryButtonBusy(false);
     }
   }
   window.onSetRecoveryCode = onSetRecoveryCode;
@@ -13601,7 +13645,7 @@ function spVisibleTrace(tag, payload, cls) {
     if (!el) return;
     const code = localStorage.getItem('sp_recovery_code') || '';
     if (code) {
-      el.textContent = '設定済み: ' + code;
+      el.textContent = '設定済み: ' + maskRecoveryCode(code);
       el.style.color = '#4caf50';
       const input = document.getElementById('recoveryCodeInput');
       if (input) input.value = code;
@@ -13611,6 +13655,69 @@ function spVisibleTrace(tag, payload, cls) {
     }
   }
   window.updateRecoveryCodeStatus = updateRecoveryCodeStatus;
+
+  function formatBackupDate(iso) {
+    if (!iso) return '';
+    try {
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return '';
+      const pad = n => String(n).padStart(2, '0');
+      return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function updateLastBackupStatus() {
+    const el = document.getElementById('lastBackupStatus');
+    if (!el) return;
+    const err = localStorage.getItem('sp_last_backup_error') || '';
+    const errAt = formatBackupDate(localStorage.getItem('sp_last_backup_error_at') || '');
+    if (err) {
+      el.textContent = '最終バックアップ：失敗' + (errAt ? '（' + errAt + '）' : '');
+      el.style.color = '#dc3545';
+      return;
+    }
+    const at = formatBackupDate(localStorage.getItem('sp_last_backup_at') || '');
+    const count = localStorage.getItem('sp_last_backup_count') || '';
+    if (at) {
+      el.textContent = '最終バックアップ：' + at + (count ? '（' + count + '件）' : '');
+      el.style.color = '#6c757d';
+    } else {
+      el.textContent = '最終バックアップ：未実施';
+      el.style.color = '#6c757d';
+    }
+  }
+  window.updateLastBackupStatus = updateLastBackupStatus;
+
+  function isCloudConfigured() {
+    const uid = (localStorage.getItem('sp_user_id') || '').trim();
+    const linked = (localStorage.getItem('sp_linked_account_uid') || '').trim();
+    const code = (localStorage.getItem('sp_recovery_code') || '').trim();
+    const url = (localStorage.getItem('smartPriceFirebaseUrl') || '').trim() ||
+                (typeof FIREBASE_CONFIG !== 'undefined' && FIREBASE_CONFIG.databaseURL ? FIREBASE_CONFIG.databaseURL : '');
+    return !!(url && (linked || code || (uid && uid.startsWith('acct_'))));
+  }
+
+  function updateCloudSyncStatus() {
+    const el = document.getElementById('cloudSyncStatusBanner');
+    if (!el) return;
+    const hasProducts = !!(db && db.products && Object.keys(db.products).length > 0);
+    if (isCloudConfigured()) {
+      el.textContent = 'クラウド同期中';
+      el.style.display = 'block';
+      el.style.color = '#4caf50';
+      return;
+    }
+    if (hasProducts) {
+      el.textContent = 'この端末の履歴を表示中　クラウド同期未設定';
+      el.style.display = 'block';
+      el.style.color = '#ffc107';
+      return;
+    }
+    el.style.display = 'none';
+  }
+  window.updateCloudSyncStatus = updateCloudSyncStatus;
 </script>
 
 <script>
@@ -13814,6 +13921,8 @@ function spVisibleTrace(tag, payload, cls) {
     try{ if(typeof window.setHeaderVersionBadge==='function') window.setHeaderVersionBadge(); }catch(e){}
     // v23.9.297 Step2: 設定画面を開くたびにrecoveryCodeの状態を更新
     try { if (typeof window.updateRecoveryCodeStatus === 'function') window.updateRecoveryCodeStatus(); } catch(e) {}
+    try { if (typeof window.updateLastBackupStatus === 'function') window.updateLastBackupStatus(); } catch(e) {}
+    try { if (typeof window.updateCloudSyncStatus === 'function') window.updateCloudSyncStatus(); } catch(e) {}
     // v23.9.176 SP-260601-009: 個人ID表示は public_code（8桁・XXXX-XXXX）に統一
     //   旧 getDeviceId()（dev_ プレフィックス長UUID）は廃止し、4 spans + family-my-id を一括更新
     //   未ログイン時は「ログインすると個人IDが発行されます」を表示
