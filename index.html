@@ -48,9 +48,13 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.297  BUILD_ID=297
+APP_VERSION=v23.9.298  BUILD_ID=298
 
 === ChangeLog B-2 ===
+### v23.9.298
+- 仮説：v297はhardreset事故防止としては前進したがデータ消失防止として未完成
+- 真因：startMigrationがクラウド空時にPUTしない／PUT失敗が無視される／バックアップがsyncFirebase成功後のみ
+- 修正方法：①startMigrationクラウド空でもPUT②PUT失敗トースト③localStorage読込後バックアップ④latest追加⑤recoveryCode購入履歴復元導線追加
 ### v23.9.297
 - 仮説：localStorageが消えるとUIDと購入履歴が全消滅する
 - 真因：localStorageを正本としていたためlocalStorage消去でデータ復元不能になる
@@ -269,8 +273,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.297";
-  const BUILD_ID    = "297";
+  const APP_VERSION = "v23.9.298";
+  const BUILD_ID    = "298";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -3932,6 +3936,13 @@ document.addEventListener('DOMContentLoaded', function() {
       try { spDbg('[BOOT_STEP_ERROR]', { step: 'normalizeDb', message: String(e && e.message) }); } catch (_) {}
     }
 
+    // v23.9.298 P0-3: localStorage読込完了時にも購入履歴を退避（クラウド同期失敗時の保険）
+    try {
+      if (db && db.products && Object.keys(db.products).length > 0 && typeof backupPurchases === 'function') {
+        backupPurchases();
+      }
+    } catch (_bpLocal) {}
+
     // v23.9.297 Step3: recoveryCodeによるUID復元（localStorageが空のとき）
     try {
       const _savedUid = (localStorage.getItem('sp_user_id') || '').trim();
@@ -4949,7 +4960,9 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     } catch(e){
       // v23.9.166 SP-250529-002: 動作ログ（Firebase PUT 失敗）
       try { if (typeof window.spOpLog === 'function') window.spOpLog('fb', { type: 'PUT', result: 'ng', error: (e && e.message ? e.message : String(e)) }); } catch (_) {}
-      if (isDebug()) showToast(`PUT失敗: ${e.message}`, 8000);
+      // v23.9.298 P0-2: PUT失敗をサイレントにしない
+      showToast('⚠️ クラウドへの保存に失敗しました。Wi-Fiを確認してください。', 4000);
+      if (isDebug()) console.error('[Firebase PUT failed]', e);
     }
   }
 
@@ -5245,17 +5258,28 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       if (!base) return;
       // 1日1回のみ実行
       const today = new Date().toISOString().slice(0, 10);
-      if (localStorage.getItem('sp_last_backup_date') === today) return;
-      const backupUrl = base.replace(/\/+$/, '') + '/backups/' + encodeURIComponent(uid) + '/' + today + '/purchases.json';
+      const alreadyBackedUpToday = localStorage.getItem('sp_last_backup_date') === today;
+      const backupRoot = base.replace(/\/+$/, '') + '/backups/' + encodeURIComponent(uid);
+      const backupUrl = backupRoot + '/' + today + '/purchases.json';
+      const latestUrl = backupRoot + '/latest/purchases.json';
       const payload = (typeof stripForCloud === 'function' ? stripForCloud(db) : db).products || {};
-      const res = await fetch(backupUrl, {
+      let dateOk = alreadyBackedUpToday;
+      if (!alreadyBackedUpToday) {
+        const res = await fetch(backupUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        dateOk = !!(res && res.ok);
+      }
+      const latestRes = await fetch(latestUrl, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      if (res.ok) {
+      if (dateOk && latestRes && latestRes.ok) {
         localStorage.setItem('sp_last_backup_date', today);
-        console.log('[backup]', today, Object.keys(payload).length + '件 saved → backups/' + uid.slice(0,12) + '.../' + today);
+        console.log('[backup]', today, Object.keys(payload).length + '件 saved → backups/' + uid.slice(0,12) + '.../' + today + ' + latest');
       }
     } catch (e) {
       console.warn('[backup] failed:', e.message);
@@ -5292,7 +5316,25 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     try {
       const res = await fetch(codeUrl);
       const data = await res.json();
-      return (data && data.uid) ? data.uid : null;
+      const uid = (data && data.uid) ? data.uid : null;
+      if (!uid) return null;
+
+      // v23.9.298 P0-5: UID復元後、latestバックアップから購入履歴も復元する
+      try {
+        const latestUrl = base.replace(/\/+$/, '') + '/backups/' + encodeURIComponent(uid) + '/latest/purchases.json';
+        const backupRes = await fetch(latestUrl);
+        if (backupRes && backupRes.ok) {
+          const backup = await backupRes.json();
+          if (backup && typeof backup === 'object' && Object.keys(backup).length > 0) {
+            db = mergeDb(db || {}, { products: backup });
+            saveLocalOnly();
+            try { await renderHistory(); renderStoreList(); } catch (_renderRecovery) {}
+            showToast('✅ 購入履歴を復元しました', 3000);
+          }
+        }
+      } catch (_backupRecoverErr) {}
+
+      return uid;
     } catch (e) { return null; }
   }
   window.setRecoveryCode = setRecoveryCode;
@@ -13450,23 +13492,33 @@ function spVisibleTrace(tag, payload, cls) {
       // GET（クラウドを取得してマージ）
       const res = await fetch(targetUrl);
       const cloud = await res.json();
-      if (cloud && cloud.products) {
-        db = mergeDb(db, cloud);
+      const hasLocalData = !!(db && db.products && Object.keys(db.products).length > 0);
+      const hasCloudData = !!(cloud && cloud.products);
+      if (hasCloudData || hasLocalData) {
+        if (hasCloudData) {
+          db = mergeDb(db, cloud);
+        }
         localStorage.setItem('smartPriceFirebaseUrl', base);
         fbUrl = base;
         saveLocalOnly();
-        // PUT（ローカルデータをクラウドに書き戻し）
+        // v23.9.298 P0-1/P0-2: クラウド空・ローカルありでも必ずPUTし、失敗は必ず通知する
         try {
           const payload = typeof stripForCloud === 'function' ? stripForCloud(db) : db;
-          await fetch(targetUrl, {
+          const putRes = await fetch(targetUrl, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
           });
-        } catch (_putErr) { /* PUT失敗は無視（GETで取得済みなので継続）*/ }
+          if (!putRes || !putRes.ok) {
+            throw new Error('HTTP ' + (putRes ? putRes.status : 'no-response'));
+          }
+        } catch (_putErr) {
+          showToast('⚠️ クラウドへの保存に失敗しました。Wi-Fiを確認してください。', 4000);
+          throw _putErr;
+        }
         await renderHistory();
         renderStoreList();
-        showToast('同期完了！', 5000);
+        showToast(hasCloudData ? '同期完了！' : 'クラウドへ初回保存しました', 5000);
         if (btn) { btn.disabled = false; btn.innerText = "設定保存と同期"; }
         if (typeof window.SmartPriceModal !== 'undefined' && window.SmartPriceModal.close) window.SmartPriceModal.close();
         showHome();
