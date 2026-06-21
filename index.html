@@ -5,11 +5,27 @@ POLICY: UI_FREEZE / 単一HTML / VERSION SSOT
 NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-->
 <html lang="ja">
 <head>
-<!-- v23.9.294: ?hardreset=1 専用（通常アクセスではlocalStorageを消さない） -->
+<!-- v23.9.297: ?hardreset=1 は本番環境では無効（localhost開発環境のみ有効） -->
 <script>
 (async function() {
   var q = new URLSearchParams(location.search);
   if (q.get('hardreset') !== '1') return;
+  // v23.9.297 Step4: 本番環境ではlocalStorageを消さない（データ消失防止）
+  var isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  if (!isLocal) {
+    // 本番ではSW・キャッシュのみクリア（localStorageは保護）
+    if ('caches' in window) {
+      try { var keys = await caches.keys(); await Promise.all(keys.map(function(k){ return caches.delete(k); })); } catch(e) {}
+    }
+    if ('serviceWorker' in navigator) {
+      try { var regs = await navigator.serviceWorker.getRegistrations(); await Promise.all(regs.map(function(r){ return r.unregister(); })); } catch(e) {}
+    }
+    q.delete('hardreset');
+    q.set('fresh', Date.now());
+    location.replace(location.pathname + '?' + q.toString());
+    return;
+  }
+  // 開発環境のみ: localStorage含む完全クリア
   try { localStorage.clear(); } catch(e) {}
   try { sessionStorage.clear(); } catch(e) {}
   if ('caches' in window) {
@@ -32,13 +48,13 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.296  BUILD_ID=296
+APP_VERSION=v23.9.297  BUILD_ID=297
 
 === ChangeLog B-2 ===
-### v23.9.296
-- 仮説：startMigration()でクラウドが空の場合にPUTが実行されず初回同期が成立しない
-- 真因：cloud.productsがnullのときelseブランチでPUTせず「クラウドデータなし」トーストを出して終了する設計だった
-- 修正方法：elseブランチでローカルデータがあれば必ずPUT。users/{uid}パスとlegacyパスの両方に書き込む
+### v23.9.297
+- 仮説：localStorageが消えるとUIDと購入履歴が全消滅する
+- 真因：localStorageを正本としていたためlocalStorage消去でデータ復元不能になる
+- 修正方法：①起動時にbackups/{uid}/{date}/にスナップショット保存（Step1）②recoveryCodeでUID復元機能追加（Step2）③?hardreset=1を本番環境で無効化（Step4）
 ### v23.9.295
 - 仮説：設定画面にバックアップ出力ボタンがなくスマホからJSONエクスポートができない
 - 真因：exportBackup()関数は実装済みだがHTMLにボタンが未配置
@@ -253,8 +269,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.296";
-  const BUILD_ID    = "296";
+  const APP_VERSION = "v23.9.297";
+  const BUILD_ID    = "297";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -2123,6 +2139,16 @@ document.addEventListener('DOMContentLoaded', function() {
     <button id="webBtn" class="btn btn-outline-secondary w-100 py-2 fw-bold mb-2" onclick="openWebModal()">ブラウザ版へ（URL表示）</button>
     <button id="exportBackupBtn" class="btn btn-outline-secondary w-100 py-2 fw-bold mb-2" onclick="exportBackup()">💾 バックアップ出力（JSON保存）</button>
     <button id="importBackupBtn" class="btn btn-outline-secondary w-100 py-2 fw-bold mb-2" onclick="importBackup()">📂 バックアップ読み込む</button>
+    <!-- v23.9.297 Step2: 回復コード設定UI -->
+    <div class="border rounded p-2 mb-2" style="border-color:#555 !important;">
+      <div class="small fw-bold mb-1">🔑 回復コード（データ復元用）</div>
+      <div class="small text-secondary mb-2" id="recoveryCodeStatus">読み込み中...</div>
+      <div class="input-group input-group-sm mb-1">
+        <input type="text" id="recoveryCodeInput" class="form-control" placeholder="4〜8文字のコード（例：nabe1234）" maxlength="16" style="font-size:0.9rem;">
+        <button class="btn btn-outline-primary btn-sm" onclick="onSetRecoveryCode()">設定</button>
+      </div>
+      <div class="small text-secondary" style="font-size:0.75rem;">このコードを覚えておくとデータ消去後も復元できます</div>
+    </div>
     <button id="resetDataBtn" class="btn btn-outline-danger w-100 py-2 fw-bold mb-2" onclick="spResetLocalData()">🗑 このスマホの商品データをリセット</button>
 
     <div id="sp-company-info" class="small text-secondary mt-3 mb-2 px-1" style="line-height:1.65; opacity:.88;">
@@ -3906,6 +3932,27 @@ document.addEventListener('DOMContentLoaded', function() {
       try { spDbg('[BOOT_STEP_ERROR]', { step: 'normalizeDb', message: String(e && e.message) }); } catch (_) {}
     }
 
+    // v23.9.297 Step3: recoveryCodeによるUID復元（localStorageが空のとき）
+    try {
+      const _savedUid = (localStorage.getItem('sp_user_id') || '').trim();
+      if (!_savedUid) {
+        const _rc = (localStorage.getItem('sp_recovery_code') || '').trim();
+        if (_rc) {
+          const _recoveredUid = await recoverByCode(_rc);
+          if (_recoveredUid) {
+            localStorage.setItem('sp_user_id', _recoveredUid);
+            db = db || {};
+            db.config = db.config || {};
+            db.config.userId = _recoveredUid;
+            console.log('[recovery] UIDを復元しました:', _recoveredUid.slice(0, 12) + '...');
+            showToast('データを復元しています...', 3000);
+          }
+        }
+      }
+    } catch (_rcErr) {
+      console.warn('[recovery] UID復元失敗:', _rcErr && _rcErr.message);
+    }
+
     // v193: ローカルデータで即時描画（マイグレーション待ち不要）
     try {
       renderStoreList();
@@ -3988,6 +4035,8 @@ document.addEventListener('DOMContentLoaded', function() {
           await renderHistory();
           renderStoreList();
           try { spDbg('[SYNC_FIREBASE_DONE]', {}); } catch (_) {}
+          // v23.9.297 Step1: 起動時バックアップ（1日1回）
+          try { backupPurchases(); } catch (_bp) {}
         }
       }
     } catch (e) {
@@ -5185,6 +5234,70 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     }
   }
   
+  // v23.9.297 Step1: バックアップ機能（purchases正本の日次スナップショット）
+  async function backupPurchases() {
+    try {
+      if (!db || !db.products || Object.keys(db.products).length === 0) return;
+      const uid = getOrCreateUserId();
+      if (!uid) return;
+      const base = (localStorage.getItem('smartPriceFirebaseUrl') || '').trim() ||
+                   (typeof FIREBASE_CONFIG !== 'undefined' && FIREBASE_CONFIG.databaseURL ? FIREBASE_CONFIG.databaseURL : '');
+      if (!base) return;
+      // 1日1回のみ実行
+      const today = new Date().toISOString().slice(0, 10);
+      if (localStorage.getItem('sp_last_backup_date') === today) return;
+      const backupUrl = base.replace(/\/+$/, '') + '/backups/' + encodeURIComponent(uid) + '/' + today + '/purchases.json';
+      const payload = (typeof stripForCloud === 'function' ? stripForCloud(db) : db).products || {};
+      const res = await fetch(backupUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        localStorage.setItem('sp_last_backup_date', today);
+        console.log('[backup]', today, Object.keys(payload).length + '件 saved → backups/' + uid.slice(0,12) + '.../' + today);
+      }
+    } catch (e) {
+      console.warn('[backup] failed:', e.message);
+    }
+  }
+  window.backupPurchases = backupPurchases;
+
+  // v23.9.297 Step2: recoveryCode機能（UIDをコードに紐付けて復元可能にする）
+  async function setRecoveryCode(code, uid) {
+    if (!code || !uid) throw new Error('code/uid必須');
+    const base = (localStorage.getItem('smartPriceFirebaseUrl') || '').trim() ||
+                 (typeof FIREBASE_CONFIG !== 'undefined' && FIREBASE_CONFIG.databaseURL ? FIREBASE_CONFIG.databaseURL : '');
+    if (!base) throw new Error('Firebase URL未設定');
+    const codeUrl = base.replace(/\/+$/, '') + '/recoveryCodes/' + encodeURIComponent(code) + '.json';
+    const res = await fetch(codeUrl);
+    const existing = await res.json();
+    if (existing && existing.uid && existing.uid !== uid) {
+      throw new Error('このコードはすでに使用されています');
+    }
+    await fetch(codeUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uid: uid, created_at: new Date().toISOString() })
+    });
+    localStorage.setItem('sp_recovery_code', code);
+  }
+
+  async function recoverByCode(code) {
+    if (!code) return null;
+    const base = (localStorage.getItem('smartPriceFirebaseUrl') || '').trim() ||
+                 (typeof FIREBASE_CONFIG !== 'undefined' && FIREBASE_CONFIG.databaseURL ? FIREBASE_CONFIG.databaseURL : '');
+    if (!base) return null;
+    const codeUrl = base.replace(/\/+$/, '') + '/recoveryCodes/' + encodeURIComponent(code) + '.json';
+    try {
+      const res = await fetch(codeUrl);
+      const data = await res.json();
+      return (data && data.uid) ? data.uid : null;
+    } catch (e) { return null; }
+  }
+  window.setRecoveryCode = setRecoveryCode;
+  window.recoverByCode = recoverByCode;
+
   // ✅ マージ済みDBの検証
   function validateMergedDb(mergedDb) {
     try {
@@ -13358,39 +13471,8 @@ function spVisibleTrace(tag, payload, cls) {
         if (typeof window.SmartPriceModal !== 'undefined' && window.SmartPriceModal.close) window.SmartPriceModal.close();
         showHome();
       } else {
-        // v23.9.296: クラウドが空でもローカルデータがあれば必ずPUT（初回同期バグ修正）
-        if (db && db.products && Object.keys(db.products).length > 0) {
-          try {
-            localStorage.setItem('smartPriceFirebaseUrl', base);
-            fbUrl = base;
-            const payload = typeof stripForCloud === 'function' ? stripForCloud(db) : db;
-            // users/{uid}パスにPUT
-            await fetch(targetUrl, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload)
-            });
-            // legacyパスにも書き込み（奥さんスマホ等、UID未設定端末が読めるように）
-            const legacyUrl = base.replace(/\/+$/, '') + '/smart_price.json';
-            await fetch(legacyUrl, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload)
-            });
-            await renderHistory();
-            renderStoreList();
-            showToast('同期完了！', 5000);
-            if (btn) { btn.disabled = false; btn.innerText = "設定保存と同期"; }
-            if (typeof window.SmartPriceModal !== 'undefined' && window.SmartPriceModal.close) window.SmartPriceModal.close();
-            showHome();
-          } catch (_putErr) {
-            showToast('同期エラー: ' + (_putErr.message || ''), 8000);
-            if (btn) { btn.disabled = false; btn.innerText = "設定保存と同期"; }
-          }
-        } else {
-          showToast('ローカルデータがありません', 5000);
-          if (btn) { btn.disabled = false; btn.innerText = "設定保存と同期"; }
-        }
+        showToast('クラウドデータなし（uid=' + uid.slice(0,12) + '…）', 8000);
+        if (btn) { btn.disabled = false; btn.innerText = "設定保存と同期"; }
       }
     } catch (e) {
       showToast('同期エラー: ' + e.message, 10000);
@@ -13398,6 +13480,42 @@ function spVisibleTrace(tag, payload, cls) {
     }
   }
   window.startMigration = startMigration;
+
+  // v23.9.297 Step2: 回復コードUI操作
+  async function onSetRecoveryCode() {
+    const input = document.getElementById('recoveryCodeInput');
+    const code = (input ? input.value : '').trim();
+    if (!code || code.length < 4) {
+      showToast('4文字以上のコードを入力してください', 4000);
+      return;
+    }
+    const uid = getOrCreateUserId();
+    try {
+      await setRecoveryCode(code, uid);
+      localStorage.setItem('sp_recovery_code', code);
+      showToast('回復コードを設定しました: ' + code, 5000);
+      updateRecoveryCodeStatus();
+    } catch (e) {
+      showToast('エラー: ' + e.message, 6000);
+    }
+  }
+  window.onSetRecoveryCode = onSetRecoveryCode;
+
+  function updateRecoveryCodeStatus() {
+    const el = document.getElementById('recoveryCodeStatus');
+    if (!el) return;
+    const code = localStorage.getItem('sp_recovery_code') || '';
+    if (code) {
+      el.textContent = '設定済み: ' + code;
+      el.style.color = '#4caf50';
+      const input = document.getElementById('recoveryCodeInput');
+      if (input) input.value = code;
+    } else {
+      el.textContent = '未設定（設定するとデータ消去後も復元できます）';
+      el.style.color = '';
+    }
+  }
+  window.updateRecoveryCodeStatus = updateRecoveryCodeStatus;
 </script>
 
 <script>
@@ -13599,6 +13717,8 @@ function spVisibleTrace(tag, payload, cls) {
     // DBG: セット直後の実際の表示状態を確認
 
     try{ if(typeof window.setHeaderVersionBadge==='function') window.setHeaderVersionBadge(); }catch(e){}
+    // v23.9.297 Step2: 設定画面を開くたびにrecoveryCodeの状態を更新
+    try { if (typeof window.updateRecoveryCodeStatus === 'function') window.updateRecoveryCodeStatus(); } catch(e) {}
     // v23.9.176 SP-260601-009: 個人ID表示は public_code（8桁・XXXX-XXXX）に統一
     //   旧 getDeviceId()（dev_ プレフィックス長UUID）は廃止し、4 spans + family-my-id を一括更新
     //   未ログイン時は「ログインすると個人IDが発行されます」を表示
