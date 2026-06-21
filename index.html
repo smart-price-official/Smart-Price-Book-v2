@@ -48,9 +48,13 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.298  BUILD_ID=298
+APP_VERSION=v23.9.299  BUILD_ID=299
 
 === ChangeLog B-2 ===
+### v23.9.299
+- 仮説：v298ではバックアップ失敗がconsole.warnのみで、バックアップの件数・schema情報も残らない
+- 真因：backupPurchases()がpurchases.jsonのみ保存し、失敗時のユーザー通知と検証メタ情報が不足していた
+- 修正方法：①バックアップ失敗トースト追加②日付/latestのmetadata.json追加③最終バックアップ状態をlocalStorageへ記録④recoverByCodeを将来のラップ形式にも対応
 ### v23.9.298
 - 仮説：v297はhardreset事故防止としては前進したがデータ消失防止として未完成
 - 真因：startMigrationがクラウド空時にPUTしない／PUT失敗が無視される／バックアップがsyncFirebase成功後のみ
@@ -273,8 +277,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.298";
-  const BUILD_ID    = "298";
+  const APP_VERSION = "v23.9.299";
+  const BUILD_ID    = "299";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -5247,6 +5251,39 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     }
   }
   
+  function countPurchaseHistories(products) {
+    return Object.values(products || {}).reduce((sum, p) => {
+      return sum + (p && Array.isArray(p.history) ? p.history.length : 0);
+    }, 0);
+  }
+
+  function buildPurchasesBackupMeta(uid, products, source) {
+    const productCount = Object.keys(products || {}).length;
+    return {
+      schemaVersion: 1,
+      type: 'smartprice-purchases-backup',
+      uid: uid,
+      source: source || 'backupPurchases',
+      appVersion: window.APP_VERSION || '',
+      buildId: window.BUILD_ID || '',
+      createdAt: new Date().toISOString(),
+      recordCount: productCount,
+      productCount: productCount,
+      historyCount: countPurchaseHistories(products)
+    };
+  }
+
+  async function putBackupJson(url, payload) {
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res || !res.ok) {
+      throw new Error('backup PUT failed: HTTP ' + (res ? res.status : 'no-response'));
+    }
+  }
+
   // v23.9.297 Step1: バックアップ機能（purchases正本の日次スナップショット）
   async function backupPurchases() {
     try {
@@ -5262,27 +5299,32 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       const backupRoot = base.replace(/\/+$/, '') + '/backups/' + encodeURIComponent(uid);
       const backupUrl = backupRoot + '/' + today + '/purchases.json';
       const latestUrl = backupRoot + '/latest/purchases.json';
+      const backupMetaUrl = backupRoot + '/' + today + '/metadata.json';
+      const latestMetaUrl = backupRoot + '/latest/metadata.json';
       const payload = (typeof stripForCloud === 'function' ? stripForCloud(db) : db).products || {};
+      const meta = buildPurchasesBackupMeta(uid, payload, 'backupPurchases');
       let dateOk = alreadyBackedUpToday;
       if (!alreadyBackedUpToday) {
-        const res = await fetch(backupUrl, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        dateOk = !!(res && res.ok);
+        await putBackupJson(backupUrl, payload);
+        await putBackupJson(backupMetaUrl, meta);
+        dateOk = true;
       }
-      const latestRes = await fetch(latestUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if (dateOk && latestRes && latestRes.ok) {
+      await putBackupJson(latestUrl, payload);
+      await putBackupJson(latestMetaUrl, meta);
+      if (dateOk) {
         localStorage.setItem('sp_last_backup_date', today);
+        localStorage.setItem('sp_last_backup_at', meta.createdAt);
+        localStorage.setItem('sp_last_backup_count', String(meta.recordCount));
+        localStorage.removeItem('sp_last_backup_error');
+        localStorage.removeItem('sp_last_backup_error_at');
         console.log('[backup]', today, Object.keys(payload).length + '件 saved → backups/' + uid.slice(0,12) + '.../' + today + ' + latest');
       }
     } catch (e) {
-      console.warn('[backup] failed:', e.message);
+      const msg = e && e.message ? e.message : String(e);
+      localStorage.setItem('sp_last_backup_error', msg);
+      localStorage.setItem('sp_last_backup_error_at', new Date().toISOString());
+      console.warn('[backup] failed:', msg);
+      showToast('⚠️ バックアップに失敗しました。通信状態を確認してください。', 5000);
     }
   }
   window.backupPurchases = backupPurchases;
@@ -5325,8 +5367,9 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         const backupRes = await fetch(latestUrl);
         if (backupRes && backupRes.ok) {
           const backup = await backupRes.json();
-          if (backup && typeof backup === 'object' && Object.keys(backup).length > 0) {
-            db = mergeDb(db || {}, { products: backup });
+          const products = (backup && backup.products && typeof backup.products === 'object') ? backup.products : backup;
+          if (products && typeof products === 'object' && Object.keys(products).length > 0) {
+            db = mergeDb(db || {}, { products: products });
             saveLocalOnly();
             try { await renderHistory(); renderStoreList(); } catch (_renderRecovery) {}
             showToast('✅ 購入履歴を復元しました', 3000);
