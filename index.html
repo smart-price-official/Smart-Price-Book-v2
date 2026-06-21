@@ -48,9 +48,13 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.300  BUILD_ID=300
+APP_VERSION=v23.9.301  BUILD_ID=301
 
 === ChangeLog B-2 ===
+### v23.9.301
+- 仮説：別環境で既存の回復コードを入力して「設定」を押すと、復元ではなく新規設定扱いになり「すでに使用されています」で止まる
+- 真因：回復コードUIに「設定」しかなく、既存コードから復元する専用導線が存在しない
+- 修正方法：回復コード欄に「復元」ボタンを追加し、recoverByCode()でUIDとlatest購入履歴を復元できるようにした。既存コード衝突時の表示も復元導線へ誘導する
 ### v23.9.300
 - 仮説：回復コード設定の成否がユーザーに伝わらず、保存されたか不明なままになっている
 - 真因：setRecoveryCode()の成功/失敗表示が未実装、Firebase保存確認がない、同期状態が見えない
@@ -281,8 +285,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.300";
-  const BUILD_ID    = "300";
+  const APP_VERSION = "v23.9.301";
+  const BUILD_ID    = "301";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -2160,8 +2164,9 @@ document.addEventListener('DOMContentLoaded', function() {
       <div class="input-group input-group-sm mb-1">
         <input type="text" id="recoveryCodeInput" class="form-control" placeholder="4〜8文字のコード（例：nabe1234）" maxlength="16" style="font-size:0.9rem;">
         <button id="recoveryCodeSetBtn" class="btn btn-outline-primary btn-sm" onclick="onSetRecoveryCode()">設定</button>
+        <button id="recoveryCodeRecoverBtn" class="btn btn-primary btn-sm" onclick="onRecoverByCode()">復元</button>
       </div>
-      <div class="small text-secondary" style="font-size:0.75rem;">このコードを覚えておくとデータ消去後も復元できます</div>
+      <div class="small text-secondary" style="font-size:0.75rem;">新しく作るときは「設定」、別端末や消去後に戻すときは「復元」を押してください</div>
     </div>
     <button id="resetDataBtn" class="btn btn-outline-danger w-100 py-2 fw-bold mb-2" onclick="spResetLocalData()">🗑 このスマホの商品データをリセット</button>
 
@@ -13602,11 +13607,18 @@ function spVisibleTrace(tag, payload, cls) {
     return '****' + s.slice(-2);
   }
 
-  function setRecoveryButtonBusy(isBusy) {
-    const btn = document.getElementById('recoveryCodeSetBtn');
-    if (!btn) return;
-    btn.disabled = !!isBusy;
-    btn.textContent = isBusy ? '設定中...' : '設定';
+  function setRecoveryButtonsBusy(mode) {
+    const setBtn = document.getElementById('recoveryCodeSetBtn');
+    const recoverBtn = document.getElementById('recoveryCodeRecoverBtn');
+    const busy = !!mode;
+    if (setBtn) {
+      setBtn.disabled = busy;
+      setBtn.textContent = mode === 'set' ? '設定中...' : '設定';
+    }
+    if (recoverBtn) {
+      recoverBtn.disabled = busy;
+      recoverBtn.textContent = mode === 'recover' ? '復元中...' : '復元';
+    }
   }
 
   async function onSetRecoveryCode() {
@@ -13619,7 +13631,7 @@ function spVisibleTrace(tag, payload, cls) {
     }
     const uid = getOrCreateUserId();
     try {
-      setRecoveryButtonBusy(true);
+      setRecoveryButtonsBusy('set');
       if (status) {
         status.textContent = '回復コードを設定中...';
         status.style.color = '#ffc107';
@@ -13629,16 +13641,61 @@ function spVisibleTrace(tag, payload, cls) {
       showToast('✅ 回復コードを設定しました', 5000);
       updateRecoveryCodeStatus();
     } catch (e) {
-      showToast('⚠️ 回復コードの保存に失敗しました。通信状態を確認してください。', 6000);
+      const msg = e && e.message ? e.message : String(e);
+      if (msg.indexOf('すでに使用') >= 0) {
+        showToast('⚠️ このコードは登録済みです。別端末では「復元」を押してください。', 7000);
+      } else {
+        showToast('⚠️ 回復コードの保存に失敗しました。通信状態を確認してください。', 6000);
+      }
       if (status) {
-        status.textContent = '保存失敗: ' + (e && e.message ? e.message : String(e));
+        status.textContent = msg.indexOf('すでに使用') >= 0 ? '登録済みコードです。復元する場合は「復元」を押してください。' : '保存失敗: ' + msg;
         status.style.color = '#dc3545';
       }
     } finally {
-      setRecoveryButtonBusy(false);
+      setRecoveryButtonsBusy('');
     }
   }
   window.onSetRecoveryCode = onSetRecoveryCode;
+
+  async function onRecoverByCode() {
+    const input = document.getElementById('recoveryCodeInput');
+    const status = document.getElementById('recoveryCodeStatus');
+    const code = (input ? input.value : '').trim();
+    if (!code || code.length < 4) {
+      showToast('4文字以上の回復コードを入力してください', 4000);
+      return;
+    }
+    try {
+      setRecoveryButtonsBusy('recover');
+      if (status) {
+        status.textContent = '回復コードで復元中...';
+        status.style.color = '#ffc107';
+      }
+      const uid = await recoverByCode(code);
+      if (!uid) {
+        throw new Error('回復コードが見つかりません');
+      }
+      localStorage.setItem('sp_user_id', uid);
+      localStorage.setItem('sp_recovery_code', code);
+      db = db || {};
+      db.config = db.config || {};
+      db.config.userId = uid;
+      saveLocalOnly();
+      updateRecoveryCodeStatus();
+      try { if (typeof updateCloudSyncStatus === 'function') updateCloudSyncStatus(); } catch (_) {}
+      showToast('✅ 回復コードで復元しました', 4000);
+    } catch (e) {
+      const msg = e && e.message ? e.message : String(e);
+      showToast('⚠️ 回復コードで復元できませんでした。コードを確認してください。', 6000);
+      if (status) {
+        status.textContent = '復元失敗: ' + msg;
+        status.style.color = '#dc3545';
+      }
+    } finally {
+      setRecoveryButtonsBusy('');
+    }
+  }
+  window.onRecoverByCode = onRecoverByCode;
 
   function updateRecoveryCodeStatus() {
     const el = document.getElementById('recoveryCodeStatus');
