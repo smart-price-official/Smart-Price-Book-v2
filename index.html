@@ -48,9 +48,13 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.301  BUILD_ID=301
+APP_VERSION=v23.9.303  BUILD_ID=303
 
 === ChangeLog B-2 ===
+### v23.9.303
+- 仮説：回復コードで復元済みなのに画面上は未設定/未ログインに見え、ユーザーが「なぜ履歴が出るのか」と不安になる
+- 真因：local-only / recovery-restored / account-linked / migrated の状態表示が未分離で、クラウド同期バナーが単純な設定有無だけを表示していた
+- 修正方法：Account State表示判定を追加し、「この端末のみ」「回復コードで復元済み」「Google同期中」「Googleアカウントへ移行済み」の4状態ラベルを表示する
 ### v23.9.301
 - 仮説：別環境で既存の回復コードを入力して「設定」を押すと、復元ではなく新規設定扱いになり「すでに使用されています」で止まる
 - 真因：回復コードUIに「設定」しかなく、既存コードから復元する専用導線が存在しない
@@ -285,8 +289,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.301";
-  const BUILD_ID    = "301";
+  const APP_VERSION = "v23.9.303";
+  const BUILD_ID    = "303";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -13756,20 +13760,39 @@ function spVisibleTrace(tag, payload, cls) {
     return !!(url && (linked || code || (uid && uid.startsWith('acct_'))));
   }
 
+  function getAccountState() {
+    const uid = (localStorage.getItem('sp_user_id') || '').trim();
+    const linked = (localStorage.getItem('sp_linked_account_uid') || '').trim();
+    const code = (localStorage.getItem('sp_recovery_code') || '').trim();
+    const migrated = (localStorage.getItem('sp_google_migrated') || '').trim() === '1' ||
+                     (localStorage.getItem('sp_account_state') || '').trim() === 'migrated';
+    const hasProducts = !!(db && db.products && Object.keys(db.products).length > 0);
+    const isGoogleLinked = !!((linked && linked.startsWith('acct_')) || (uid && uid.startsWith('acct_')));
+
+    if (migrated) {
+      return { key: 'migrated', label: 'Googleアカウントへ移行済み', color: '#4caf50', visible: true };
+    }
+    if (isGoogleLinked) {
+      return { key: 'google', label: 'Google同期中', color: '#4caf50', visible: true };
+    }
+    if (code && uid) {
+      return { key: 'recovered', label: '回復コードで復元済み', color: '#64b5f6', visible: true };
+    }
+    if (hasProducts) {
+      return { key: 'local', label: 'この端末のみ', color: '#ffc107', visible: true };
+    }
+    return { key: 'empty', label: '', color: '#6c757d', visible: false };
+  }
+  window.getAccountState = getAccountState;
+
   function updateCloudSyncStatus() {
     const el = document.getElementById('cloudSyncStatusBanner');
     if (!el) return;
-    const hasProducts = !!(db && db.products && Object.keys(db.products).length > 0);
-    if (isCloudConfigured()) {
-      el.textContent = 'クラウド同期中';
+    const state = getAccountState();
+    if (state.visible) {
+      el.textContent = state.label;
       el.style.display = 'block';
-      el.style.color = '#4caf50';
-      return;
-    }
-    if (hasProducts) {
-      el.textContent = 'この端末の履歴を表示中　クラウド同期未設定';
-      el.style.display = 'block';
-      el.style.color = '#ffc107';
+      el.style.color = state.color;
       return;
     }
     el.style.display = 'none';
