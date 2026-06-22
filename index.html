@@ -48,9 +48,13 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.303  BUILD_ID=303
+APP_VERSION=v23.9.304  BUILD_ID=304
 
 === ChangeLog B-2 ===
+### v23.9.304
+- 仮説：Googleログイン直後にGoogle側が空の場合、既存ローカル履歴が空クラウドで上書きされる恐れがある
+- 真因：ログイン成功と同期確定の状態を分けずにUID切替やPUTを行うと、v296型のデータ消失が再発しうる
+- 修正方法：Googleログインを追加し、同期確定前は「Googleログイン済み・未同期」と表示。ローカル履歴あり・Google空では件数付き確認を必須化し、確認後のみGoogle UIDへPUTする。Google側にも履歴がある場合はv305までプレビュー表示のみとする
 ### v23.9.303
 - 仮説：回復コードで復元済みなのに画面上は未設定/未ログインに見え、ユーザーが「なぜ履歴が出るのか」と不安になる
 - 真因：local-only / recovery-restored / account-linked / migrated の状態表示が未分離で、クラウド同期バナーが単純な設定有無だけを表示していた
@@ -289,8 +293,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.303";
-  const BUILD_ID    = "303";
+  const APP_VERSION = "v23.9.304";
+  const BUILD_ID    = "304";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -2121,12 +2125,15 @@ document.addEventListener('DOMContentLoaded', function() {
           <!-- v23.9.279 SP-260618-FAMUX-004: 1ボタンに統一（ログイン/新規登録を自動判別） -->
           <div class="d-grid gap-2 mb-2">
             <button type="button" class="btn sp-btn-primary py-2 fw-bold" onclick="handleAccountStartClick()">はじめる（ログイン・新規登録）</button>
+            <button type="button" id="googleLoginBtn" class="btn btn-outline-light py-2 fw-bold" onclick="handleGoogleLoginClick()">Googleでログイン</button>
           </div>
           <div class="text-center mb-2">
             <button type="button" class="btn btn-link btn-sm text-secondary p-0" onclick="handlePasswordResetClick()" style="font-size:0.82rem; text-decoration:underline;">パスワードを忘れた場合</button>
           </div>
           <div class="small text-secondary" style="opacity:.7;">※パスワードは6文字以上 ／ 初めての方も同じボタンで登録できます</div>
           <div id="accountStatusMsg" class="small mt-2" style="min-height:1.2em;"></div>
+          <div id="googleAccountStatusMsg" class="small mt-2" style="min-height:1.2em;"></div>
+          <button type="button" id="googleLogoutBtn" class="btn btn-outline-warning btn-sm mt-2" style="display:none;" onclick="handleGoogleLogoutClick()">Googleからログアウト</button>
         </div>
 
         <!-- ログイン済 時 -->
@@ -13762,18 +13769,21 @@ function spVisibleTrace(tag, payload, cls) {
 
   function getAccountState() {
     const uid = (localStorage.getItem('sp_user_id') || '').trim();
-    const linked = (localStorage.getItem('sp_linked_account_uid') || '').trim();
     const code = (localStorage.getItem('sp_recovery_code') || '').trim();
+    const googleUid = (localStorage.getItem('sp_google_uid') || '').trim();
+    const googleConfirmed = (localStorage.getItem('sp_google_sync_confirmed') || '').trim() === '1';
     const migrated = (localStorage.getItem('sp_google_migrated') || '').trim() === '1' ||
                      (localStorage.getItem('sp_account_state') || '').trim() === 'migrated';
     const hasProducts = !!(db && db.products && Object.keys(db.products).length > 0);
-    const isGoogleLinked = !!((linked && linked.startsWith('acct_')) || (uid && uid.startsWith('acct_')));
 
     if (migrated) {
       return { key: 'migrated', label: 'Googleアカウントへ移行済み', color: '#4caf50', visible: true };
     }
-    if (isGoogleLinked) {
+    if (googleUid && googleConfirmed) {
       return { key: 'google', label: 'Google同期中', color: '#4caf50', visible: true };
+    }
+    if (googleUid) {
+      return { key: 'google_pending', label: 'Googleログイン済み・未同期', color: '#ffc107', visible: true };
     }
     if (code && uid) {
       return { key: 'recovered', label: '回復コードで復元済み', color: '#64b5f6', visible: true };
@@ -14265,6 +14275,174 @@ function spVisibleTrace(tag, payload, cls) {
   }
   window.spAccountLogout = spAccountLogout;
 
+  function getDbStats(targetDb) {
+    var products = (targetDb && targetDb.products && typeof targetDb.products === 'object') ? targetDb.products : {};
+    var productCount = Object.keys(products).length;
+    var historyCount = 0;
+    Object.keys(products).forEach(function (jan) {
+      var p = products[jan];
+      if (p && Array.isArray(p.history)) historyCount += p.history.length;
+    });
+    return { productCount: productCount, historyCount: historyCount };
+  }
+  window.getDbStats = getDbStats;
+
+  function getGoogleUserDbUrl(googleUid) {
+    var base = (typeof FIREBASE_CONFIG !== 'undefined' && FIREBASE_CONFIG.databaseURL ? FIREBASE_CONFIG.databaseURL : '');
+    if (!base || !googleUid) return '';
+    return base.replace(/\/+$/, '') + '/users/' + encodeURIComponent(googleUid) + '/smart_price.json';
+  }
+
+  async function fetchGoogleCloudDb(googleUid) {
+    var url = getGoogleUserDbUrl(googleUid);
+    if (!url) throw new Error('Google同期URLを作成できません');
+    var res = await fetch(url);
+    if (!res || !res.ok) throw new Error('Googleデータ取得失敗: HTTP ' + (res ? res.status : 'no-response'));
+    var cloud = await res.json();
+    return (cloud && typeof cloud === 'object') ? cloud : {};
+  }
+
+  async function putGoogleCloudDb(googleUid, payloadDb) {
+    var url = getGoogleUserDbUrl(googleUid);
+    if (!url) throw new Error('Google同期URLを作成できません');
+    var payload = typeof stripForCloud === 'function' ? stripForCloud(payloadDb) : payloadDb;
+    var res = await fetch(url, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res || !res.ok) throw new Error('Google保存失敗: HTTP ' + (res ? res.status : 'no-response'));
+  }
+
+  function storeGoogleIdentity(user) {
+    if (!user || !user.uid) throw new Error('Googleユーザー情報を取得できません');
+    try { localStorage.setItem('sp_google_uid', user.uid); } catch (_) {}
+    try { localStorage.setItem('sp_google_email', user.email || ''); } catch (_) {}
+  }
+
+  function markGoogleSyncConfirmed(user) {
+    try { localStorage.setItem('sp_google_sync_confirmed', '1'); } catch (_) {}
+    try { localStorage.setItem('sp_google_uid', user.uid); } catch (_) {}
+    try { localStorage.setItem('sp_google_email', user.email || ''); } catch (_) {}
+    try { localStorage.setItem('sp_user_id', user.uid); } catch (_) {}
+    if (db && db.config) db.config.userId = user.uid;
+  }
+
+  function updateGoogleAccountStatus(message, cls) {
+    var el = document.getElementById('googleAccountStatusMsg');
+    var logoutBtn = document.getElementById('googleLogoutBtn');
+    if (!el) return;
+    var googleUid = '';
+    var googleEmail = '';
+    var confirmed = false;
+    try { googleUid = localStorage.getItem('sp_google_uid') || ''; } catch (_) {}
+    try { googleEmail = localStorage.getItem('sp_google_email') || ''; } catch (_) {}
+    try { confirmed = (localStorage.getItem('sp_google_sync_confirmed') || '') === '1'; } catch (_) {}
+    if (message) {
+      el.textContent = message;
+      el.className = 'small mt-2 ' + (cls || 'text-secondary');
+      return;
+    }
+    if (googleUid) {
+      el.textContent = (confirmed ? 'Google同期中' : 'Googleログイン済み・未同期') + (googleEmail ? '：' + googleEmail : '');
+      el.className = 'small mt-2 ' + (confirmed ? 'text-success' : 'text-warning');
+      if (logoutBtn) logoutBtn.style.display = '';
+    } else {
+      el.textContent = '';
+      el.className = 'small mt-2';
+      if (logoutBtn) logoutBtn.style.display = 'none';
+    }
+  }
+  window.updateGoogleAccountStatus = updateGoogleAccountStatus;
+
+  async function handleGoogleLoginClick() {
+    var btn = document.getElementById('googleLoginBtn');
+    var msg = document.getElementById('googleAccountStatusMsg') || document.getElementById('accountStatusMsg');
+    function setMsg(t, cls) { if (msg) { msg.textContent = t; msg.className = 'small mt-2 ' + (cls || 'text-secondary'); } }
+    if (!window.firebase || !window.firebaseAuth) {
+      setMsg('Googleログインを初期化できません', 'text-danger');
+      return;
+    }
+    if (btn) { btn.disabled = true; btn.textContent = 'Googleログイン中...'; }
+    try {
+      var provider = new firebase.auth.GoogleAuthProvider();
+      var result = await window.firebaseAuth.signInWithPopup(provider);
+      var user = result && result.user ? result.user : window.firebaseAuth.currentUser;
+      storeGoogleIdentity(user);
+      setMsg('Googleデータを確認中...', 'text-secondary');
+
+      var localDb = typeof deepClone === 'function' ? deepClone(db || {}) : JSON.parse(JSON.stringify(db || {}));
+      var localStats = getDbStats(localDb);
+      var hasLocalData = localStats.historyCount > 0;
+      var cloudDb = await fetchGoogleCloudDb(user.uid);
+      var cloudStats = getDbStats(cloudDb);
+      var hasCloudData = cloudStats.historyCount > 0;
+
+      if (hasLocalData && !hasCloudData) {
+        var ok = await customConfirm('この端末の価格記録（' + localStats.historyCount + '件）を\nGoogleアカウントに保存しますか？');
+        if (!ok) {
+          try { localStorage.setItem('sp_google_sync_confirmed', '0'); } catch (_) {}
+          setMsg('Googleログイン済み・未同期', 'text-warning');
+          try { if (typeof updateCloudSyncStatus === 'function') updateCloudSyncStatus(); } catch (_) {}
+          return;
+        }
+        try { if (typeof backupPurchases === 'function') await backupPurchases(); } catch (_) {}
+        var uploadDb = typeof deepClone === 'function' ? deepClone(localDb || {}) : JSON.parse(JSON.stringify(localDb || {}));
+        uploadDb.config = uploadDb.config || {};
+        uploadDb.config.userId = user.uid;
+        await putGoogleCloudDb(user.uid, uploadDb);
+        var savedDb = await fetchGoogleCloudDb(user.uid);
+        var savedStats = getDbStats(savedDb);
+        if (localStats.historyCount > savedStats.historyCount) {
+          try { localStorage.setItem('sp_google_sync_confirmed', '0'); } catch (_) {}
+          showToast('⚠️ Google保存後の件数が少ないため同期を停止しました', 7000);
+          throw new Error('record-count-decreased');
+        }
+        db = uploadDb;
+        markGoogleSyncConfirmed(user);
+        saveLocalOnly();
+        setMsg('✓ Google同期中', 'text-success');
+      } else if (!hasLocalData && hasCloudData) {
+        markGoogleSyncConfirmed(user);
+        db = mergeDb(db || {}, cloudDb);
+        saveLocalOnly();
+        try { await renderHistory(); } catch (_) {}
+        try { renderStoreList(); } catch (_) {}
+        setMsg('✓ Googleの価格記録（' + cloudStats.historyCount + '件）を読み込みました', 'text-success');
+      } else if (hasLocalData && hasCloudData) {
+        try { localStorage.setItem('sp_google_sync_confirmed', '0'); } catch (_) {}
+        await customConfirm('この端末：価格記録 ' + localStats.historyCount + '件\nGoogleアカウント：価格記録 ' + cloudStats.historyCount + '件\n※データ統合はv305で実施します');
+        setMsg('Googleログイン済み・未同期（統合はv305）', 'text-warning');
+      } else {
+        markGoogleSyncConfirmed(user);
+        saveLocalOnly();
+        await putGoogleCloudDb(user.uid, db);
+        setMsg('✓ Google同期中', 'text-success');
+      }
+      try { if (typeof updateCloudSyncStatus === 'function') updateCloudSyncStatus(); } catch (_) {}
+      try { renderAccountPanel(); } catch (_) {}
+      try { renderStartupBannerIfNeeded(); } catch (_) {}
+    } catch (e) {
+      var msgText = e && e.code === 'auth/popup-closed-by-user' ? 'Googleログインをキャンセルしました' : ('Googleログイン失敗: ' + (e && e.message ? e.message : String(e)));
+      setMsg(msgText, e && e.code === 'auth/popup-closed-by-user' ? 'text-secondary' : 'text-danger');
+      try { if (typeof updateCloudSyncStatus === 'function') updateCloudSyncStatus(); } catch (_) {}
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Googleでログイン'; }
+    }
+  }
+  window.handleGoogleLoginClick = handleGoogleLoginClick;
+
+  async function handleGoogleLogoutClick() {
+    var msg = document.getElementById('googleAccountStatusMsg') || document.getElementById('accountStatusMsgLoggedIn');
+    try {
+      if (window.firebaseAuth) await window.firebaseAuth.signOut();
+      if (msg) { msg.textContent = 'Googleからログアウトしました（端末データは保持）'; msg.className = 'small mt-2 text-success'; }
+    } catch (e) {
+      if (msg) { msg.textContent = 'Googleログアウト失敗: ' + (e && e.message ? e.message : String(e)); msg.className = 'small mt-2 text-danger'; }
+    }
+  }
+  window.handleGoogleLogoutClick = handleGoogleLogoutClick;
+
   // v23.9.222 SP-250605-013 P0-03: パスワード表示/マスク切替（👁 / 🙈）
   //   inputId の type を password ⇄ text でトグル。ログイン/新規登録共用の単一欄に対応。
   function togglePasswordVisibility(inputId, btn) {
@@ -14427,6 +14605,7 @@ function spVisibleTrace(tag, payload, cls) {
       }
     }
     try { spDbg('[ACCOUNT_PANEL_RENDER]', { loggedIn: loggedIn, hasEmail: !!email }); } catch(_) {}
+    try { updateGoogleAccountStatus(); } catch (_) {}
   }
   window.renderAccountPanel = renderAccountPanel;
 
