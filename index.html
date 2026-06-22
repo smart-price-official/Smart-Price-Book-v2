@@ -48,7 +48,7 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.304.1  BUILD_ID=3041
+APP_VERSION=v23.9.304.2  BUILD_ID=3042
 
 === ChangeLog B-2 ===
 ### v23.9.304.1
@@ -297,8 +297,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.304.1";
-  const BUILD_ID    = "3041";
+  const APP_VERSION = "v23.9.304.2";
+  const BUILD_ID    = "3042";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -2137,6 +2137,14 @@ document.addEventListener('DOMContentLoaded', function() {
           <div class="small text-secondary" style="opacity:.7;">※パスワードは6文字以上 ／ 初めての方も同じボタンで登録できます</div>
           <div id="accountStatusMsg" class="small mt-2" style="min-height:1.2em;"></div>
           <div id="googleAccountStatusMsg" class="small mt-2" style="min-height:1.2em;"></div>
+          <div id="googleSaveConfirmBox" class="mt-3 p-3 rounded-3 sp-bg-card sp-border-muted" style="display:none; border:1px solid rgba(255,255,255,.16);">
+            <div class="fw-bold mb-2">Googleアカウントへ保存しますか？</div>
+            <div id="googleSaveConfirmText" class="small text-secondary mb-3"></div>
+            <div class="d-grid gap-2" style="grid-template-columns:1fr 1fr;">
+              <button type="button" id="googleSaveCancelBtn" class="btn btn-outline-light btn-sm py-2" onclick="resolveGoogleSaveConfirm(false)">やめる</button>
+              <button type="button" id="googleSaveOkBtn" class="btn sp-btn-primary btn-sm py-2 fw-bold" onclick="resolveGoogleSaveConfirm(true)">保存する</button>
+            </div>
+          </div>
           <button type="button" id="googleLogoutBtn" class="btn btn-outline-warning btn-sm mt-2" style="display:none;" onclick="handleGoogleLogoutClick()">Googleからログアウト</button>
         </div>
 
@@ -14351,6 +14359,40 @@ function spVisibleTrace(tag, payload, cls) {
     if (db && db.config) db.config.userId = user.uid;
   }
 
+  var googleSaveConfirmResolve = null;
+
+  function hideGoogleSaveConfirmBox() {
+    var box = document.getElementById('googleSaveConfirmBox');
+    if (box) box.style.display = 'none';
+    googleSaveConfirmResolve = null;
+  }
+
+  function showGoogleSaveConfirmBox(historyCount) {
+    return new Promise(function(resolve) {
+      var box = document.getElementById('googleSaveConfirmBox');
+      var text = document.getElementById('googleSaveConfirmText');
+      if (!box || !text) {
+        customConfirm('この端末の価格記録（' + historyCount + '件）を\nGoogleアカウントに保存しますか？').then(resolve);
+        return;
+      }
+      text.textContent = 'この端末の価格記録（' + historyCount + '件）をGoogleアカウントに保存します。';
+      box.style.display = '';
+      googleSaveConfirmResolve = resolve;
+      try { box.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) {}
+    });
+  }
+
+  function resolveGoogleSaveConfirm(ok) {
+    if (typeof googleSaveConfirmResolve === 'function') {
+      var resolve = googleSaveConfirmResolve;
+      hideGoogleSaveConfirmBox();
+      resolve(!!ok);
+    } else {
+      hideGoogleSaveConfirmBox();
+    }
+  }
+  window.resolveGoogleSaveConfirm = resolveGoogleSaveConfirm;
+
   function updateGoogleAccountStatus(message, cls) {
     var el = document.getElementById('googleAccountStatusMsg');
     var logoutBtn = document.getElementById('googleLogoutBtn');
@@ -14402,7 +14444,8 @@ function spVisibleTrace(tag, payload, cls) {
       var hasCloudData = cloudStats.historyCount > 0;
 
       if (hasLocalData && !hasCloudData) {
-        var ok = await customConfirm('この端末の価格記録（' + localStats.historyCount + '件）を\nGoogleアカウントに保存しますか？');
+        setMsg('Googleログイン済み・保存確認中', 'text-warning');
+        var ok = await showGoogleSaveConfirmBox(localStats.historyCount);
         if (!ok) {
           try { localStorage.setItem('sp_google_sync_confirmed', '0'); } catch (_) {}
           setMsg('Googleログイン済み・未同期', 'text-warning');
