@@ -48,7 +48,7 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.304.3  BUILD_ID=3043
+APP_VERSION=v23.9.304.4  BUILD_ID=3044
 
 === ChangeLog B-2 ===
 ### v23.9.304.1
@@ -297,8 +297,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.304.3";
-  const BUILD_ID    = "3043";
+  const APP_VERSION = "v23.9.304.4";
+  const BUILD_ID    = "3044";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -1523,9 +1523,9 @@ document.addEventListener('DOMContentLoaded', function() {
           <div id="calcOptionArea" class="d-flex align-items-center mb-2">
             <div class="btn-group btn-group-sm w-100 me-2">
               <input type="radio" class="btn-check" name="taxMode" id="taxEx" value="ex" checked>
-              <label class="btn btn-outline-danger" for="taxEx">税別</label>
+              <label class="btn btn-outline-danger" for="taxEx">税別入力</label>
               <input type="radio" class="btn-check" name="taxMode" id="taxIn" value="in">
-              <label class="btn btn-outline-danger" for="taxIn">税込</label>
+              <label class="btn btn-outline-danger" for="taxIn">税込入力</label>
             </div>
             <div class="input-group input-group-sm w-50">
               <input type="number" id="inputDisc" class="form-control sp-bg-card sp-border-muted" placeholder="0">
@@ -1533,6 +1533,7 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
           </div>
           <input type="number" id="inputPrice" class="form-control text-end fw-bold text-danger border-0 bg-transparent fs-1" placeholder="0">
+          <div class="small text-secondary text-end mt-1">一覧・統計は税込表示</div>
         </div>
 
         <div id="statsBox" class="stats-strip"></div>
@@ -2481,6 +2482,7 @@ document.addEventListener('DOMContentLoaded', function() {
 .sp-tax-btn { padding: 5px 12px; border-radius: 16px; font-size: 0.8rem; cursor: pointer; border: 1px solid var(--sp-border); background: var(--sp-card-alt); color: var(--sp-text-muted); }
 .sp-tax-selected-in { background: #4a90d9 !important; color: #fff !important; border-color: #4a90d9 !important; }
 .sp-tax-selected-ex { background: #e07b54 !important; color: #fff !important; border-color: #e07b54 !important; }
+.sp-tax-badge { display:inline-block; margin-left:4px; padding:1px 5px; border-radius:999px; border:1px solid var(--sp-border); color:var(--sp-text-muted); font-size:10px; font-weight:600; line-height:1.35; vertical-align:middle; white-space:nowrap; }
 
 </style>
 
@@ -6138,9 +6140,9 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       const lastPriceMain = Number.isFinite(lastPN) ? String(Math.floor(lastPN)) : '—';
       const statsHtml = (allPrices.length >= 2) ? `
         <div class="d-flex gap-2 mt-1 sp-text-muted-sp">
-          <span>平均 <b class="sp-text-normal">${avgP}円</b></span>
-          <span>最安 <b class="sp-text-min-price">${minP}円</b></span>
-          <span>前回 <b class="sp-text-normal">${lastP}円</b></span>
+          <span>平均(税込) <b class="sp-text-normal">${avgP}円</b></span>
+          <span>最安(税込) <b class="sp-text-min-price">${minP}円</b></span>
+          <span>前回(税込) <b class="sp-text-normal">${lastP}円</b></span>
         </div>` : '';
       div.innerHTML = `
         <div class="d-flex align-items-center">
@@ -6152,6 +6154,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
           </div>
           <div class="text-end ms-2 flex-shrink-0">
             <div class="price-main">${lastPriceMain}<span style="font-size:0.6rem;">円</span></div>
+            <div>${renderTaxBadge(getDisplayTaxLabel(last))}</div>
           </div>
         </div>`;
       list.appendChild(div);
@@ -6643,9 +6646,9 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     const low = Math.min(...pArr);
     const last = pArr[0] || pArr[pArr.length-1];
     box.innerHTML = `<div class="stats-row">
-      <div class="stat-item">平均<span class="stat-val">${avg}円</span></div>
-      <div class="stat-item">最安<span class="stat-val text-danger">${low}円</span></div>
-      <div class="stat-item">直近<span class="stat-val">${last}円</span></div>
+      <div class="stat-item">平均(税込)<span class="stat-val">${avg}円</span></div>
+      <div class="stat-item">最安(税込)<span class="stat-val text-danger">${low}円</span></div>
+      <div class="stat-item">直近(税込)<span class="stat-val">${last}円</span></div>
     </div>`;
   }
 
@@ -6696,11 +6699,11 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     }
     box.innerHTML = `
       <div class="sp-store-price-box">
-        <div class="sp-store-price-title">店舗別価格</div>
+        <div class="sp-store-price-title">店舗別価格（税込表示）</div>
         ${stats.map((s, idx) => `
           <div class="sp-store-price-row">
             <div class="sp-store-price-shop">${s.shop}${idx === 0 ? '（最安）' : ''}</div>
-            <div class="sp-store-price-meta">最新 ${s.latest}円 / 平均 ${s.avg}円 / 最安 ${s.min}円 / ${s.count}件</div>
+            <div class="sp-store-price-meta">最新(税込) ${s.latest}円 / 平均(税込) ${s.avg}円 / 最安(税込) ${s.min}円 / ${s.count}件</div>
           </div>
         `).join('')}
       </div>
@@ -6732,7 +6735,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
           '<span class="sp-text-normal fw-bold">' + (displayStoreName(h.store) || '未設定') + '</span>' +
         '</div>' +
         '<div class="text-end">' +
-          '<span class="fw-bold sp-text-normal">' + calcDisplayPrice(h) + '円</span><br>' +
+          '<span class="fw-bold sp-text-normal">' + formatDisplayPriceWithTax(h) + '</span><br>' +
           '<span class="text-info small">タップで編集</span>' +
         '</div>';
       div.appendChild(row);
@@ -9830,6 +9833,26 @@ return true;
     return p;
   }
   window.calcDisplayPrice = calcDisplayPrice;
+
+  function getDisplayTaxLabel(h) {
+    var mode = h && h.taxModeAtInput;
+    if (mode === 'ex') return '税込換算';
+    if (mode === 'in') return '税込';
+    return '税込表示';
+  }
+
+  function renderTaxBadge(label) {
+    return '<span class="sp-tax-badge">' + (label || '税込表示') + '</span>';
+  }
+
+  function formatDisplayPriceWithTax(h) {
+    var p = Number(calcDisplayPrice(h));
+    if (!Number.isFinite(p) || p <= 0) return '—円' + renderTaxBadge(getDisplayTaxLabel(h));
+    return String(Math.floor(p)) + '円' + renderTaxBadge(getDisplayTaxLabel(h));
+  }
+
+  window.getDisplayTaxLabel = getDisplayTaxLabel;
+  window.formatDisplayPriceWithTax = formatDisplayPriceWithTax;
 
   async function showHome() {
     try{ clearToasts(); }catch(e){}
