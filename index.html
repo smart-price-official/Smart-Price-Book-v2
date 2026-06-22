@@ -48,9 +48,13 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.304  BUILD_ID=304
+APP_VERSION=v23.9.304.1  BUILD_ID=3041
 
 === ChangeLog B-2 ===
+### v23.9.304.1
+- 仮説：Googleログイン後に「Googleデータを確認中...」のまま止まる
+- 真因：Google認証後のDB確認をREST fetchで行っており、認証済みFirebase SDKの権限を使えていない。さらにタイムアウトが無く、通信/権限待ちでUIが復帰しない
+- 修正方法：Google UIDのDB確認/保存をfirebaseDb.ref().once('value') / set()に変更し、12秒タイムアウトを追加。失敗時は未同期表示へ戻す
 ### v23.9.304
 - 仮説：Googleログイン直後にGoogle側が空の場合、既存ローカル履歴が空クラウドで上書きされる恐れがある
 - 真因：ログイン成功と同期確定の状態を分けずにUID切替やPUTを行うと、v296型のデータ消失が再発しうる
@@ -293,8 +297,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.304";
-  const BUILD_ID    = "304";
+  const APP_VERSION = "v23.9.304.1";
+  const BUILD_ID    = "3041";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -14293,25 +14297,44 @@ function spVisibleTrace(tag, payload, cls) {
     return base.replace(/\/+$/, '') + '/users/' + encodeURIComponent(googleUid) + '/smart_price.json';
   }
 
+  function withGoogleDbTimeout(promise, label, timeoutMs) {
+    timeoutMs = timeoutMs || 12000;
+    return new Promise(function (resolve, reject) {
+      var done = false;
+      var timer = setTimeout(function () {
+        if (done) return;
+        done = true;
+        reject(new Error(label + ' timeout'));
+      }, timeoutMs);
+      promise.then(function (value) {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve(value);
+      }).catch(function (err) {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        reject(err);
+      });
+    });
+  }
+
+  function getGoogleUserDbRef(googleUid) {
+    if (!googleUid) throw new Error('Google UIDがありません');
+    if (!window.firebaseDb) throw new Error('Firebase Databaseを初期化できません');
+    return window.firebaseDb.ref('users/' + googleUid + '/smart_price');
+  }
+
   async function fetchGoogleCloudDb(googleUid) {
-    var url = getGoogleUserDbUrl(googleUid);
-    if (!url) throw new Error('Google同期URLを作成できません');
-    var res = await fetch(url);
-    if (!res || !res.ok) throw new Error('Googleデータ取得失敗: HTTP ' + (res ? res.status : 'no-response'));
-    var cloud = await res.json();
+    var snap = await withGoogleDbTimeout(getGoogleUserDbRef(googleUid).once('value'), 'Googleデータ取得', 12000);
+    var cloud = snap && typeof snap.val === 'function' ? snap.val() : null;
     return (cloud && typeof cloud === 'object') ? cloud : {};
   }
 
   async function putGoogleCloudDb(googleUid, payloadDb) {
-    var url = getGoogleUserDbUrl(googleUid);
-    if (!url) throw new Error('Google同期URLを作成できません');
     var payload = typeof stripForCloud === 'function' ? stripForCloud(payloadDb) : payloadDb;
-    var res = await fetch(url, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    if (!res || !res.ok) throw new Error('Google保存失敗: HTTP ' + (res ? res.status : 'no-response'));
+    await withGoogleDbTimeout(getGoogleUserDbRef(googleUid).set(payload), 'Google保存', 12000);
   }
 
   function storeGoogleIdentity(user) {
@@ -14424,6 +14447,9 @@ function spVisibleTrace(tag, payload, cls) {
       try { renderStartupBannerIfNeeded(); } catch (_) {}
     } catch (e) {
       var msgText = e && e.code === 'auth/popup-closed-by-user' ? 'Googleログインをキャンセルしました' : ('Googleログイン失敗: ' + (e && e.message ? e.message : String(e)));
+      try {
+        if (localStorage.getItem('sp_google_uid')) localStorage.setItem('sp_google_sync_confirmed', '0');
+      } catch (_) {}
       setMsg(msgText, e && e.code === 'auth/popup-closed-by-user' ? 'text-secondary' : 'text-danger');
       try { if (typeof updateCloudSyncStatus === 'function') updateCloudSyncStatus(); } catch (_) {}
     } finally {
