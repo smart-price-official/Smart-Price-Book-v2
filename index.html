@@ -48,9 +48,13 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.304.4  BUILD_ID=3044
+APP_VERSION=v23.9.305  BUILD_ID=305
 
 === ChangeLog B-2 ===
+### v23.9.305
+- 仮説：税込/税別が混在する店舗履歴を同じ見た目で表示すると、店頭入力価格と比較価格の区別がつかず最安判断を誤る
+- 真因：入力時のtaxModeAtInput/taxRateAtInputは保存されているが、一覧・統計・履歴表示で登録価格と税込比較価格の役割が分離されていない
+- 修正方法：一覧/統計/店舗比較を「税込比較」へ統一し、購入履歴は登録価格と比較価格の二段表示へ変更。taxModeAtInputの無い既存履歴は「税区分不明（旧データ）」として明示する
 ### v23.9.304.1
 - 仮説：Googleログイン後に「Googleデータを確認中...」のまま止まる
 - 真因：Google認証後のDB確認をREST fetchで行っており、認証済みFirebase SDKの権限を使えていない。さらにタイムアウトが無く、通信/権限待ちでUIが復帰しない
@@ -297,8 +301,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.304.4";
-  const BUILD_ID    = "3044";
+  const APP_VERSION = "v23.9.305";
+  const BUILD_ID    = "305";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -1533,7 +1537,7 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
           </div>
           <input type="number" id="inputPrice" class="form-control text-end fw-bold text-danger border-0 bg-transparent fs-1" placeholder="0">
-          <div class="small text-secondary text-end mt-1">一覧・統計は税込表示</div>
+          <div class="small text-secondary text-end mt-1">一覧・比較・最安は税込比較</div>
         </div>
 
         <div id="statsBox" class="stats-strip"></div>
@@ -6140,9 +6144,9 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       const lastPriceMain = Number.isFinite(lastPN) ? String(Math.floor(lastPN)) : '—';
       const statsHtml = (allPrices.length >= 2) ? `
         <div class="d-flex gap-2 mt-1 sp-text-muted-sp">
-          <span>平均(税込) <b class="sp-text-normal">${avgP}円</b></span>
-          <span>最安(税込) <b class="sp-text-min-price">${minP}円</b></span>
-          <span>前回(税込) <b class="sp-text-normal">${lastP}円</b></span>
+          <span>平均（税込比較） <b class="sp-text-normal">${avgP}円</b></span>
+          <span>最安（税込比較） <b class="sp-text-min-price">${minP}円</b></span>
+          <span>前回（税込比較） <b class="sp-text-normal">${lastP}円</b></span>
         </div>` : '';
       div.innerHTML = `
         <div class="d-flex align-items-center">
@@ -6154,7 +6158,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
           </div>
           <div class="text-end ms-2 flex-shrink-0">
             <div class="price-main">${lastPriceMain}<span style="font-size:0.6rem;">円</span></div>
-            <div>${renderTaxBadge(getDisplayTaxLabel(last))}</div>
+            <div>${renderTaxBadge('税込比較')}</div>
           </div>
         </div>`;
       list.appendChild(div);
@@ -6646,9 +6650,9 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     const low = Math.min(...pArr);
     const last = pArr[0] || pArr[pArr.length-1];
     box.innerHTML = `<div class="stats-row">
-      <div class="stat-item">平均(税込)<span class="stat-val">${avg}円</span></div>
-      <div class="stat-item">最安(税込)<span class="stat-val text-danger">${low}円</span></div>
-      <div class="stat-item">直近(税込)<span class="stat-val">${last}円</span></div>
+      <div class="stat-item">平均（税込比較）<span class="stat-val">${avg}円</span></div>
+      <div class="stat-item">最安（税込比較）<span class="stat-val text-danger">${low}円</span></div>
+      <div class="stat-item">直近（税込比較）<span class="stat-val">${last}円</span></div>
     </div>`;
   }
 
@@ -6672,19 +6676,22 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         .sort((a, b) => Number(b && (b.created_at || b.ts || 0) || 0) - Number(a && (a.created_at || a.ts || 0) || 0));
       if (!arr.length) return;
       const prices = arr.map(x => Number(calcDisplayPrice(x)));
+      const latestEntry = arr[0];
       const latest = prices[0];
       const min = Math.min(...prices);
       const avg = Math.round(prices.reduce((a, b) => a + b, 0) / prices.length);
       result.push({
         shop,
         latest,
+        latestRegistered: formatRegisteredPrice(latestEntry),
+        latestCompare: formatComparePrice(latestEntry),
         min,
         avg,
         count: prices.length,
         latest_at: arr[0].created_at || arr[0].ts || 0
       });
     });
-    result.sort((a, b) => a.latest - b.latest);
+    result.sort((a, b) => (a.min - b.min) || (a.latest - b.latest));
     return result;
   }
 
@@ -6699,11 +6706,12 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     }
     box.innerHTML = `
       <div class="sp-store-price-box">
-        <div class="sp-store-price-title">店舗別価格（税込表示）</div>
+        <div class="sp-store-price-title">店舗比較（税込比較）</div>
         ${stats.map((s, idx) => `
           <div class="sp-store-price-row">
             <div class="sp-store-price-shop">${s.shop}${idx === 0 ? '（最安）' : ''}</div>
-            <div class="sp-store-price-meta">最新(税込) ${s.latest}円 / 平均(税込) ${s.avg}円 / 最安(税込) ${s.min}円 / ${s.count}件</div>
+            <div class="sp-store-price-meta">比較 最新 ${s.latestCompare} / 平均 ${s.avg}円 / 最安 ${s.min}円 / ${s.count}件</div>
+            <div class="sp-store-price-meta">登録 最新 ${s.latestRegistered}</div>
           </div>
         `).join('')}
       </div>
@@ -6735,7 +6743,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
           '<span class="sp-text-normal fw-bold">' + (displayStoreName(h.store) || '未設定') + '</span>' +
         '</div>' +
         '<div class="text-end">' +
-          '<span class="fw-bold sp-text-normal">' + formatDisplayPriceWithTax(h) + '</span><br>' +
+          '<span class="fw-bold sp-text-normal">登録価格：' + formatRegisteredPrice(h) + '</span><br>' +
+          '<span class="sp-text-normal small">比較価格：' + formatComparePrice(h) + '</span><br>' +
           '<span class="text-info small">タップで編集</span>' +
         '</div>';
       div.appendChild(row);
@@ -9834,15 +9843,33 @@ return true;
   }
   window.calcDisplayPrice = calcDisplayPrice;
 
+  function getRegisteredTaxLabel(h) {
+    var mode = h && h.taxModeAtInput;
+    if (mode === 'ex') return '税別';
+    if (mode === 'in') return '税込';
+    return '税区分不明（旧データ）';
+  }
+
   function getDisplayTaxLabel(h) {
     var mode = h && h.taxModeAtInput;
     if (mode === 'ex') return '税込換算';
-    if (mode === 'in') return '税込';
-    return '税込表示';
+    return '税込比較';
   }
 
   function renderTaxBadge(label) {
-    return '<span class="sp-tax-badge">' + (label || '税込表示') + '</span>';
+    return '<span class="sp-tax-badge">' + (label || '税込比較') + '</span>';
+  }
+
+  function formatRegisteredPrice(h) {
+    var p = Number(h && h.price);
+    if (!Number.isFinite(p) || p <= 0) return '—円（' + getRegisteredTaxLabel(h) + '）';
+    return String(Math.floor(p)) + '円（' + getRegisteredTaxLabel(h) + '）';
+  }
+
+  function formatComparePrice(h) {
+    var p = Number(calcDisplayPrice(h));
+    if (!Number.isFinite(p) || p <= 0) return '—円' + renderTaxBadge(getDisplayTaxLabel(h));
+    return String(Math.floor(p)) + '円' + renderTaxBadge(getDisplayTaxLabel(h));
   }
 
   function formatDisplayPriceWithTax(h) {
@@ -9851,7 +9878,10 @@ return true;
     return String(Math.floor(p)) + '円' + renderTaxBadge(getDisplayTaxLabel(h));
   }
 
+  window.getRegisteredTaxLabel = getRegisteredTaxLabel;
   window.getDisplayTaxLabel = getDisplayTaxLabel;
+  window.formatRegisteredPrice = formatRegisteredPrice;
+  window.formatComparePrice = formatComparePrice;
   window.formatDisplayPriceWithTax = formatDisplayPriceWithTax;
 
   async function showHome() {
