@@ -48,7 +48,7 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.304.2  BUILD_ID=3042
+APP_VERSION=v23.9.304.3  BUILD_ID=3043
 
 === ChangeLog B-2 ===
 ### v23.9.304.1
@@ -297,8 +297,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.304.2";
-  const BUILD_ID    = "3042";
+  const APP_VERSION = "v23.9.304.3";
+  const BUILD_ID    = "3043";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -14360,11 +14360,25 @@ function spVisibleTrace(tag, payload, cls) {
   }
 
   var googleSaveConfirmResolve = null;
+  var googleSaveConfirmButtonsBound = false;
 
   function hideGoogleSaveConfirmBox() {
     var box = document.getElementById('googleSaveConfirmBox');
     if (box) box.style.display = 'none';
     googleSaveConfirmResolve = null;
+  }
+
+  function bindGoogleSaveConfirmButtons() {
+    if (googleSaveConfirmButtonsBound) return;
+    googleSaveConfirmButtonsBound = true;
+    document.addEventListener('click', function(e) {
+      var okBtn = e.target && e.target.closest ? e.target.closest('#googleSaveOkBtn') : null;
+      var cancelBtn = e.target && e.target.closest ? e.target.closest('#googleSaveCancelBtn') : null;
+      if (!okBtn && !cancelBtn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      resolveGoogleSaveConfirm(!!okBtn);
+    }, true);
   }
 
   function showGoogleSaveConfirmBox(historyCount) {
@@ -14378,6 +14392,7 @@ function spVisibleTrace(tag, payload, cls) {
       text.textContent = 'この端末の価格記録（' + historyCount + '件）をGoogleアカウントに保存します。';
       box.style.display = '';
       googleSaveConfirmResolve = resolve;
+      bindGoogleSaveConfirmButtons();
       try { box.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) {}
     });
   }
