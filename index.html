@@ -48,9 +48,13 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.306  BUILD_ID=306
+APP_VERSION=v23.9.307  BUILD_ID=307
 
 === ChangeLog B-2 ===
+### v23.9.307
+- 仮説：家族共有画面で「招待する側」と「参加する側」が同じ面に並び、受け取った人も送る人も次に押すボタンを迷う
+- 真因：招待コード発行・共有文面・参加コード入力・未ログイン登録導線が1つのパネルに混在している。また手入力参加ルートでは家族グループID保存と同期開始がURL参加ルートと揃っていない
+- 修正方法：家族共有パネルを「招待する」「招待を受ける」の2ブロックに分け、招待URLを主導線として表示。手入力参加成功時もsp_family_group_id保存・currentFamilyGroupId更新・syncFirebase()起動まで行う
 ### v23.9.306
 - 仮説：税込比較に統一すると会計上は公平だが、店頭で見ている税別価格とアプリの主表示がズレて買い物中に迷う
 - 真因：SmartPriceの利用場面は店頭確認が主であり、店舗の主表示方式（税別/税込）とアプリの主表示を一致させる必要がある
@@ -305,8 +309,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.306";
-  const BUILD_ID    = "306";
+  const APP_VERSION = "v23.9.307";
+  const BUILD_ID    = "307";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -1825,6 +1829,7 @@ document.addEventListener('DOMContentLoaded', function() {
       <!-- v23.9.249 SP-260615-FAMILY-UX: panelFamily を友人紹介と同じフローに統一（自動発行＋即表示）-->
       <div id="panelFamily" class="sp-panel mt-3" style="display:none;">
         <div class="small text-secondary mb-2" style="opacity:.9;">個人ID：<span class="sp-text-normal fw-bold" id="sp-personal-id-panelFamily"></span></div>
+        <div id="family-current-status" class="small mb-3" style="background:rgba(76,175,80,.10); border:1px solid rgba(76,175,80,.28); border-radius:8px; padding:9px 11px; line-height:1.5;"></div>
 
         <!-- v23.9.276 SP-260618-FAMUX-001: 未ログイン時かんたん登録フォーム -->
         <div id="family-register-prompt" style="display:none;">
@@ -1853,12 +1858,20 @@ document.addEventListener('DOMContentLoaded', function() {
         <hr style="border-color:var(--sp-border,#444); margin:8px 0 12px;">
 
         <!-- 招待コード（パネル表示時に自動発行） -->
-        <div class="mb-3">
-          <div class="small text-secondary mb-1">招待コード <span style="opacity:.65; font-size:.78rem;">(24時間有効)</span></div>
+        <div class="mb-3" style="background:rgba(255,255,255,.035); border:1px solid rgba(255,255,255,.10); border-radius:10px; padding:12px;">
+          <div class="fw-bold mb-1" style="font-size:0.95rem;">1. 家族を招待する</div>
+          <div class="small text-secondary mb-2" style="line-height:1.5;">送る人はここだけ使います。相手はURLをタップして「参加する」を押すだけです。</div>
+          <div class="small text-secondary mb-1">招待URL <span style="opacity:.65; font-size:.78rem;">(24時間有効)</span></div>
+          <div class="d-flex gap-2 mb-2 align-items-center">
+            <input id="family-invite-url-display" class="form-control sp-bg-card sp-border-muted"
+                   readonly style="font-size:0.82rem;" placeholder="発行中...">
+            <button class="btn sp-btn-primary btn-sm px-3 fw-bold" onclick="spCopyFamilyInviteUrl()" style="white-space:nowrap;">URLコピー</button>
+          </div>
+          <div class="small text-secondary mb-1">招待コード <span style="opacity:.65; font-size:.78rem;">URLが使えない時だけ使います</span></div>
           <div class="d-flex gap-2 mb-3 align-items-center">
             <input id="family-invite-code-display" class="form-control sp-bg-card sp-border-muted fw-bold"
                    readonly style="font-family:monospace; letter-spacing:0.12em; font-size:1.05rem;" placeholder="発行中...">
-            <button class="btn sp-btn-primary btn-sm px-3 fw-bold" onclick="spCopyFamilyInvite()" style="white-space:nowrap;">📋 コピー</button>
+            <button class="btn btn-outline-secondary btn-sm px-3 fw-bold" onclick="spCopyFamilyInvite()" style="white-space:nowrap;">コードコピー</button>
           </div>
 
           <!-- v23.9.277 SP-260618-FAMUX-002: 送り方2択（横並び対等） -->
@@ -1885,10 +1898,10 @@ document.addEventListener('DOMContentLoaded', function() {
           </div>
         </div>
 
-        <div class="small text-center text-secondary mb-3" style="opacity:.6;">── または ──</div>
-
         <!-- 招待コードを入力して参加 -->
-        <div class="mb-3">
+        <div class="mb-3" style="background:rgba(33,150,243,.09); border:1px solid rgba(33,150,243,.24); border-radius:10px; padding:12px;">
+          <div class="fw-bold mb-1" style="font-size:0.95rem;">2. 招待を受ける</div>
+          <div class="small text-secondary mb-2" style="line-height:1.5;">URLで開いた場合は自動で参加画面が出ます。コードだけ届いた時はここに入力してください。</div>
           <div class="small text-secondary mb-1 fw-bold">招待コードを入力：</div>
           <div class="d-flex gap-2 mb-1">
             <input id="family-join-code" class="form-control sp-bg-card sp-border-muted"
@@ -18360,6 +18373,8 @@ async function spCreateFamilyInvite(silent) {
     // UI 更新（v249: family-invite-result は常時表示になったため show 不要）
     var display = document.getElementById('family-invite-code-display');
     if (display) display.value = code;
+    var urlDisplay = document.getElementById('family-invite-url-display');
+    if (urlDisplay) urlDisplay.value = SP_SHARE_PUBLIC_URL + '?fam=' + code;
     var expiry = document.getElementById('family-invite-expiry');
     if (expiry) expiry.textContent = '有効期限：24時間';
     // テンプレート初期化（案1をコード入りで表示）
@@ -18372,12 +18387,34 @@ async function spCreateFamilyInvite(silent) {
 }
 window.spCreateFamilyInvite = spCreateFamilyInvite;
 
+function spRenderFamilyStatus() {
+  try {
+    var el = document.getElementById('family-current-status');
+    if (!el) return;
+    var gid = currentFamilyGroupId || localStorage.getItem('sp_family_group_id') || '';
+    var loggedIn = (typeof spAccountIsLoggedIn === 'function') ? spAccountIsLoggedIn() : false;
+    if (gid) {
+      el.innerHTML = '<b>現在の状態：</b>家族共有に参加中<br><span style="opacity:.72;">共有ID：' + String(gid).replace(/[<>"'&]/g, '') + '</span>';
+    } else if (loggedIn) {
+      el.innerHTML = '<b>現在の状態：</b>家族共有は未参加<br><span style="opacity:.72;">招待URLを送るか、届いたコードで参加できます。</span>';
+    } else {
+      el.innerHTML = '<b>現在の状態：</b>家族共有は未参加<br><span style="opacity:.72;">招待URLで参加できます。安定利用にはアカウント登録がおすすめです。</span>';
+    }
+  } catch(_) {}
+}
+window.spRenderFamilyStatus = spRenderFamilyStatus;
+
 // v23.9.249 SP-260615-FAMILY-UX: パネル表示時の自動初期化（updateReferralPanel と対称）
 async function updateFamilyPanel() {
+  try { spRenderFamilyStatus(); } catch(_) {}
   var codeEl = document.getElementById('family-invite-code-display');
   // 既に有効なコードが表示済みならテンプレートだけ更新してスキップ
   if (codeEl && codeEl.value && codeEl.value.startsWith('FAM-')) {
     try { if (typeof spSelectFamilyTemplate === 'function') spSelectFamilyTemplate(0); } catch(e) {}
+    try {
+      var urlDisplay = document.getElementById('family-invite-url-display');
+      if (urlDisplay) urlDisplay.value = SP_SHARE_PUBLIC_URL + '?fam=' + codeEl.value;
+    } catch(e) {}
     return;
   }
   await spCreateFamilyInvite(true); // silent
@@ -18399,6 +18436,22 @@ function spCopyFamilyInvite() {
   } catch(e) {}
 }
 window.spCopyFamilyInvite = spCopyFamilyInvite;
+
+function spCopyFamilyInviteUrl() {
+  try {
+    var el = document.getElementById('family-invite-url-display');
+    var url = el ? el.value : '';
+    if (!url) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(function() { showToast('招待URLをコピーしました', 1200); });
+    } else {
+      var ta = document.createElement('textarea');
+      ta.value = url; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+      showToast('招待URLをコピーしました', 1200);
+    }
+  } catch(e) {}
+}
+window.spCopyFamilyInviteUrl = spCopyFamilyInviteUrl;
 
 // [v233 SP-250608-SHARE-001] 家族共有テキスト生成ヘルパー
 function _buildFamilyInviteText(code) {
@@ -18486,7 +18539,11 @@ async function spJoinFamilyGroup() {
       console.log('[FAMILY] FAMILY_INVITE_USED',   { code: code, uid: uid });
       console.log('[FAMILY] FAMILY_GROUP_JOINED',  { groupId: groupId, uid: uid });
     }
-    setStatus('✅ 家族グループに参加しました！', false);
+    currentFamilyGroupId = groupId;
+    try { localStorage.setItem('sp_family_group_id', groupId); } catch(_) {}
+    try { if (typeof spRenderFamilyStatus === 'function') spRenderFamilyStatus(); } catch(_) {}
+    try { setTimeout(function(){ try { syncFirebase(); } catch(_){} }, 1500); } catch(_) {}
+    setStatus('✅ 家族グループに参加しました。共有データを確認しています', false);
     showToast('家族グループに参加しました 🎉', 3000);
     if (inp) inp.value = '';
 
