@@ -48,9 +48,13 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.308  BUILD_ID=308
+APP_VERSION=v23.9.308.1  BUILD_ID=3081
 
 === ChangeLog B-2 ===
+### v23.9.308.1
+- 仮説：「アカウントを作成すると同期」と「Googleログイン済み・未同期」が同時に出ると、登録すれば自動同期されるのか、まだ未同期なのか分からない
+- 真因：起動時アカウントバナーがメールログイン状態だけを見ており、Googleログイン状態を考慮していない。また「登録する」という文言がログイン済みユーザーにも出てしまう
+- 修正方法：Googleログイン済みの場合は起動時登録バナーを非表示にし、未確定状態ラベルを「Googleログイン済み・保存確認待ち」へ変更。未ログイン向けバナー文言も「ログインすると同期できます」に変更する
 ### v23.9.308
 - 仮説：Googleログイン後の保存確認がログイン画面の下に隠れ、ユーザーが待ち続ける
 - 真因：保存確認UIがアカウントフォーム下部にあり、設定モーダル内スクロール位置によって見えない
@@ -313,8 +317,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.308";
-  const BUILD_ID    = "308";
+  const APP_VERSION = "v23.9.308.1";
+  const BUILD_ID    = "3081";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -1491,8 +1495,8 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
     <!-- v23.9.173 SP-260601-007: 起動時アカウント連携バナー（C案・未ログイン時のみ・×で当日非表示） -->
     <div id="startupAccountBanner" class="mb-3 p-2 d-flex align-items-center" style="display:none; background:rgba(13,110,253,0.15); border:1px solid rgba(13,110,253,0.4); border-radius:8px; font-size:0.82rem; gap:8px;">
-      <span style="flex:1; line-height:1.4;">アカウントを作成するとPCとスマホのデータが同期されます</span>
-      <button type="button" class="btn btn-sm btn-primary py-1 px-2" style="font-size:0.78rem; white-space:nowrap;" onclick="openAccountFromBanner()">登録する</button>
+      <span id="startupAccountBannerText" style="flex:1; line-height:1.4;">ログインするとPCとスマホのデータを同期できます</span>
+      <button id="startupAccountBannerBtn" type="button" class="btn btn-sm btn-primary py-1 px-2" style="font-size:0.78rem; white-space:nowrap;" onclick="openAccountFromBanner()">ログインする</button>
       <button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2" style="font-size:0.78rem; line-height:1;" onclick="dismissStartupBanner()" aria-label="閉じる">×</button>
     </div>
     <div id="cloudSyncStatusBanner" class="mb-3 p-2" style="display:none; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:8px; font-size:0.82rem; line-height:1.4;"></div>
@@ -13953,7 +13957,7 @@ function spVisibleTrace(tag, payload, cls) {
       return { key: 'google', label: 'Google同期中', color: '#4caf50', visible: true };
     }
     if (googleUid) {
-      return { key: 'google_pending', label: 'Googleログイン済み・未同期', color: '#ffc107', visible: true };
+      return { key: 'google_pending', label: 'Googleログイン済み・保存確認待ち', color: '#ffc107', visible: true };
     }
     if (code && uid) {
       return { key: 'recovered', label: '回復コードで復元済み', color: '#64b5f6', visible: true };
@@ -14623,7 +14627,7 @@ function spVisibleTrace(tag, payload, cls) {
       return;
     }
     if (googleUid) {
-      el.textContent = (confirmed ? 'Google同期中' : 'Googleログイン済み・未同期') + (googleEmail ? '：' + googleEmail : '');
+      el.textContent = (confirmed ? 'Google同期中' : 'Googleログイン済み・保存確認待ち') + (googleEmail ? '：' + googleEmail : '');
       el.className = 'small mt-2 ' + (confirmed ? 'text-success' : 'text-warning');
       if (logoutBtn) logoutBtn.style.display = '';
     } else {
@@ -14663,7 +14667,7 @@ function spVisibleTrace(tag, payload, cls) {
         var ok = await showGoogleSaveConfirmBox(localStats.historyCount);
         if (!ok) {
           try { localStorage.setItem('sp_google_sync_confirmed', '0'); } catch (_) {}
-          setMsg('Googleログイン済み・未同期', 'text-warning');
+          setMsg('Googleログイン済み・保存確認待ち', 'text-warning');
           try { if (typeof updateCloudSyncStatus === 'function') updateCloudSyncStatus(); } catch (_) {}
           return;
         }
@@ -14693,7 +14697,7 @@ function spVisibleTrace(tag, payload, cls) {
       } else if (hasLocalData && hasCloudData) {
         try { localStorage.setItem('sp_google_sync_confirmed', '0'); } catch (_) {}
         await customConfirm('この端末：価格記録 ' + localStats.historyCount + '件\nGoogleアカウント：価格記録 ' + cloudStats.historyCount + '件\n※データ統合はv305で実施します');
-        setMsg('Googleログイン済み・未同期（統合はv305）', 'text-warning');
+        setMsg('Googleログイン済み・保存確認待ち（統合はv305）', 'text-warning');
       } else {
         markGoogleSyncConfirmed(user);
         saveLocalOnly();
@@ -15176,11 +15180,19 @@ function spVisibleTrace(tag, payload, cls) {
     // v23.9.178 SP-260602-011 FIX-E: 判定理由ログを冒頭に追加（残留時の原因切り分け用）
     var _tok = false; try { _tok = !!(localStorage.getItem('sp_auth_token') || ''); } catch (_) {}
     var _logged = false; try { _logged = spAccountIsLoggedIn(); } catch (_) {}
+    var _googleUid = ''; try { _googleUid = localStorage.getItem('sp_google_uid') || ''; } catch (_) {}
     var _dis = ''; try { _dis = localStorage.getItem('sp_banner_dismissed_date') || ''; } catch (_) {}
-    try { spDbg('[BANNER_DECIDE]', { token: _tok, loggedIn: _logged, dismissed: _dis, sessionHidden: !!window._spBannerHiddenSession }); } catch (_) {}
+    try { spDbg('[BANNER_DECIDE]', { token: _tok, loggedIn: _logged, googleUid: !!_googleUid, dismissed: _dis, sessionHidden: !!window._spBannerHiddenSession }); } catch (_) {}
     try { if (window._spBannerHiddenSession) { banner.style.setProperty('display', 'none', 'important'); return; } } catch (_) {}
+    if (_googleUid) { banner.style.setProperty('display', 'none', 'important'); return; }
     if (_logged) { banner.style.setProperty('display', 'none', 'important'); return; }
     if (_dis === _spTodayStr()) { banner.style.setProperty('display', 'none', 'important'); return; }
+    try {
+      var text = document.getElementById('startupAccountBannerText');
+      var btn = document.getElementById('startupAccountBannerBtn');
+      if (text) text.textContent = 'ログインするとPCとスマホのデータを同期できます';
+      if (btn) btn.textContent = 'ログインする';
+    } catch (_) {}
     banner.style.display = 'flex';
     try { spDbg('[ACCOUNT_BANNER_SHOWN]', { date: _spTodayStr() }); } catch(_) {}
   }
