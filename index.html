@@ -48,7 +48,7 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.309  BUILD_ID=309
+APP_VERSION=v23.9.309.1  BUILD_ID=3091
 
 === ChangeLog B-2 ===
 ### v23.9.308.1
@@ -317,8 +317,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.309";
-  const BUILD_ID    = "309";
+  const APP_VERSION = "v23.9.309.1";
+  const BUILD_ID    = "3091";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -1505,10 +1505,6 @@ document.addEventListener('DOMContentLoaded', function() {
       <button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2" style="font-size:0.78rem; line-height:1;" onclick="dismissStartupBanner()" aria-label="閉じる">×</button>
     </div>
     <div id="cloudSyncStatusBanner" class="mb-3 p-2" style="display:none; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:8px; font-size:0.82rem; line-height:1.4;"></div>
-    <div id="registrationModeSwitch" class="sp-mode-switch" aria-label="登録モード">
-      <button type="button" id="priceModeBtn" class="sp-mode-btn active" onclick="setRegistrationMode('price')">価格を記録</button>
-      <button type="button" id="masterModeBtn" class="sp-mode-btn" onclick="setRegistrationMode('master')">商品だけ登録</button>
-    </div>
     <div class="row g-2 mb-4">
       <div class="col-7"><button id="scanBtnTop" class="btn sp-btn-primary w-100 py-3 rounded-4 shadow" onclick="startScanner()"><i class="bi bi-upc-scan fs-1"></i><br>スキャン</button></div>
       <div class="col-5"><button class="btn sp-btn-secondary w-100 py-3 rounded-4 shadow" onclick="window.openBarcodeManual && window.openBarcodeManual()"><i class="bi bi-keyboard fs-1"></i><br>手入力</button></div>
@@ -1784,17 +1780,50 @@ document.addEventListener('DOMContentLoaded', function() {
 
     <div id="settingsMainMenu" class="mt-3">
         <div class="d-grid gap-2">
+          <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelInitialSetup" onclick="renderInitialSetupPanel()">初期設定</button>
           <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelReferral">① 友人紹介</button>
           <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelFamily">② 家族共有</button>
           <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelSupport">③ 運営者へ質問／不具合報告</button>
-          <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelTaxSettings" onclick="renderStoreTaxSettingsPanel()">④ 店舗の税設定</button>
           <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelTheme" onclick="renderThemePanel()">⑤ 🎨 テーマ設定</button>
-          <button type="button" class="btn btn-outline-secondary sp-menu-btn" onclick="openHomeCityModal()">⑥ 買い物エリア設定</button>
           <!-- v23.9.172 SP-260601-006: デバイスID・端末照合 パネル（PC/スマホ照合用） -->
           <button type="button" class="btn btn-outline-warning sp-menu-btn" data-panel="panelDeviceId" onclick="renderDeviceIdPanel()">⑦ 上級者向け</button>
           <!-- v23.9.173 SP-260601-007: アカウント連携（ログイン状態でラベル切替） -->
-          <button id="accountMenuBtn" type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelAccount" onclick="renderAccountPanel()">⑧ アカウント登録</button>
 </div>
+      </div>
+
+      <div id="panelInitialSetup" class="sp-panel mt-3" style="display:none;">
+        <div class="small text-secondary mb-3" style="line-height:1.6;">
+          使い始めに一度だけ整える項目です。普段の買い物では触らなくて大丈夫です。
+        </div>
+
+        <div class="mb-3 p-3" style="background:rgba(255,255,255,.045); border:1px solid rgba(255,255,255,.12); border-radius:10px;">
+          <div class="fw-bold mb-1">商品だけ登録</div>
+          <div class="small text-secondary mb-2" style="line-height:1.5;">家にある商品をバーコードだけ読んで、価格なしで商品マスターを作ります。</div>
+          <div id="initialSetupProductModeStatus" class="small mb-2 text-secondary"></div>
+          <div class="d-grid gap-2">
+            <button type="button" class="btn sp-btn-primary py-2 fw-bold" onclick="startProductMasterSetup()">商品だけ登録を始める</button>
+            <button type="button" class="btn btn-outline-secondary py-2" onclick="stopProductMasterSetup()">通常の価格記録に戻す</button>
+          </div>
+        </div>
+
+        <div class="mb-3 p-3" style="background:rgba(255,255,255,.045); border:1px solid rgba(255,255,255,.12); border-radius:10px;">
+          <div class="fw-bold mb-1">買い物エリア</div>
+          <div class="small text-secondary mb-2" style="line-height:1.5;">よく買い物する市区町村を設定します。店舗候補を出しやすくします。</div>
+          <button type="button" class="btn sp-btn-secondary w-100 py-2 fw-bold" onclick="openHomeCityModal()">買い物エリアを設定</button>
+        </div>
+
+        <div class="mb-3 p-3" style="background:rgba(255,255,255,.045); border:1px solid rgba(255,255,255,.12); border-radius:10px;">
+          <div class="fw-bold mb-1">アカウント</div>
+          <div class="small text-secondary mb-2" style="line-height:1.5;">PCとスマホで使う場合や、データを残したい場合に設定します。</div>
+          <button id="accountMenuBtn" type="button" class="btn sp-btn-secondary w-100 py-2 fw-bold sp-menu-btn" data-panel="panelAccount" onclick="renderAccountPanel()">アカウント登録</button>
+        </div>
+
+        <div class="mb-3 p-3" style="background:rgba(255,193,7,.08); border:1px solid rgba(255,193,7,.28); border-radius:10px;">
+          <div class="fw-bold mb-1 text-warning">店舗の税込/税別について</div>
+          <div class="small text-secondary" style="line-height:1.5;">
+            店舗ごとの税込/税別は、買い物中の入力から学習する設計にします。設定メニューで手作業管理する方式はやめます。
+          </div>
+        </div>
       </div>
 
       <div id="panelReferral" class="sp-panel mt-3" style="display:none;">
@@ -6712,14 +6741,21 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     try { localStorage.setItem('sp_registration_mode', spRegistrationMode); } catch (_) {}
     applyRegistrationModeToHome();
     applyRegistrationModeToForm();
+    try { renderInitialSetupPanel(); } catch (_) {}
     showToast(spRegistrationMode === 'master' ? '商品だけ登録モードです' : '価格を記録するモードです', 1800);
   }
 
   function applyRegistrationModeToHome() {
     const priceBtn = document.getElementById('priceModeBtn');
     const masterBtn = document.getElementById('masterModeBtn');
+    const scanBtn = document.getElementById('scanBtnTop');
     if (priceBtn) priceBtn.classList.toggle('active', spRegistrationMode !== 'master');
     if (masterBtn) masterBtn.classList.toggle('active', spRegistrationMode === 'master');
+    if (scanBtn) {
+      scanBtn.innerHTML = spRegistrationMode === 'master'
+        ? '<i class="bi bi-upc-scan fs-1"></i><br>商品だけ登録'
+        : '<i class="bi bi-upc-scan fs-1"></i><br>スキャン';
+    }
   }
 
   function applyRegistrationModeToForm() {
@@ -6887,6 +6923,30 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     } finally {
       if (btn) btn.disabled = false;
     }
+  }
+
+  function renderInitialSetupPanel() {
+    const st = document.getElementById('initialSetupProductModeStatus');
+    if (st) {
+      st.textContent = spRegistrationMode === 'master'
+        ? '現在：商品だけ登録モード'
+        : '現在：通常の価格記録モード';
+      st.className = spRegistrationMode === 'master' ? 'small mb-2 text-info' : 'small mb-2 text-secondary';
+    }
+  }
+
+  function startProductMasterSetup() {
+    setRegistrationMode('master');
+    try { if (window.SmartPriceModal && typeof window.SmartPriceModal.close === 'function') window.SmartPriceModal.close(); } catch (_) {}
+    try { showHome(); } catch (_) {}
+    showToast('商品だけ登録を始めます。バーコードを読んでください', 3000);
+  }
+
+  function stopProductMasterSetup() {
+    setRegistrationMode('price');
+    try { if (window.SmartPriceModal && typeof window.SmartPriceModal.close === 'function') window.SmartPriceModal.close(); } catch (_) {}
+    try { showHome(); } catch (_) {}
+    showToast('通常の価格記録に戻しました', 2500);
   }
   function renderStats(history) {
     const box = document.getElementById('statsBox');
@@ -14241,8 +14301,8 @@ function spVisibleTrace(tag, payload, cls) {
   
   // v23.9.172 SP-260601-006: DeviceId パネル（PC/スマホ照合）を追加
   // v23.9.173 SP-260601-007: Account パネル（アカウント連携・ログイン）を追加
-  const PANELS = { Main: 'settingsMainMenu', Referral: 'panelReferral', Family: 'panelFamily', Support: 'panelSupport', Operator: 'panelOperator', TaxSettings: 'panelTaxSettings', Theme: 'panelTheme', DeviceId: 'panelDeviceId', Account: 'panelAccount' };
-  const TITLES = { Main: '設定', Referral: '友人紹介', Family: '家族共有', Support: '運営者へ質問', Operator: '管理メニュー', TaxSettings: '店舗の税設定', Theme: 'テーマ設定', DeviceId: '上級者向け', Account: 'アカウント登録' };
+  const PANELS = { Main: 'settingsMainMenu', InitialSetup: 'panelInitialSetup', Referral: 'panelReferral', Family: 'panelFamily', Support: 'panelSupport', Operator: 'panelOperator', TaxSettings: 'panelTaxSettings', Theme: 'panelTheme', DeviceId: 'panelDeviceId', Account: 'panelAccount' };
+  const TITLES = { Main: '設定', InitialSetup: '初期設定', Referral: '友人紹介', Family: '家族共有', Support: '運営者へ質問', Operator: '管理メニュー', TaxSettings: '店舗の税設定', Theme: 'テーマ設定', DeviceId: '上級者向け', Account: 'アカウント登録' };
   
   function init() {
     if (state.initialized) return;
@@ -14276,6 +14336,7 @@ function spVisibleTrace(tag, payload, cls) {
     // v23.9.173 SP-260601-007: 起動時バナー＆⑧ボタンラベルを初回描画
     try { renderStartupBannerIfNeeded(); } catch(_) {}
     try { renderAccountPanel(); } catch(_) {}
+    try { renderInitialSetupPanel(); } catch(_) {}
     // v23.9.178 SP-260602-011: スキャナ閉じ／バナー× を pointer/touch 主導に再バインド（FIX-A / FIX-D）
     try { _spBindScannerCloseBtn(); } catch (_) {}
     try { _spBindBannerDismissBtn(); } catch (_) {}
