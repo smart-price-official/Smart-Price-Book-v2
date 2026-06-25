@@ -48,7 +48,7 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.308.1  BUILD_ID=3081
+APP_VERSION=v23.9.309  BUILD_ID=309
 
 === ChangeLog B-2 ===
 ### v23.9.308.1
@@ -317,8 +317,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.308.1";
-  const BUILD_ID    = "3081";
+  const APP_VERSION = "v23.9.309";
+  const BUILD_ID    = "309";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -568,6 +568,11 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
     .sp-store-price-empty { display:flex; flex-direction:column; background:var(--sp-card-alt); padding:10px; border-radius:8px; margin-bottom:15px; font-size:12px; color:var(--sp-text-muted); border:1px solid var(--sp-border); }
 
     .history-row { font-size: 0.8rem; padding: 10px 0; border-top: 1px solid var(--sp-border); display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+    .sp-mode-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+    .sp-mode-btn { border: 1px solid var(--sp-border); border-radius: 8px; padding: 10px 8px; background: var(--sp-card); color: var(--sp-text); font-weight: 700; font-size: 0.88rem; }
+    .sp-mode-btn.active { background: var(--sp-button-bg); color: var(--sp-button-text); border-color: var(--sp-primary); }
+    .sp-master-banner { border: 1px solid rgba(13, 202, 240, 0.45); background: rgba(13, 202, 240, 0.10); color: var(--sp-text); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; font-size: 0.86rem; line-height: 1.5; }
+    .sp-master-banner strong { display:block; color:#7ddcff; margin-bottom:2px; }
     
     /* ✅ P0: 購入履歴選択時の赤枠を#priceSectionと同じ仕様へ統一 */
     .selected {
@@ -1500,6 +1505,10 @@ document.addEventListener('DOMContentLoaded', function() {
       <button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2" style="font-size:0.78rem; line-height:1;" onclick="dismissStartupBanner()" aria-label="閉じる">×</button>
     </div>
     <div id="cloudSyncStatusBanner" class="mb-3 p-2" style="display:none; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:8px; font-size:0.82rem; line-height:1.4;"></div>
+    <div id="registrationModeSwitch" class="sp-mode-switch" aria-label="登録モード">
+      <button type="button" id="priceModeBtn" class="sp-mode-btn active" onclick="setRegistrationMode('price')">価格を記録</button>
+      <button type="button" id="masterModeBtn" class="sp-mode-btn" onclick="setRegistrationMode('master')">商品だけ登録</button>
+    </div>
     <div class="row g-2 mb-4">
       <div class="col-7"><button id="scanBtnTop" class="btn sp-btn-primary w-100 py-3 rounded-4 shadow" onclick="startScanner()"><i class="bi bi-upc-scan fs-1"></i><br>スキャン</button></div>
       <div class="col-5"><button class="btn sp-btn-secondary w-100 py-3 rounded-4 shadow" onclick="window.openBarcodeManual && window.openBarcodeManual()"><i class="bi bi-keyboard fs-1"></i><br>手入力</button></div>
@@ -1516,6 +1525,10 @@ document.addEventListener('DOMContentLoaded', function() {
       </div>
 
       <div id="formMainUI">
+        <div id="masterOnlyFormNotice" class="sp-master-banner" style="display:none;">
+          <strong>商品だけ登録中</strong>
+          価格と店名はあとで追加できます。購入履歴はまだ作りません。
+        </div>
         <div class="d-flex mb-3">
           <div style="position:relative; width:90px; height:90px; margin-right:12px;">
             <img id="previewImg" style="width:100%; height:100%; object-fit:contain; background:white; border-radius:10px;" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'100\' height=\'100\'%3E%3Crect width=\'100\' height=\'100\' fill=\'%23333\'/%3E%3Ctext x=\'50\' y=\'52\' text-anchor=\'middle\' fill=\'%23888\' font-size=\'11\' font-family=\'sans-serif\'%3ENo Image%3C/text%3E%3C/svg%3E';this.onerror=null;">
@@ -1567,6 +1580,7 @@ document.addEventListener('DOMContentLoaded', function() {
         <div class="d-flex gap-2 mb-3">
           <button id="delHistBtn" class="btn btn-outline-secondary py-3 fw-bold flex-grow-0 px-3 shadow" style="display:none;" onclick="confirmDeleteHist()">削除</button>
           <button id="delProductBtn" class="btn btn-outline-danger py-3 fw-bold flex-grow-0 px-3 shadow" style="display:none;" onclick="confirmDeleteProduct()" title="この商品を完全削除">🗑</button>
+          <button id="masterSaveBtn" class="btn sp-btn-primary py-3 fw-bold fs-5 shadow flex-grow-1" style="display:none;" onclick="saveProductMasterOnly()">商品だけ保存</button>
           <button id="saveBtn" class="btn sp-btn-primary py-3 fw-bold fs-5 shadow flex-grow-1" onclick="saveData()">保存</button>
         </div>
       </div>
@@ -6341,11 +6355,13 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     try { if (typeof window.spOpLog === 'function') window.spOpLog('state', { to: 'form', code: String(code != null ? code : '') }); } catch (_) {}
     const calcArea = document.getElementById('calcOptionArea');
     const saveBtn = document.getElementById('saveBtn');
+    const masterSaveBtn = document.getElementById('masterSaveBtn');
     const delBtn = document.getElementById('delHistBtn');
     const storeJumpBtn = document.getElementById('storeJumpBtn');
     const delProdBtn = document.getElementById('delProductBtn');
     if(calcArea) calcArea.style.display = 'flex';
     if(saveBtn) saveBtn.innerText = '保存';
+    if(masterSaveBtn) masterSaveBtn.innerText = '商品だけ保存';
     if(delBtn) delBtn.style.display = 'none';
     if(delProdBtn) delProdBtn.style.display = 'none';
     if(storeJumpBtn) storeJumpBtn.style.display = 'none';
@@ -6685,6 +6701,192 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     try {
       renderStoreSectionForForm('openForm_after_bind');
     } catch (_rsf) {}
+
+    try { applyRegistrationModeToForm(); } catch (_mode) {}
+  }
+
+  let spRegistrationMode = localStorage.getItem('sp_registration_mode') || 'price';
+
+  function setRegistrationMode(mode) {
+    spRegistrationMode = (mode === 'master') ? 'master' : 'price';
+    try { localStorage.setItem('sp_registration_mode', spRegistrationMode); } catch (_) {}
+    applyRegistrationModeToHome();
+    applyRegistrationModeToForm();
+    showToast(spRegistrationMode === 'master' ? '商品だけ登録モードです' : '価格を記録するモードです', 1800);
+  }
+
+  function applyRegistrationModeToHome() {
+    const priceBtn = document.getElementById('priceModeBtn');
+    const masterBtn = document.getElementById('masterModeBtn');
+    if (priceBtn) priceBtn.classList.toggle('active', spRegistrationMode !== 'master');
+    if (masterBtn) masterBtn.classList.toggle('active', spRegistrationMode === 'master');
+  }
+
+  function applyRegistrationModeToForm() {
+    const isMaster = spRegistrationMode === 'master';
+    const notice = document.getElementById('masterOnlyFormNotice');
+    const priceSection = document.getElementById('priceSection');
+    const statsBox = document.getElementById('statsBox');
+    const storeStats = document.getElementById('storePriceStatsBox');
+    const detailHistory = document.getElementById('detailHistory');
+    const toggleHistBtn = document.getElementById('toggleHistBtn');
+    const saveBtn = document.getElementById('saveBtn');
+    const masterSaveBtn = document.getElementById('masterSaveBtn');
+    const storeJumpBtn = document.getElementById('storeJumpBtn');
+    const curStoreIndicator = document.getElementById('curStoreIndicator');
+
+    if (notice) notice.style.display = isMaster ? 'block' : 'none';
+    if (priceSection) priceSection.style.display = isMaster ? 'none' : 'block';
+    if (statsBox) statsBox.style.display = isMaster ? 'none' : '';
+    if (storeStats) storeStats.style.display = isMaster ? 'none' : '';
+    if (detailHistory) detailHistory.style.display = 'none';
+    if (toggleHistBtn) toggleHistBtn.style.display = isMaster ? 'none' : '';
+    if (saveBtn) saveBtn.style.display = isMaster ? 'none' : '';
+    if (masterSaveBtn) masterSaveBtn.style.display = isMaster ? '' : 'none';
+    if (storeJumpBtn && isMaster) storeJumpBtn.style.display = 'none';
+    if (curStoreIndicator && isMaster) curStoreIndicator.innerText = '商品だけ登録します';
+  }
+
+  function collectProductFormDataForMasterOnly() {
+    let jan = String(curBarcode || '').trim();
+    const rawName = document.getElementById('inputName')?.value || '';
+    const safeName = (rawName && String(rawName).trim()) ? String(rawName).trim() : jan;
+    if (!jan && safeName) {
+      jan = 'M_' + safeName.slice(0, 20).replace(/[^\w\u3040-\u9FFF]/g, '_');
+      curBarcode = jan;
+    }
+    const catSel = document.getElementById('inputCategory');
+    const rawCat = catSel ? catSel.value : '';
+    let safeCategory = (rawCat && rawCat !== '__NONE__') ? String(rawCat).trim() : '';
+    if (!safeCategory && safeName) {
+      try { safeCategory = normalizeCategory(inferCategoryFromProduct(safeName, document.getElementById('inputMaker')?.value || '', jan)); } catch (_) {}
+    }
+    const subSel = document.getElementById('inputSubCategory');
+    const needsSub = subSel && subSel.style.display !== 'none';
+    const rawSub = needsSub ? subSel.value : '__NONE__';
+    const safeSubCategory = (needsSub && rawSub && rawSub !== '__NONE__') ? String(rawSub).trim() : '';
+    const rawMaker = document.getElementById('inputMaker')?.value || '';
+    return {
+      jan,
+      name: safeName || jan,
+      category: safeCategory ? normalizeCategory(safeCategory) : '',
+      subCategory: safeSubCategory,
+      maker: rawMaker ? String(rawMaker).trim() : ''
+    };
+  }
+
+  async function applyProductImageForSave(p, jan) {
+    if (tempImgData && tempImgData.type === 'shared' && tempImgData.imageId) {
+      p.imageUrl = `shared:${tempImgData.imageId}`;
+      delete p.image;
+      delete p.imageKey;
+    } else if (tempImgData && typeof tempImgData === 'string' && tempImgData.startsWith('data:')) {
+      const blob = dataURLtoBlob(tempImgData);
+      if (blob) {
+        const key = 'img_' + String(jan || '').replace(/[^\w\-]/g, '_');
+        await idbPut(key, blob);
+        p.imageKey = key;
+      }
+      delete p.imageData;
+      delete p.image;
+    } else if (tempImgData && tempImgData.type === 'key') {
+      p.imageKey = tempImgData.key;
+      delete p.image;
+    } else if (tempImgData && tempImgData.type === 'url' && tempImgData.url && /^https?:\/\//i.test(String(tempImgData.url))) {
+      try {
+        const pr = await fetchImageViaGasProxy(tempImgData.url, jan);
+        if (pr.ok && pr.dataUrl) {
+          const parts = pr.dataUrl.split(',');
+          const header = parts[0] || '';
+          const base64 = parts[1] || '';
+          const contentType = (header.match(/data:([^;]+)/) || [])[1] || 'image/jpeg';
+          const binaryString = atob(base64);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
+          const b = new Blob([bytes], { type: contentType });
+          const key = 'img_' + String(jan || '').replace(/[^\w\-]/g, '_');
+          await idbPut(key, b);
+          p.imageKey = key;
+          delete p.imageUrl;
+          delete p.image;
+        } else {
+          p.imageUrl = tempImgData.url;
+          delete p.image;
+        }
+      } catch (_) {
+        p.imageUrl = tempImgData.url;
+        delete p.image;
+      }
+    } else if (tempImgData && tempImgData.type === 'url') {
+      p.imageUrl = tempImgData.url;
+      delete p.image;
+    }
+  }
+
+  function shouldSyncProductMasterOnlyToCloud() {
+    try {
+      const googleConfirmed = (localStorage.getItem('sp_google_sync_confirmed') || '').trim() === '1';
+      const localUid = (localStorage.getItem('sp_user_id') || '').trim();
+      const dbUid = db && db.config && db.config.userId ? String(db.config.userId).trim() : '';
+      return !!fbUrl && (googleConfirmed || !!localUid || !!dbUid);
+    } catch (_) {
+      return !!fbUrl;
+    }
+  }
+
+  async function saveProductMasterOnly() {
+    const btn = document.getElementById('masterSaveBtn');
+    if (btn) btn.disabled = true;
+    try {
+      const form = collectProductFormDataForMasterOnly();
+      if (!form.jan || !form.name) {
+        showToast('バーコードか商品名を入力してください', 4000);
+        return;
+      }
+      const p = db.products[form.jan] || { history: [] };
+      if (!Array.isArray(p.history)) p.history = [];
+      p.name = form.name;
+      p.category = form.category;
+      p.subCategory = form.subCategory;
+      p.maker = form.maker;
+      p.masterOnly = true;
+      p.masterCreatedAt = p.masterCreatedAt || new Date().toISOString();
+      p.masterUpdatedAt = new Date().toISOString();
+      p.masterCreatedAtVersion = p.masterCreatedAtVersion || (window.APP_VERSION || '');
+      p.masterUpdatedAtVersion = window.APP_VERSION || '';
+
+      await applyProductImageForSave(p, form.jan);
+
+      if (!isWeakNameCandidate(p.name, form.jan)) {
+        p.human_verified = true;
+        if (!db.jan_dict) db.jan_dict = {};
+        db.jan_dict[form.jan] = {
+          name: p.name,
+          category: p.category,
+          maker: p.maker,
+          human_verified: true,
+          updated_at: new Date().toISOString()
+        };
+      }
+
+      db.products[form.jan] = p;
+      db = normalizeDb(db);
+      saveToHistory(form.jan, p.name, p.maker);
+      if (p.category) saveCategoryHistory(p.category);
+      saveLocalOnly();
+      if (shouldSyncProductMasterOnlyToCloud()) syncFirebasePut();
+
+      try { if (typeof window.spOpLog === 'function') window.spOpLog('product_master_save', { jan: form.jan, name: p.name, result: 'ok' }); } catch (_) {}
+      showToast('商品だけ保存しました', 2200);
+      renderHistory();
+      await showHome();
+    } catch (e) {
+      try { if (typeof window.spOpLog === 'function') window.spOpLog('product_master_save', { jan: String(curBarcode || ''), result: 'ng', error: e && e.message ? e.message : String(e) }); } catch (_) {}
+      showToast('商品だけ保存に失敗しました', 5000);
+      if (isDebug()) console.error('[saveProductMasterOnly]', e);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
   }
   function renderStats(history) {
     const box = document.getElementById('statsBox');
@@ -10002,7 +10204,16 @@ return true;
     renderStoreList();
     tempImgData = null;
     editingHistIdx = null;
+    try { applyRegistrationModeToHome(); } catch (_) {}
   }
+
+  try {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', function(){ try { applyRegistrationModeToHome(); } catch (_) {} });
+    } else {
+      applyRegistrationModeToHome();
+    }
+  } catch (_) {}
 
   async function showVeggieMenu() {
     showToast('バーコードの下にある「13桁の数字」を入れてね', 6000);
