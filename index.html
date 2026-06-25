@@ -48,9 +48,13 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.309.1  BUILD_ID=3091
+APP_VERSION=v23.9.310  BUILD_ID=3100
 
 === ChangeLog B-2 ===
+### v23.9.310
+- 仮説：設定画面の下部に初期設定・同期・バックアップ・危険操作が混在し、ユーザーがどれを押すべきか迷う
+- 真因：日常操作、初回だけの設定、上級者向け操作が同じ階層に並んでいる。さらに店舗税設定が手動管理メニューとして見えており、実際の設計方針（利用時に学習）とズレている
+- 修正方法：設定トップをカテゴリ入口に整理し、商品だけ登録・買い物エリア・ホーム画面追加・アカウントを「初期設定」へ、手動同期と回復コードを「アカウント」へ、キャッシュ/バックアップ/ブラウザ/リセットを「上級者向け」へ移動。店舗税設定はトップ導線から外し、買い物時の入力から学習する方針を明示する
 ### v23.9.308.1
 - 仮説：「アカウントを作成すると同期」と「Googleログイン済み・未同期」が同時に出ると、登録すれば自動同期されるのか、まだ未同期なのか分からない
 - 真因：起動時アカウントバナーがメールログイン状態だけを見ており、Googleログイン状態を考慮していない。また「登録する」という文言がログイン済みユーザーにも出てしまう
@@ -317,8 +321,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.309.1";
-  const BUILD_ID    = "3091";
+  const APP_VERSION = "v23.9.310";
+  const BUILD_ID    = "3100";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -1781,12 +1785,12 @@ document.addEventListener('DOMContentLoaded', function() {
     <div id="settingsMainMenu" class="mt-3">
         <div class="d-grid gap-2">
           <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelInitialSetup" onclick="renderInitialSetupPanel()">初期設定</button>
-          <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelReferral">① 友人紹介</button>
-          <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelFamily">② 家族共有</button>
-          <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelSupport">③ 運営者へ質問／不具合報告</button>
-          <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelTheme" onclick="renderThemePanel()">⑤ 🎨 テーマ設定</button>
+          <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelFamily">家族共有</button>
+          <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelReferral">友人紹介</button>
+          <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelSupport">運営者へ質問／不具合報告</button>
+          <button type="button" class="btn btn-outline-secondary sp-menu-btn" data-panel="panelTheme" onclick="renderThemePanel()">テーマ設定</button>
           <!-- v23.9.172 SP-260601-006: デバイスID・端末照合 パネル（PC/スマホ照合用） -->
-          <button type="button" class="btn btn-outline-warning sp-menu-btn" data-panel="panelDeviceId" onclick="renderDeviceIdPanel()">⑦ 上級者向け</button>
+          <button type="button" class="btn btn-outline-warning sp-menu-btn" data-panel="panelDeviceId" onclick="renderDeviceIdPanel()">上級者向け</button>
           <!-- v23.9.173 SP-260601-007: アカウント連携（ログイン状態でラベル切替） -->
 </div>
       </div>
@@ -1813,15 +1817,21 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
 
         <div class="mb-3 p-3" style="background:rgba(255,255,255,.045); border:1px solid rgba(255,255,255,.12); border-radius:10px;">
+          <div class="fw-bold mb-1">ホーム画面</div>
+          <div class="small text-secondary mb-2" style="line-height:1.5;">スマホのホーム画面からすぐ開けるようにします。</div>
+          <button id="addToHomeBtn" type="button" class="btn btn-outline-success w-100 py-2 fw-bold" onclick="addToHomeScreen()">ホーム画面にアイコンを追加</button>
+        </div>
+
+        <div class="mb-3 p-3" style="background:rgba(255,255,255,.045); border:1px solid rgba(255,255,255,.12); border-radius:10px;">
           <div class="fw-bold mb-1">アカウント</div>
           <div class="small text-secondary mb-2" style="line-height:1.5;">PCとスマホで使う場合や、データを残したい場合に設定します。</div>
-          <button id="accountMenuBtn" type="button" class="btn sp-btn-secondary w-100 py-2 fw-bold sp-menu-btn" data-panel="panelAccount" onclick="renderAccountPanel()">アカウント登録</button>
+          <button id="accountMenuBtn" type="button" class="btn sp-btn-secondary w-100 py-2 fw-bold sp-menu-btn" data-panel="panelAccount" onclick="renderAccountPanel()">アカウント</button>
         </div>
 
         <div class="mb-3 p-3" style="background:rgba(255,193,7,.08); border:1px solid rgba(255,193,7,.28); border-radius:10px;">
           <div class="fw-bold mb-1 text-warning">店舗の税込/税別について</div>
           <div class="small text-secondary" style="line-height:1.5;">
-            店舗ごとの税込/税別は、買い物中の入力から学習する設計にします。設定メニューで手作業管理する方式はやめます。
+            店舗ごとの税込/税別は、買い物中の入力から学習します。設定メニューで手作業管理する方式は使いません。
           </div>
         </div>
       </div>
@@ -1906,7 +1916,7 @@ document.addEventListener('DOMContentLoaded', function() {
               <button type="button" class="btn sp-btn-primary py-2 fw-bold" onclick="handleFamilyQuickRegister()">登録して招待コードを発行する</button>
             </div>
             <div class="text-center mt-2">
-              <small class="text-secondary">すでに登録済みの方は<button type="button" class="btn btn-link btn-sm p-0" style="color:var(--sp-muted,#aaa); font-size:0.82rem; text-decoration:underline; vertical-align:baseline;" onclick="spOpenAccountPanel()">⑧ アカウント登録</button>からログイン</small>
+              <small class="text-secondary">すでに登録済みの方は<button type="button" class="btn btn-link btn-sm p-0" style="color:var(--sp-muted,#aaa); font-size:0.82rem; text-decoration:underline; vertical-align:baseline;" onclick="spOpenAccountPanel()">アカウント</button>からログイン</small>
             </div>
             <div id="fam-quick-register-status" class="small mt-2" style="min-height:1.2em;"></div>
           </div>
@@ -2153,6 +2163,17 @@ document.addEventListener('DOMContentLoaded', function() {
           ログインすればPC/スマホは自動で同期されます。<br>
           このパネルは端末照合・Firebase確認・データ削除など、通常利用では触らない操作をまとめています。
         </div>
+        <div class="mb-3 p-3" style="background:rgba(255,255,255,.045); border:1px solid rgba(255,255,255,.12); border-radius:10px;">
+          <div class="fw-bold mb-1">バックアップとブラウザ</div>
+          <div class="small text-secondary mb-2" style="line-height:1.5;">通常は使いません。調査・復旧・端末移行時だけ開きます。</div>
+          <div class="d-grid gap-2">
+            <button id="openBrowserBtn" type="button" class="btn btn-outline-info py-2 fw-bold" onclick="openInChromeBrowser()">Chromeで開く（キャッシュクリア用）</button>
+            <button id="webBtn" type="button" class="btn btn-outline-secondary py-2 fw-bold" onclick="openWebModal()">ブラウザ版へ（URL表示）</button>
+            <button id="exportBackupBtn" type="button" class="btn btn-outline-secondary py-2 fw-bold" onclick="exportBackup()">バックアップ出力（JSON保存）</button>
+            <button id="importBackupBtn" type="button" class="btn btn-outline-secondary py-2 fw-bold" onclick="importBackup()">バックアップ読み込む</button>
+          </div>
+          <div class="small text-secondary mt-2" id="lastBackupStatus">最終バックアップ：確認中...</div>
+        </div>
         <details>
           <summary class="small text-secondary mb-2" style="cursor:pointer; user-select:none;">▶ デバイスIDの詳細を表示</summary>
           <div class="mt-2">
@@ -2249,14 +2270,27 @@ document.addEventListener('DOMContentLoaded', function() {
             <span id="accountLoggedInEmail" class="sp-text-normal fw-bold">-</span>
           </div>
           <div class="d-grid gap-2 mb-2">
+            <button id="syncBtn" type="button" class="btn btn-primary py-2 fw-bold" onclick="startMigration()">設定保存と同期</button>
             <button type="button" class="btn btn-outline-warning py-2" onclick="handleAccountLogoutClick()">ログアウト</button>
           </div>
           <div id="accountStatusMsgLoggedIn" class="small mt-2" style="min-height:1.2em;"></div>
           <!-- v23.9.237: 手動データ移行ボタン（旧匿名UID→アカウントUID） -->
           <div id="dataMigrationWrap" class="mt-2" style="display:none;">
             <button type="button" id="dataMigrationBtn" class="btn btn-outline-info btn-sm w-100 py-2" onclick="handleDataMigrationClick()">以前のデータを引き継ぐ</button>
-            <div class="small text-secondary mt-1" style="font-size:0.78rem; opacity:.8;">アカウント登録前のデータが見えない場合に使用</div>
+            <div class="small text-secondary mt-1" style="font-size:0.78rem; opacity:.8;">ログイン前のデータが見えない場合に使用</div>
           </div>
+        </div>
+
+        <!-- v23.9.310: 回復コードは設定トップから外し、アカウント/復旧導線へ集約 -->
+        <div class="border rounded p-2 mt-3 mb-2" style="border-color:#555 !important;">
+          <div class="small fw-bold mb-1">回復コード（データ復元用）</div>
+          <div class="small text-secondary mb-2" id="recoveryCodeStatus">読み込み中...</div>
+          <div class="input-group input-group-sm mb-1">
+            <input type="text" id="recoveryCodeInput" class="form-control" placeholder="4〜8文字のコード（例：nabe1234）" maxlength="16" style="font-size:0.9rem;">
+            <button id="recoveryCodeSetBtn" class="btn btn-outline-primary btn-sm" onclick="onSetRecoveryCode()">設定</button>
+            <button id="recoveryCodeRecoverBtn" class="btn btn-primary btn-sm" onclick="onRecoverByCode()">復元</button>
+          </div>
+          <div class="small text-secondary" style="font-size:0.75rem;">新しく作るときは「設定」、別端末や消去後に戻すときは「復元」を押してください</div>
         </div>
         <!-- v23.9.173 SP-260601-007: パネル末尾[戻る]を settingsCommonBack に共通化（panelAccount） -->
       </div>
@@ -2264,25 +2298,6 @@ document.addEventListener('DOMContentLoaded', function() {
     <!-- v23.9.165 SP-250528-001: 共通[戻る]ボタン。メインメニュー時は非表示、パネル展開時のみ表示。d-grid の !important を上書きするため setProperty で制御 -->
     <div id="settingsCommonBack" class="mt-3 d-grid" style="display:none !important;">
       <button type="button" class="btn btn-outline-secondary sp-back-btn" data-back="Main">戻る</button>
-    </div>
-
-    <button id="addToHomeBtn" class="btn btn-outline-success w-100 py-2 fw-bold mb-2" onclick="addToHomeScreen()">📲 ホーム画面にアイコンを追加</button>
-    <button id="syncBtn" class="btn btn-primary w-100 py-2 fw-bold mb-2" onclick="startMigration()">設定保存と同期</button>
-    <button id="openBrowserBtn" class="btn btn-outline-info w-100 py-2 fw-bold mb-2" onclick="openInChromeBrowser()">🌐 Chromeで開く（キャッシュクリア用）</button>
-    <button id="webBtn" class="btn btn-outline-secondary w-100 py-2 fw-bold mb-2" onclick="openWebModal()">ブラウザ版へ（URL表示）</button>
-    <button id="exportBackupBtn" class="btn btn-outline-secondary w-100 py-2 fw-bold mb-2" onclick="exportBackup()">💾 バックアップ出力（JSON保存）</button>
-    <button id="importBackupBtn" class="btn btn-outline-secondary w-100 py-2 fw-bold mb-2" onclick="importBackup()">📂 バックアップ読み込む</button>
-    <div class="small text-secondary mb-2" id="lastBackupStatus">最終バックアップ：確認中...</div>
-    <!-- v23.9.297 Step2: 回復コード設定UI -->
-    <div class="border rounded p-2 mb-2" style="border-color:#555 !important;">
-      <div class="small fw-bold mb-1">🔑 回復コード（データ復元用）</div>
-      <div class="small text-secondary mb-2" id="recoveryCodeStatus">読み込み中...</div>
-      <div class="input-group input-group-sm mb-1">
-        <input type="text" id="recoveryCodeInput" class="form-control" placeholder="4〜8文字のコード（例：nabe1234）" maxlength="16" style="font-size:0.9rem;">
-        <button id="recoveryCodeSetBtn" class="btn btn-outline-primary btn-sm" onclick="onSetRecoveryCode()">設定</button>
-        <button id="recoveryCodeRecoverBtn" class="btn btn-primary btn-sm" onclick="onRecoverByCode()">復元</button>
-      </div>
-      <div class="small text-secondary" style="font-size:0.75rem;">新しく作るときは「設定」、別端末や消去後に戻すときは「復元」を押してください</div>
     </div>
 
     <div id="sp-company-info" class="small text-secondary mt-3 mb-2 px-1" style="line-height:1.65; opacity:.88;">
@@ -14302,7 +14317,7 @@ function spVisibleTrace(tag, payload, cls) {
   // v23.9.172 SP-260601-006: DeviceId パネル（PC/スマホ照合）を追加
   // v23.9.173 SP-260601-007: Account パネル（アカウント連携・ログイン）を追加
   const PANELS = { Main: 'settingsMainMenu', InitialSetup: 'panelInitialSetup', Referral: 'panelReferral', Family: 'panelFamily', Support: 'panelSupport', Operator: 'panelOperator', TaxSettings: 'panelTaxSettings', Theme: 'panelTheme', DeviceId: 'panelDeviceId', Account: 'panelAccount' };
-  const TITLES = { Main: '設定', InitialSetup: '初期設定', Referral: '友人紹介', Family: '家族共有', Support: '運営者へ質問', Operator: '管理メニュー', TaxSettings: '店舗の税設定', Theme: 'テーマ設定', DeviceId: '上級者向け', Account: 'アカウント登録' };
+  const TITLES = { Main: '設定', InitialSetup: '初期設定', Referral: '友人紹介', Family: '家族共有', Support: '運営者へ質問', Operator: '管理メニュー', TaxSettings: '店舗の税設定', Theme: 'テーマ設定', DeviceId: '上級者向け', Account: 'アカウント' };
   
   function init() {
     if (state.initialized) return;
@@ -14539,12 +14554,8 @@ function spVisibleTrace(tag, payload, cls) {
       // v23.9.165 SP-250528-001: settingsCitySection は常時非表示（⑥生活圏設定に集約）
       const citySec = document.getElementById('settingsCitySection');
       if(citySec) citySec.style.display = 'none';
-      const syncBtn = document.getElementById('syncBtn');
-      if(syncBtn) syncBtn.style.display = showMain ? 'block' : 'none';
       const cacheBtn = document.getElementById('clearCacheBtn');
-      if(cacheBtn) cacheBtn.style.display = (showMain || normalizedName === 'DeviceId') ? 'block' : 'none';
-      const webBtn = document.getElementById('webBtn');
-      if(webBtn) webBtn.style.display = showMain ? 'block' : 'none';
+      if(cacheBtn) cacheBtn.style.display = normalizedName === 'DeviceId' ? 'block' : 'none';
       // v23.9.165 SP-250528-001: 共通[戻る]ボタンの表示制御（メインメニュー時=非表示／パネル展開時=表示）。Bootstrap .d-grid の !important を上書きするため setProperty で priority 指定
       const commonBack = document.getElementById('settingsCommonBack');
       if(commonBack) commonBack.style.setProperty('display', showMain ? 'none' : 'grid', 'important');
@@ -15102,7 +15113,7 @@ function spVisibleTrace(tag, payload, cls) {
 
     // ⑧ ボタンのラベル更新
     var btn = document.getElementById('accountMenuBtn');
-    if (btn) btn.textContent = loggedIn ? '⑧ アカウント設定' : '⑧ アカウント登録';
+    if (btn) btn.textContent = loggedIn ? 'アカウント設定' : 'アカウント';
 
     // v23.9.236: パスワード確認欄をリセット（パネル再描画時）
     try { var _cw2 = document.getElementById('accountPasswordConfirmWrap'); if (_cw2) _cw2.style.display = 'none'; } catch (_) {}
@@ -18376,7 +18387,7 @@ async function spShareFamilyId(){
     const code = (typeof window._spGetPublicCode === 'function') ? window._spGetPublicCode() : '';
     const formatted = (code && typeof window.formatPublicCode === 'function') ? window.formatPublicCode(code) : '';
     if(!formatted){
-      const guideText = '【Smart Price 家族共有】\n個人IDを発行するには、設定→「⑧ アカウント登録」からログインしてください。';
+      const guideText = '【Smart Price 家族共有】\n個人IDを発行するには、設定→「初期設定」→「アカウント」からログインしてください。';
       try { showToast('ログインすると個人IDが発行されます', 4000); } catch(_){}
       const ok = await spShareText('Smart Price 家族共有', guideText);
       if(!ok) spCopyTextFallback(guideText);
@@ -18698,7 +18709,7 @@ async function spCreateFamilyInvite(silent) {
            || (window.firebaseAuth && window.firebaseAuth.currentUser && window.firebaseAuth.currentUser.uid)
            || null;
     if (!uid) {
-      if (!silent) showToast('ログインが必要です（設定→⑧ アカウント登録）', 3500);
+      if (!silent) showToast('ログインが必要です（設定→初期設定→アカウント）', 3500);
       return;
     }
     if (!window.firebaseDb) {
@@ -18749,7 +18760,7 @@ function spRenderFamilyStatus() {
     } else if (loggedIn) {
       el.innerHTML = '<b>現在の状態：</b>家族共有は未参加<br><span style="opacity:.72;">招待URLを送るか、届いたコードで参加できます。</span>';
     } else {
-      el.innerHTML = '<b>現在の状態：</b>家族共有は未参加<br><span style="opacity:.72;">招待URLで参加できます。安定利用にはアカウント登録がおすすめです。</span>';
+      el.innerHTML = '<b>現在の状態：</b>家族共有は未参加<br><span style="opacity:.72;">招待URLで参加できます。安定利用にはログインがおすすめです。</span>';
     }
   } catch(_) {}
 }
@@ -18853,7 +18864,7 @@ async function spJoinFamilyGroup() {
     var uid = (typeof currentAuthUid !== 'undefined' && currentAuthUid)
            || (window.firebaseAuth && window.firebaseAuth.currentUser && window.firebaseAuth.currentUser.uid)
            || null;
-    if (!uid) { setStatus('ログインが必要です（設定→⑧ アカウント登録）', true); return; }
+    if (!uid) { setStatus('ログインが必要です（設定→初期設定→アカウント）', true); return; }
     if (!window.firebaseDb) { setStatus('Firebase未接続です', true); return; }
 
     setStatus('確認中…', false);
