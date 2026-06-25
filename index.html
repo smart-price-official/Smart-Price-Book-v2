@@ -48,9 +48,13 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.310  BUILD_ID=3100
+APP_VERSION=v23.9.311  BUILD_ID=3110
 
 === ChangeLog B-2 ===
+### v23.9.311
+- 仮説：店舗ごとの税込/税別を設定画面で管理させると、買い物中の自然な入力から離れて迷いやすい
+- 真因：storeTaxModesは既に端末内学習として保存されているが、未設定店舗で「店頭の大きい価格が税込/税別どちらか」を明示確認するUIがない
+- 修正方法：未設定店舗で価格入力時に税別/税込確認UIを表示し、選択結果を既存storeTaxModesへ保存。Firebase投票・信頼度判定・既存履歴変換は行わない
 ### v23.9.310
 - 仮説：設定画面の下部に初期設定・同期・バックアップ・危険操作が混在し、ユーザーがどれを押すべきか迷う
 - 真因：日常操作、初回だけの設定、上級者向け操作が同じ階層に並んでいる。さらに店舗税設定が手動管理メニューとして見えており、実際の設計方針（利用時に学習）とズレている
@@ -321,8 +325,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.310";
-  const BUILD_ID    = "3100";
+  const APP_VERSION = "v23.9.311";
+  const BUILD_ID    = "3110";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -1553,6 +1557,14 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
 
         <div id="priceSection" class="mb-3 p-3 border rounded border-danger sp-bg-card" style="border-width: 1px !important; box-sizing: border-box; max-width: 100%; overflow: hidden; padding: 12px !important;">
+          <div id="storeTaxLearningPrompt" class="mb-2 p-2" style="display:none; background:rgba(255,193,7,.08); border:1px solid rgba(255,193,7,.35); border-radius:8px;">
+            <div class="small fw-bold text-warning mb-2">店頭の大きく表示されている価格は？</div>
+            <div class="d-grid gap-2">
+              <button type="button" class="btn btn-sm btn-outline-danger fw-bold" onclick="selectStoreTaxLearningMode('ex')">○ 税別価格（例：198円）</button>
+              <button type="button" class="btn btn-sm btn-outline-light fw-bold" onclick="selectStoreTaxLearningMode('in')">○ 税込価格（例：213円）</button>
+            </div>
+            <div class="small text-secondary mt-2" style="font-size:0.75rem;">次回からこの店舗で自動選択します</div>
+          </div>
           <div id="calcOptionArea" class="d-flex align-items-center mb-2">
             <div class="btn-group btn-group-sm w-100 me-2">
               <input type="radio" class="btn-check" name="taxMode" id="taxEx" value="ex" checked>
@@ -2972,7 +2984,7 @@ document.addEventListener('DOMContentLoaded', function() {
     homeCity: "",
     homeCities: [],
     customStores: [],
-    storeTaxModes: {}, // ストアごとの税別/税込既定値 { "ストア名": "ex" or "in" }
+    storeTaxModes: {}, // v311: 端末内学習。店舗ごとの店頭主表示 { "ストア名": "ex" or "in" }。共有投票/信頼度判定はv312以降
     gpsRange: 0.1 // km（GPS店舗検索の基準。段階拡大の起点）
   };
 
@@ -3876,6 +3888,7 @@ document.addEventListener('DOMContentLoaded', function() {
       var _ind = document.getElementById('curStoreIndicator');
       if (_ind) _ind.innerText = '';
     } catch(_) {}
+    try { updateStoreTaxLearningPrompt(); } catch(_) {}
   };
   let processBarcodeInFlight = new Set(); // ✅ P0: 同一JANの二重発火防止
   let janCoolDown = new Map(); // ✅ P0: 同じJANを0.8〜1.2秒以内に再検出したら無視（クールダウン）
@@ -5773,6 +5786,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       // v23.9.223 SP-250605-017 B案/D-2: 手入力追加も店舗変更イベントとして永続化
       try { _spPersistStore(s); } catch (_) {}
       renderStoreList();
+      try { updateStoreTaxLearningPrompt(); } catch(_) {}
       showToast("店名を追加しました", 3000);
     }
   }
@@ -6035,7 +6049,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         // [v227] セッション: 店舗選択トリガー
         try { if (typeof window._spSessionOnStoreSelect==='function') window._spSessionOnStoreSelect(name); } catch(_) {}
 
-        // ✅ ストアの税別/税込既定値を自動反映
+        // ✅ v311: 端末内学習済みの店舗税モードを自動反映
         const storeTaxMode = db.config.storeTaxModes && db.config.storeTaxModes[curStore];
         if (storeTaxMode) {
           const taxModeId = storeTaxMode === "in" ? 'taxIn' : 'taxEx';
@@ -6046,6 +6060,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
             if (isDebug()) console.log('[StoreTaxMode] Auto-switch:', curStore, '→', storeTaxMode);
           }
         }
+        try { updateStoreTaxLearningPrompt(); } catch(_) {}
 
       };
       list.appendChild(span);
@@ -6420,6 +6435,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
 
     const ind = document.getElementById('curStoreIndicator');
     if(ind) ind.innerText = `【 ${curStore} 】で保存します`;
+    try { updateStoreTaxLearningPrompt(); } catch(_) {}
     document.getElementById('inputPrice').value = "";
 
     const catSel = document.getElementById('inputCategory');
@@ -6785,9 +6801,14 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     const masterSaveBtn = document.getElementById('masterSaveBtn');
     const storeJumpBtn = document.getElementById('storeJumpBtn');
     const curStoreIndicator = document.getElementById('curStoreIndicator');
+    const taxLearningPrompt = document.getElementById('storeTaxLearningPrompt');
 
     if (notice) notice.style.display = isMaster ? 'block' : 'none';
     if (priceSection) priceSection.style.display = isMaster ? 'none' : 'block';
+    if (taxLearningPrompt) {
+      if (isMaster) taxLearningPrompt.style.display = 'none';
+      else try { updateStoreTaxLearningPrompt(); } catch(_) {}
+    }
     if (statsBox) statsBox.style.display = isMaster ? 'none' : '';
     if (storeStats) storeStats.style.display = isMaster ? 'none' : '';
     if (detailHistory) detailHistory.style.display = 'none';
@@ -7105,9 +7126,12 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     curStore = h.store || "未設定";
     const ind = document.getElementById('curStoreIndicator');
     if(ind) ind.innerText = `【 ${curStore} 】で保存します`;
+    try { updateStoreTaxLearningPrompt(); } catch(_) {}
 
     renderStoreList();
     document.getElementById('calcOptionArea').style.display = "none";
+    const taxLearningPrompt = document.getElementById('storeTaxLearningPrompt');
+    if (taxLearningPrompt) taxLearningPrompt.style.display = 'none';
     document.getElementById('saveBtn').innerText = "変更確定";
     // [v85fix] 修正⑥: テキスト「削除」ボタンは非表示（ゴミ箱ボタンのみ）
     document.getElementById('delHistBtn').style.display = "none";
@@ -7373,7 +7397,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         var taxRateAtInput = FOOD_TAX_CATEGORIES.indexOf(safeCategory) >= 0 ? 0.08 : 0.10;
         db.config.lastTax = isTaxEx ? "ex" : "in";
         
-        // ✅ ストアの税別/税込既定値を保存
+        // ✅ v311: 店舗税モードの端末内学習。次回この店舗を選んだ時に自動選択する
         if (curStore && curStore !== "未設定") {
           if (!db.config.storeTaxModes) db.config.storeTaxModes = {};
           db.config.storeTaxModes[curStore] = isTaxEx ? "ex" : "in";
@@ -10004,7 +10028,40 @@ return true;
     }
   }
 
-  // ✅ P0-4: 店舗ごと税設定を手動変更
+  function updateStoreTaxLearningPrompt() {
+    var prompt = document.getElementById('storeTaxLearningPrompt');
+    if (!prompt) return;
+    var isMaster = false;
+    try { isMaster = spRegistrationMode === 'master'; } catch(_) {}
+    var isEditing = editingHistIdx !== null;
+    var store = curStore || '未設定';
+    var modes = (db && db.config && db.config.storeTaxModes) ? db.config.storeTaxModes : {};
+    var hasMode = store && store !== '未設定' && (modes[store] === 'ex' || modes[store] === 'in');
+    prompt.style.display = (!isMaster && !isEditing && store && store !== '未設定' && !hasMode) ? 'block' : 'none';
+  }
+  window.updateStoreTaxLearningPrompt = updateStoreTaxLearningPrompt;
+
+  function selectStoreTaxLearningMode(mode) {
+    if (mode !== 'ex' && mode !== 'in') return;
+    var target = curStore || '未設定';
+    if (!target || target === '未設定') {
+      showToast('先に店舗を選んでください', 2500);
+      return;
+    }
+    if (!db.config.storeTaxModes) db.config.storeTaxModes = {};
+    db.config.storeTaxModes[target] = mode;
+    db.config.lastTax = mode;
+    var taxModeId = mode === 'in' ? 'taxIn' : 'taxEx';
+    var taxEl = document.getElementById(taxModeId);
+    if (taxEl) taxEl.checked = true;
+    try { saveLocalOnly(); } catch(e) {}
+    updateStoreTaxLearningPrompt();
+    showToast(target + '：' + (mode === 'in' ? '税込' : '税別') + 'で覚えました', 2200);
+    if (isDebug()) console.log('[StoreTaxMode] Learned:', target, mode);
+  }
+  window.selectStoreTaxLearningMode = selectStoreTaxLearningMode;
+
+  // v311: 店舗ごとの税設定は端末内学習として維持。設定トップからの手動管理導線は使わない
   function setStoreTaxMode(mode, storeName) {
     var target = storeName || curStore;
     if (!target || target === '未設定') return;
