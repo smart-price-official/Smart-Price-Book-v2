@@ -48,9 +48,17 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.311.6  BUILD_ID=3116
+APP_VERSION=v23.9.312.2  BUILD_ID=3122
 
 === ChangeLog B-2 ===
+### v23.9.312.2
+- 仮説：友人紹介キャンペーンで紹介した友人の月別利用状況と孫友人の紹介実績が確認できない
+- 真因：referrals/{inviterId}/{myId}にmonthlyフィールドがなく、showReferralStatus()は孫友人パスを参照していない
+- 修正方法：updateReferralStatus()を拡張してmonthly（直近3ヶ月：登録商品数・来店回数）とregisteredAtを追加。showReferralStatusV2()で子友人の月別テーブルと孫友人ステータスを階層表示する。update()でset()を置換し既存データ保護
+### v23.9.312.1
+- 仮説：家族共有に参加した後、誰が参加しているか・商品を何件登録しているか確認する手段がない
+- 真因：spRenderFamilyStatus()が「参加中/未参加」しか表示しない。familyGroups/{gid}/memberStatusが未実装
+- 修正方法：familyGroups/{gid}/memberStatus/{uid}を新設し、syncFirebasePut後とDOMContentLoaded後に自分のステータスを書き込む。showFamilyMemberStatus()でメンバー一覧・商品数・最終更新日を表示する
 ### v23.9.311.6
 - 仮説：「カワチ」「タイヨー」「ウエルシア」「ドンキ・ホーテ」等の店名なし・文字化けエントリが購入履歴・customStores・storeTaxModesに混在し、比較グラフや店舗バーが正しく集計されない
 - 真因：GPS取得時の店名正規化が不完全なため、チェーン名のみ・スペース差異・文字化けの複数バリアントが別ストアとして記録され続けている（バックアップ調査: 126件）
@@ -349,8 +357,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.311.6";
-  const BUILD_ID    = "3116";
+  const APP_VERSION = "v23.9.312.2";
+  const BUILD_ID    = "3122";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -1935,7 +1943,7 @@ document.addEventListener('DOMContentLoaded', function() {
           </div>
         </div>
 
-        <button class="btn btn-outline-secondary w-100 py-2 mb-3" onclick="showReferralStatus()">
+        <button class="btn btn-outline-secondary w-100 py-2 mb-3" onclick="showReferralStatusV2()">
           👥 紹介した友人の利用状況を確認
         </button>
 
@@ -1950,6 +1958,12 @@ document.addEventListener('DOMContentLoaded', function() {
       <div id="panelFamily" class="sp-panel mt-3" style="display:none;">
         <div class="small text-secondary mb-2" style="opacity:.9;">個人ID：<span class="sp-text-normal fw-bold" id="sp-personal-id-panelFamily"></span></div>
         <div id="family-current-status" class="small mb-3" style="background:rgba(76,175,80,.10); border:1px solid rgba(76,175,80,.28); border-radius:8px; padding:9px 11px; line-height:1.5;"></div>
+
+        <!-- v312.1: 家族メンバー登録状況確認 -->
+        <button class="btn btn-outline-secondary w-100 py-2 mb-2" onclick="showFamilyMemberStatus()">
+          👨‍👩‍👧 家族の登録状況を確認
+        </button>
+        <div id="family-member-status-list" class="mt-1 mb-3" style="display:none;"></div>
 
         <!-- v23.9.276 SP-260618-FAMUX-001: 未ログイン時かんたん登録フォーム -->
         <div id="family-register-prompt" style="display:none;">
@@ -5190,6 +5204,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       }, 12000);
       // v23.9.166 SP-250529-002: 動作ログ（Firebase PUT 成功）
       try { if (typeof window.spOpLog === 'function') window.spOpLog('fb', { type: 'PUT', result: 'ok', ms: Date.now() - _putT0 }); } catch (_) {}
+      // v312.1: 家族グループステータスを更新
+      try { if (typeof updateFamilyMemberStatus === 'function') updateFamilyMemberStatus(); } catch (_) {}
     } catch(e){
       // v23.9.166 SP-250529-002: 動作ログ（Firebase PUT 失敗）
       try { if (typeof window.spOpLog === 'function') window.spOpLog('fb', { type: 'PUT', result: 'ng', error: (e && e.message ? e.message : String(e)) }); } catch (_) {}
@@ -18494,7 +18510,19 @@ function updateReferralStatus() {
       if (qualified) {
         _writeData.qualifiedAt = db.config.referralQualifiedDate || Date.now();
       }
-      _set(_ref(window.firebaseDb, 'referrals/' + inviterId + '/' + myId), _writeData);
+      // v312.2: 月別データと登録日を追加
+      try { _writeData.monthly = buildMonthlyStats(myId); } catch(_) {}
+      // registeredAt は初回のみ設定（update()で既存値を保持）
+      var _path = 'referrals/' + inviterId + '/' + myId;
+      // set() → update() に変更して既存フィールドを保護
+      if (typeof window.firebaseDb.ref(_path).update === 'function') {
+        window.firebaseDb.ref(_path).once('value').then(function(snap) {
+          if (!snap.val() || !snap.val().registeredAt) _writeData.registeredAt = Date.now();
+          window.firebaseDb.ref(_path).update(_writeData);
+        }).catch(function() { window.firebaseDb.ref(_path).update(_writeData); });
+      } else {
+        _set(_ref(window.firebaseDb, _path), _writeData);
+      }
     }
   } catch(e) {}
 }
@@ -18528,6 +18556,7 @@ document.addEventListener('DOMContentLoaded', function() {
   setTimeout(() => {
     ensureUserIdInProducts();
     updateReferralStatus();
+    try { if (typeof updateFamilyMemberStatus === 'function') updateFamilyMemberStatus(); } catch(_) {}
   }, 1000);
 });
 
@@ -18615,6 +18644,151 @@ async function showReferralStatus() {
 }
 
 window.showReferralStatus = showReferralStatus;
+
+// ===== [v312.2] 友人紹介：月別詳細 + 孫友人ツリー =====
+function buildMonthlyStats(myId) {
+  var myProds = (db && db.products)
+    ? Object.values(db.products).filter(function(p) { return !p.userId || p.userId === myId; })
+    : [];
+  var result = {};
+  var now = new Date();
+  for (var i = 0; i < 3; i++) {
+    var d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    var key = d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0');
+    var ym  = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    var productCount = 0;
+    var dayStoreSet = {};
+    myProds.forEach(function(p) {
+      (p.history || []).forEach(function(h) {
+        if (!h.date || h.date.slice(0, 7) !== ym) return;
+        productCount++;
+        if (h.store) dayStoreSet[h.date + '_' + h.store] = 1;
+      });
+    });
+    result[key] = { products: productCount, storeVisits: Object.keys(dayStoreSet).length };
+  }
+  return result;
+}
+window.buildMonthlyStats = buildMonthlyStats;
+
+async function fetchGrandchildren(fbBaseUrl, childIds) {
+  var results = {};
+  await Promise.all(childIds.map(async function(childId) {
+    try {
+      var res = await fetch(fbBaseUrl + '/referrals/' + childId + '.json', { cache: 'no-store' });
+      if (res.ok) {
+        var data = await res.json();
+        if (data && typeof data === 'object') results[childId] = data;
+      }
+    } catch(_) {}
+  }));
+  return results;
+}
+window.fetchGrandchildren = fetchGrandchildren;
+
+async function showReferralStatusV2() {
+  var container = document.getElementById('referral-status-list');
+  if (!container) return;
+  container.innerHTML = '<div class="small text-secondary p-2">⏳ 読み込み中…</div>';
+  container.style.display = 'block';
+
+  var myId = (typeof getDeviceId === 'function') ? getDeviceId()
+           : (db && db.config && db.config.personalId) || null;
+  if (!myId) {
+    container.innerHTML = '<div class="small text-secondary p-2">個人IDが取得できませんでした</div>';
+    return;
+  }
+
+  var rawFbUrl = (db && db.config && db.config.firebaseUrl || '').trim();
+  var fbBase = rawFbUrl.replace(/\/[^/]+\.json$/, '').replace(/\/$/, '');
+  if (!fbBase) {
+    container.innerHTML = '<div class="small text-secondary p-2">Firebase未設定です</div>';
+    return;
+  }
+
+  try {
+    var res = await fetch(fbBase + '/referrals/' + myId + '.json', { cache: 'no-store' });
+    var childMap = res.ok ? await res.json() : null;
+
+    if (!childMap || typeof childMap !== 'object' || !Object.keys(childMap).length) {
+      container.innerHTML = '<div class="card sp-bg-card sp-border-muted p-3 small text-secondary">まだ紹介者はいません。<br>紹介リンクを友人に送りましょう！</div>';
+      return;
+    }
+
+    var childIds = Object.keys(childMap);
+    var grandMap = await fetchGrandchildren(fbBase, childIds);
+
+    // 直近3ヶ月のキー
+    var monthKeys = [];
+    var now2 = new Date();
+    for (var mi = 2; mi >= 0; mi--) {
+      var md = new Date(now2.getFullYear(), now2.getMonth() - mi, 1);
+      monthKeys.push(md.getFullYear() + String(md.getMonth() + 1).padStart(2, '0'));
+    }
+    function fmtM(k) { return k.slice(0, 4) + '-' + k.slice(4); }
+
+    var qualified = childIds.filter(function(id) { return childMap[id].status === 'qualified'; }).length;
+    var html = '<div class="card sp-bg-card sp-border-muted p-3 mb-2">';
+    html += '<h6 class="sp-text-normal mb-3">👥 あなたの紹介実績</h6>';
+    html += '<div class="mb-3 small"><span class="sp-text-normal fw-bold fs-5">' + qualified + '人</span>';
+    html += '<span class="text-secondary"> / ' + childIds.length + '人 が条件達成</span></div>';
+
+    childIds.forEach(function(uid) {
+      var u    = childMap[uid] || {};
+      var ok   = u.status === 'qualified';
+      var name = uid.slice(0, 8) + '…';
+      var reg  = u.registeredAt ? new Date(u.registeredAt).toLocaleDateString('ja-JP') : '—';
+
+      html += '<div class="border-top sp-border-muted pt-3 mt-2">';
+      html += '<div class="d-flex justify-content-between align-items-center mb-1">';
+      html += '<span class="fw-bold sp-text-normal" style="font-size:0.85rem;">友人（' + name + '）</span>';
+      html += '<span class="' + (ok ? 'text-success' : 'text-warning') + ' small">' + (ok ? '✅ 達成' : '⏳ 利用中') + '</span>';
+      html += '</div>';
+      html += '<div class="small text-secondary mb-2">登録日: ' + reg + '</div>';
+
+      // 月別テーブル（横スクロール対応）
+      var monthly = u.monthly || {};
+      html += '<div style="overflow-x:auto; -webkit-overflow-scrolling:touch;">';
+      html += '<table class="table table-sm sp-text-normal mb-1" style="font-size:0.78rem; min-width:260px;">';
+      html += '<thead><tr>';
+      html += '<th class="text-secondary fw-normal">月</th>';
+      html += '<th class="text-secondary fw-normal text-end">登録商品</th>';
+      html += '<th class="text-secondary fw-normal text-end">来店回数</th>';
+      html += '</tr></thead><tbody>';
+      monthKeys.forEach(function(key) {
+        var m = monthly[key] || {};
+        html += '<tr><td>' + fmtM(key) + '</td>';
+        html += '<td class="text-end">' + (m.products    != null ? m.products    + '件' : '—') + '</td>';
+        html += '<td class="text-end">' + (m.storeVisits != null ? m.storeVisits + '回' : '—') + '</td>';
+        html += '</tr>';
+      });
+      html += '</tbody></table></div>';
+
+      // 孫友人
+      var gc = grandMap[uid];
+      if (gc && typeof gc === 'object' && Object.keys(gc).length) {
+        html += '<div class="small text-secondary mb-1" style="padding-left:10px;">↳ ' + name + ' の紹介</div>';
+        Object.entries(gc).forEach(function(entry) {
+          var gid2 = entry[0], gu = entry[1] || {};
+          var gok  = gu.status === 'qualified';
+          var greg = gu.registeredAt ? new Date(gu.registeredAt).toLocaleDateString('ja-JP') : '—';
+          html += '<div class="d-flex justify-content-between align-items-center small border-top sp-border-muted pt-1 mt-1" style="padding-left:14px;">';
+          html += '<span class="text-secondary">孫友人（' + gid2.slice(0, 8) + '…）　登録: ' + greg + '</span>';
+          html += '<span class="' + (gok ? 'text-success' : 'text-warning') + '">' + (gok ? '✅' : '⏳') + '</span>';
+          html += '</div>';
+        });
+      }
+      html += '</div>';
+    });
+
+    html += '</div>';
+    container.innerHTML = html;
+  } catch(e) {
+    container.innerHTML = '<div class="small text-secondary p-2">読み込み失敗: ' + (e.message || '') + '</div>';
+  }
+}
+window.showReferralStatusV2 = showReferralStatusV2;
+// ===== [v312.2] ここまで =====
 
 
 
@@ -19744,6 +19918,86 @@ async function spAcceptFamilyInvite(code, overlay) {
 window.spAcceptFamilyInvite = spAcceptFamilyInvite;
 
 // ======= 家族招待 ここまで =======
+
+// ===== [v312.1] 家族メンバー登録状況 =====
+async function updateFamilyMemberStatus() {
+  var gid = currentFamilyGroupId || localStorage.getItem('sp_family_group_id') || '';
+  if (!gid || !window.firebaseDb) return;
+  var uid = (typeof currentAuthUid !== 'undefined' && currentAuthUid)
+         || (window.firebaseAuth && window.firebaseAuth.currentUser && window.firebaseAuth.currentUser.uid)
+         || null;
+  if (!uid) return;
+  var myProds = (db && db.products)
+    ? Object.values(db.products).filter(function(p) { return !p.userId || p.userId === uid; })
+    : [];
+  var now = Date.now();
+  var status = {
+    handle:       (db && db.config && db.config.handle) || uid.slice(0, 8),
+    productCount: myProds.length,
+    lastSyncAt:   now,
+  };
+  try {
+    var joinSnap = await window.firebaseDb.ref('familyGroups/' + gid + '/memberStatus/' + uid + '/joinedAt').once('value');
+    if (!joinSnap.val()) status.joinedAt = now;
+  } catch(_) {}
+  try {
+    await window.firebaseDb.ref('familyGroups/' + gid + '/memberStatus/' + uid).update(status);
+  } catch(_) {}
+}
+window.updateFamilyMemberStatus = updateFamilyMemberStatus;
+
+async function showFamilyMemberStatus() {
+  var container = document.getElementById('family-member-status-list');
+  if (!container) return;
+  container.innerHTML = '<div class="small text-secondary p-2">⏳ 読み込み中…</div>';
+  container.style.display = 'block';
+
+  var gid = currentFamilyGroupId || localStorage.getItem('sp_family_group_id') || '';
+  if (!gid || !window.firebaseDb) {
+    container.innerHTML = '<div class="small text-secondary p-2">家族グループに参加後に確認できます。</div>';
+    return;
+  }
+  var myUid = (typeof currentAuthUid !== 'undefined' && currentAuthUid)
+           || (window.firebaseAuth && window.firebaseAuth.currentUser && window.firebaseAuth.currentUser.uid)
+           || '';
+  try {
+    var snap = await window.firebaseDb.ref('familyGroups/' + gid).once('value');
+    var group = snap.val();
+    if (!group) {
+      container.innerHTML = '<div class="small text-secondary p-2">グループデータが見つかりません</div>';
+      return;
+    }
+    var members  = group.members  || [];
+    var statuses = group.memberStatus || {};
+    var html = '<div class="card sp-bg-card sp-border-muted p-3">';
+    html += '<h6 class="sp-text-normal mb-3">👨‍👩‍👧 家族メンバー（' + members.length + '人）</h6>';
+    members.forEach(function(uid) {
+      var s    = statuses[uid] || {};
+      var isMe = uid === myUid;
+      var name = s.handle || uid.slice(0, 8) + '…';
+      var count = s.productCount != null ? s.productCount + '件' : '—';
+      var last = s.lastSyncAt
+        ? new Date(s.lastSyncAt).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+        : '未確認';
+      var joined = s.joinedAt
+        ? new Date(s.joinedAt).toLocaleDateString('ja-JP', { year: 'numeric', month: 'numeric', day: 'numeric' })
+        : '—';
+      html += '<div class="border-top sp-border-muted pt-2 mt-2">';
+      html += '<div class="d-flex justify-content-between align-items-center">';
+      html += '<span class="fw-bold sp-text-normal" style="font-size:0.9rem;">' + name;
+      if (isMe) html += ' <span class="badge bg-secondary" style="font-size:0.7rem;">あなた</span>';
+      html += '</span><span class="text-info fw-bold">' + count + '</span></div>';
+      html += '<div class="small text-secondary mt-1">参加日: ' + joined + '　最終更新: ' + last + '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+    container.innerHTML = html;
+  } catch(e) {
+    container.innerHTML = '<div class="small text-secondary p-2">読み込み失敗: ' + (e.message || '') + '</div>';
+  }
+}
+window.showFamilyMemberStatus = showFamilyMemberStatus;
+// ===== [v312.1] ここまで =====
 
 // サポート送信系
 function spCopySupport() {
