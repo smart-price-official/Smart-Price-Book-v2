@@ -48,9 +48,13 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.311.2  BUILD_ID=3112
+APP_VERSION=v23.9.311.3  BUILD_ID=3113
 
 === ChangeLog B-2 ===
+### v23.9.311.3
+- 仮説：店舗バーにGPS候補・手入力・履歴・EC辞書をすべて混ぜると、重複店名・壊れた店名・未使用ECサイトが大量表示される
+- 真因：renderStoreListがEC辞書を常時全件pushし、店舗名の表示用重複キーが弱いため「カスミ 土浦駅前店」「カスミ土浦駅前店」や「EC amazon」「Amazon」などが別チップになる
+- 修正方法：店舗バーは表示時だけ正規化・代表名化・重複排除し、EC辞書は常時表示せず「ECサイト選択」から選ぶ方式に限定。履歴・Firebase構造は変更しない
 ### v23.9.311.2
 - 仮説：ECストア辞書にAmazon/Amazon.co.jp、ヨドバシ.com/ヨドバシカメラ等の別名をそのまま出すと、店舗チップが重複して選びにくい
 - 真因：EC候補が単純配列で、表示代表名と検索・入力ゆれ用の別名が分離されていない
@@ -333,8 +337,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.311.2";
-  const BUILD_ID    = "3112";
+  const APP_VERSION = "v23.9.311.3";
+  const BUILD_ID    = "3113";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -5864,12 +5868,20 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
   ];
   const SP_EC_STORE_NAMES = SP_EC_STORE_DICTIONARY.map(entry => entry.name);
 
+  function stripEcStorePrefix(name) {
+    return normalizeStoreLabel(String(name || '').replace(/^(EC|ＥＣ)\s*/i, ''));
+  }
+
   function getEcStoreCanonicalName(name) {
-    const key = canonicalStoreName(name);
-    if (!key) return '';
+    const rawKey = canonicalStoreName(name);
+    const noPrefixKey = canonicalStoreName(stripEcStorePrefix(name));
+    if (!rawKey && !noPrefixKey) return '';
     for (const entry of SP_EC_STORE_DICTIONARY) {
       const names = [entry.name].concat(entry.aliases || []);
-      if (names.some(s => canonicalStoreName(s) === key)) return entry.name;
+      if (names.some(s => {
+        const k = canonicalStoreName(s);
+        return k && (k === rawKey || k === noPrefixKey);
+      })) return entry.name;
     }
     return '';
   }
@@ -5949,6 +5961,49 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
   }
   window.closeEcStoreDialog = closeEcStoreDialog;
 
+  function getStoreChipDedupKey(name) {
+    const ec = getEcStoreCanonicalName(name);
+    if (ec) return 'ec:' + canonicalStoreName(ec);
+    let s = normalizeStoreLabel(name);
+    if (!s || s === '未設定') return '';
+    s = s.replace(/^(EC|ＥＣ)\s*/i, '');
+    s = s.replace(/フードスクエア/g, '');
+    s = s.replace(/土浦前店/g, '土浦駅前店');
+    s = s.replace(/ピアタウ(?!ン)/g, 'ピアタウン');
+    s = s.replace(/スーパーハガエ/g, 'スーパーハリガエ');
+    s = s.replace(/[\s　・･\-‐‑‒–—―ー!！.．,，、。()（）［］\[\]]+/g, '');
+    if (/ドンキ/.test(s) || /ドン.*キ.*ホ?ーテ/.test(s) || /ドンキーテ/.test(s)) {
+      return 'store:ドンキ';
+    }
+    s = s.replace(/店$/g, '');
+    return s ? 'store:' + s : '';
+  }
+
+  function getStoreChipDisplayName(name, fallbackDisplay) {
+    const ec = getEcStoreCanonicalName(name);
+    if (ec) return ec;
+    let s = displayStoreName(fallbackDisplay || name);
+    if (!s || s === '未設定') return s;
+    s = s.replace(/^(EC|ＥＣ)\s*/i, '');
+    s = s.replace(/ピアタウ(?!ン)/g, 'ピアタウン');
+    s = s.replace(/スーパーハガエ/g, 'スーパーハリガエ');
+    if (/ドンキ・ーテ|ドンキーテ|ドン・?キホ?ーテ/.test(s)) return 'ドンキ';
+    return s;
+  }
+
+  function isBetterStoreChipDisplay(next, current) {
+    const n = normalizeStoreLabel(next);
+    const c = normalizeStoreLabel(current);
+    if (!n) return false;
+    if (!c) return true;
+    const nBad = /・ーテ|\uFFFD/.test(n);
+    const cBad = /・ーテ|\uFFFD/.test(c);
+    if (cBad && !nBad) return true;
+    if (nBad && !cBad) return false;
+    if (n.length >= 5 && c.length <= 3) return true;
+    return n.length > c.length + 2;
+  }
+
   function renderStoreList(manualPriority = []) {
     // [v227] セッション: GPSオフ時は前回ストアを先頭に（session lastStoreName を優先）
     if (!manualPriority.length && !isGpsOn && window._spSessionLastStore) {
@@ -5995,7 +6050,6 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     }
     
     const customStores = (db.config.customStores || []).map(s => getEcStoreCanonicalName(s) || s);
-    const ecStores = SP_EC_STORE_NAMES;
 
     const gpsOrdered = (Array.isArray(window.nearbyStoreNames) && window.nearbyStoreNames.length > 0)
       ? window.nearbyStoreNames.map(s => canonicalStoreName(s)).filter(Boolean)
@@ -6057,7 +6111,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     // ✅ 候補を統合（未設定は先頭固定）。v23.9.117: GPSはスコア順（nearbyStoreNames）を維持し全体ソートはしない
     const storeNames = [];
     const storeKeys  = [];
-    const seen = new Set();
+    const seen = new Map();
     const displayNamesArr = Array.isArray(window.nearbyStoreDisplayNames)
       ? window.nearbyStoreDisplayNames : [];
     const displayByCanon = {};
@@ -6075,15 +6129,23 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         const raw  = String(arr[i] || '').trim();
         const ec   = getEcStoreCanonicalName(raw);
         const s    = ec || raw;
-        const key  = canonicalStoreName(String(s || '').trim().replace(/\s+/g, ''));
-        const disp = (useDisplayNames && displayByCanon[key])
-          ? displayByCanon[key]
-          : displayStoreName(String(s || '').trim());
+        const canonKey = canonicalStoreName(String(s || '').trim().replace(/\s+/g, ''));
+        const key  = getStoreChipDedupKey(s);
+        const disp = getStoreChipDisplayName(s, (useDisplayNames && displayByCanon[canonKey])
+          ? displayByCanon[canonKey]
+          : String(s || '').trim());
         if (!key || key === '未設定') continue;
-        if (seen.has(key)) continue;
-        seen.add(key);
+        if (seen.has(key)) {
+          const idx = seen.get(key);
+          if (isBetterStoreChipDisplay(disp, storeNames[idx])) {
+            storeNames[idx] = disp || key;
+            storeKeys[idx] = canonKey;
+          }
+          continue;
+        }
+        seen.set(key, storeNames.length);
         storeNames.push(disp || key);
-        storeKeys.push(key);
+        storeKeys.push(canonKey);
       }
     }
     pushUnique(manualPriority, false);
@@ -6094,19 +6156,31 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       pushUnique(customStores, false);
       pushUnique(mergedNearby, true);
     }
-    pushUnique(ecStores, false);
     for (const s of sortedFreq) {
       const ec   = getEcStoreCanonicalName(s);
       const raw  = ec || s;
-      const key  = canonicalStoreName(String(raw || '').trim());
-      const disp = displayStoreName(String(raw || '').trim());
+      const key  = getStoreChipDedupKey(raw);
+      const canonKey = canonicalStoreName(String(raw || '').trim());
+      const disp = getStoreChipDisplayName(raw);
       if (!key || key === '未設定') continue;
-      if (seen.has(key)) continue;
-      seen.add(key);
+      if (seen.has(key)) {
+        const idx = seen.get(key);
+        if (isBetterStoreChipDisplay(disp, storeNames[idx])) {
+          storeNames[idx] = disp || key;
+          storeKeys[idx] = canonKey;
+        }
+        continue;
+      }
+      seen.set(key, storeNames.length);
       storeNames.push(disp || key);
-      storeKeys.push(key);
+      storeKeys.push(canonKey);
     }
-    const finalSet = ['未設定', ...storeNames];
+    const maxStoreChips = 18;
+    let visibleStoreNames = storeNames.slice(0, maxStoreChips);
+    if (curStore && curStore !== '未設定' && !visibleStoreNames.includes(curStore)) {
+      visibleStoreNames = [curStore, ...visibleStoreNames].slice(0, maxStoreChips);
+    }
+    const finalSet = ['未設定', ...visibleStoreNames];
 
     try {
       spDbg('[STORE_RENDER_CONFIG]', {
