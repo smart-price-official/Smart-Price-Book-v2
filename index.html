@@ -48,9 +48,13 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.311  BUILD_ID=3110
+APP_VERSION=v23.9.311.1  BUILD_ID=3111
 
 === ChangeLog B-2 ===
+### v23.9.311.1
+- 仮説：GPS店舗候補に文字化けした店名が混じると、店舗チップに「��」が残ってユーザーが不安になる
+- 真因：normalizeStoreLabelが置換文字（�）を除去しておらず、EC店舗もGPS候補に依存しているためAmazon/楽天市場/ヨドバシ等が選びにくい
+- 修正方法：店舗名正規化で置換文字を除去し、EC店舗辞書を店舗チップへ追加。既知EC店舗は税込主表示として自動選択する
 ### v23.9.311
 - 仮説：店舗ごとの税込/税別を設定画面で管理させると、買い物中の自然な入力から離れて迷いやすい
 - 真因：storeTaxModesは既に端末内学習として保存されているが、未設定店舗で「店頭の大きい価格が税込/税別どちらか」を明示確認するUIがない
@@ -325,8 +329,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.311";
-  const BUILD_ID    = "3110";
+  const APP_VERSION = "v23.9.311.1";
+  const BUILD_ID    = "3111";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -5833,6 +5837,50 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     } catch (_) {}
   }
 
+  // v311.1: ECストアはGPSでは出にくいため、店舗チップへ固定候補として補う。
+  // 価格表示は原則税込なので、未学習時は税込主表示として扱う。
+  const SP_EC_STORE_NAMES = [
+    'Amazon',
+    'Amazon.co.jp',
+    '楽天市場',
+    '楽天24',
+    'Yahoo!ショッピング',
+    'ヨドバシ.com',
+    'ヨドバシカメラ',
+    'ビックカメラ.com',
+    'ヤマダウェブコム',
+    'Joshin web',
+    'LOHACO',
+    'Qoo10',
+    'au PAY マーケット',
+    'ニトリネット',
+    '無印良品ネットストア',
+    'イオンネットスーパー',
+    '楽天西友ネットスーパー',
+    'ネットスーパー'
+  ];
+
+  function isEcStoreName(name) {
+    const key = canonicalStoreName(name);
+    if (!key) return false;
+    return SP_EC_STORE_NAMES.some(s => canonicalStoreName(s) === key);
+  }
+  window.isEcStoreName = isEcStoreName;
+
+  function ensureKnownEcStoreTaxMode(storeName) {
+    const store = canonicalStoreName(storeName);
+    if (!store || !isEcStoreName(store)) return '';
+    if (!db) return 'in';
+    if (!db.config) db.config = {};
+    if (!db.config.storeTaxModes) db.config.storeTaxModes = {};
+    if (db.config.storeTaxModes[store] !== 'ex' && db.config.storeTaxModes[store] !== 'in') {
+      db.config.storeTaxModes[store] = 'in';
+      try { saveLocalOnly(); } catch (_) {}
+    }
+    return db.config.storeTaxModes[store] || 'in';
+  }
+  window.ensureKnownEcStoreTaxMode = ensureKnownEcStoreTaxMode;
+
   function renderStoreList(manualPriority = []) {
     // [v227] セッション: GPSオフ時は前回ストアを先頭に（session lastStoreName を優先）
     if (!manualPriority.length && !isGpsOn && window._spSessionLastStore) {
@@ -5879,6 +5927,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     }
     
     const customStores = db.config.customStores || [];
+    const ecStores = SP_EC_STORE_NAMES;
 
     const gpsOrdered = (Array.isArray(window.nearbyStoreNames) && window.nearbyStoreNames.length > 0)
       ? window.nearbyStoreNames.map(s => canonicalStoreName(s)).filter(Boolean)
@@ -5975,6 +6024,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       pushUnique(customStores, false);
       pushUnique(mergedNearby, true);
     }
+    pushUnique(ecStores, false);
     for (const s of sortedFreq) {
       const key  = canonicalStoreName(String(s || '').trim());
       const disp = displayStoreName(String(s || '').trim());
@@ -6050,7 +6100,10 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         try { if (typeof window._spSessionOnStoreSelect==='function') window._spSessionOnStoreSelect(name); } catch(_) {}
 
         // ✅ v311: 端末内学習済みの店舗税モードを自動反映
-        const storeTaxMode = db.config.storeTaxModes && db.config.storeTaxModes[curStore];
+        let storeTaxMode = db.config.storeTaxModes && db.config.storeTaxModes[curStore];
+        if (!storeTaxMode) {
+          try { storeTaxMode = ensureKnownEcStoreTaxMode(curStore); } catch (_) {}
+        }
         if (storeTaxMode) {
           const taxModeId = storeTaxMode === "in" ? 'taxIn' : 'taxEx';
           const taxEl = document.getElementById(taxModeId);
@@ -8622,6 +8675,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     let s = String(raw).trim();
     // v248: サロゲートペア文字（絵文字・BMP外Unicode）を除去（◆◆◆表示バグ対策）
     s = s.replace(/[\uD800-\uDFFF]/g, '');
+    // v311.1: 文字化け時に混入する置換文字（�）を除去
+    s = s.replace(/\uFFFD+/g, '');
     // 空白整理
     s = s.replace(/\s+/g, ' ').trim();
     // 末尾の不要記号整理
@@ -10036,6 +10091,15 @@ return true;
     var isEditing = editingHistIdx !== null;
     var store = curStore || '未設定';
     var modes = (db && db.config && db.config.storeTaxModes) ? db.config.storeTaxModes : {};
+    var knownEcMode = '';
+    try { knownEcMode = ensureKnownEcStoreTaxMode(store); } catch(_) {}
+    if (knownEcMode && !modes[store]) {
+      modes = (db && db.config && db.config.storeTaxModes) ? db.config.storeTaxModes : modes;
+    }
+    if (knownEcMode) {
+      var taxEl = document.getElementById(knownEcMode === 'in' ? 'taxIn' : 'taxEx');
+      if (taxEl) taxEl.checked = true;
+    }
     var hasMode = store && store !== '未設定' && (modes[store] === 'ex' || modes[store] === 'in');
     prompt.style.display = (!isMaster && !isEditing && store && store !== '未設定' && !hasMode) ? 'block' : 'none';
   }
