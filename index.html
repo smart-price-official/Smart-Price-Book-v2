@@ -48,9 +48,13 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.311.1  BUILD_ID=3111
+APP_VERSION=v23.9.311.2  BUILD_ID=3112
 
 === ChangeLog B-2 ===
+### v23.9.311.2
+- 仮説：ECストア辞書にAmazon/Amazon.co.jp、ヨドバシ.com/ヨドバシカメラ等の別名をそのまま出すと、店舗チップが重複して選びにくい
+- 真因：EC候補が単純配列で、表示代表名と検索・入力ゆれ用の別名が分離されていない
+- 修正方法：ECストアを代表名＋別名の辞書へ変更し、店舗チップには代表名のみ表示。＋店名入力の隣にECサイト選択を追加し、既知ECは税込主表示へ自動設定する
 ### v23.9.311.1
 - 仮説：GPS店舗候補に文字化けした店名が混じると、店舗チップに「��」が残ってユーザーが不安になる
 - 真因：normalizeStoreLabelが置換文字（�）を除去しておらず、EC店舗もGPS候補に依存しているためAmazon/楽天市場/ヨドバシ等が選びにくい
@@ -329,8 +333,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.311.1";
-  const BUILD_ID    = "3111";
+  const APP_VERSION = "v23.9.311.2";
+  const BUILD_ID    = "3112";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -557,6 +561,8 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
     .store-tag.unset { background: var(--sp-button-bg); color: var(--sp-button-text); border: 1px solid var(--sp-primary); font-weight: bold; }
     .store-tag.add-store { background: var(--sp-primary); color: var(--sp-button-text); border: 1px dashed var(--sp-primary); }
     .store-tag.add-store:active { background: var(--sp-button-bg); opacity: 0.85; }
+    .store-tag.ec-store { background: rgba(76, 175, 80, 0.14); color: #66d17a; border: 1px dashed rgba(76, 175, 80, 0.75); font-weight: bold; }
+    .store-tag.ec-store:active { opacity: 0.85; }
     .gps-status { font-size: 0.6rem; margin-left: 4px; opacity: 0.9; }
 
     .card { background-color: var(--sp-card); border: 1px solid var(--sp-border); margin-bottom: 10px; border-radius: 12px; overflow: hidden; }
@@ -5772,7 +5778,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
   // ========= Stores =========
   function addCustomStore(name) {
     db = normalizeDb(db);
-    const s = (name || "").trim();
+    const raw = (name || "").trim();
+    const s = (typeof getEcStoreCanonicalName === 'function' ? getEcStoreCanonicalName(raw) : '') || raw;
     if (!s) return;
     db.config.customStores = [s, ...(db.config.customStores || []).filter(x => x !== s)].slice(0, 20);
     saveLocalOnly();
@@ -5782,7 +5789,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
   async function promptAddStore() {
     const n = await customPrompt("店名を手入力（例：○○スーパー）");
     if(n && n.trim()) {
-      const s = n.trim();
+      const s = (typeof getEcStoreCanonicalName === 'function' ? getEcStoreCanonicalName(n.trim()) : '') || n.trim();
       addCustomStore(s);
       curStore = s;
       const ind = document.getElementById('curStoreIndicator');
@@ -5837,39 +5844,45 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     } catch (_) {}
   }
 
-  // v311.1: ECストアはGPSでは出にくいため、店舗チップへ固定候補として補う。
-  // 価格表示は原則税込なので、未学習時は税込主表示として扱う。
-  const SP_EC_STORE_NAMES = [
-    'Amazon',
-    'Amazon.co.jp',
-    '楽天市場',
-    '楽天24',
-    'Yahoo!ショッピング',
-    'ヨドバシ.com',
-    'ヨドバシカメラ',
-    'ビックカメラ.com',
-    'ヤマダウェブコム',
-    'Joshin web',
-    'LOHACO',
-    'Qoo10',
-    'au PAY マーケット',
-    'ニトリネット',
-    '無印良品ネットストア',
-    'イオンネットスーパー',
-    '楽天西友ネットスーパー',
-    'ネットスーパー'
+  // v311.2: ECストアは代表名だけを表示し、入力ゆれは aliases で吸収する。
+  const SP_EC_STORE_DICTIONARY = [
+    { name: 'Amazon', aliases: ['Amazon.co.jp', 'アマゾン', 'amazon'] },
+    { name: '楽天市場', aliases: ['楽天', '楽天24', 'Rakuten'] },
+    { name: 'Yahoo!ショッピング', aliases: ['Yahooショッピング', 'Yahoo! JAPANショッピング', 'ヤフーショッピング', 'ヤフー'] },
+    { name: 'ヨドバシ.com', aliases: ['ヨドバシカメラ', 'ヨドバシ'] },
+    { name: 'ビックカメラ.com', aliases: ['ビックカメラ', 'BicCamera'] },
+    { name: 'ヤマダウェブコム', aliases: ['ヤマダ電機', 'ヤマダデンキ', 'YAMADA'] },
+    { name: 'Joshin web', aliases: ['ジョーシン', '上新電機'] },
+    { name: 'LOHACO', aliases: ['ロハコ'] },
+    { name: 'Qoo10', aliases: ['キューテン'] },
+    { name: 'au PAY マーケット', aliases: ['au Wowma', 'Wowma'] },
+    { name: 'ニトリネット', aliases: ['ニトリ'] },
+    { name: '無印良品ネットストア', aliases: ['無印良品', 'MUJI'] },
+    { name: 'イオンネットスーパー', aliases: ['イオン', 'AEONネットスーパー'] },
+    { name: '楽天西友ネットスーパー', aliases: ['西友ネットスーパー', 'SEIYUネットスーパー'] },
+    { name: 'ネットスーパー', aliases: [] }
   ];
+  const SP_EC_STORE_NAMES = SP_EC_STORE_DICTIONARY.map(entry => entry.name);
+
+  function getEcStoreCanonicalName(name) {
+    const key = canonicalStoreName(name);
+    if (!key) return '';
+    for (const entry of SP_EC_STORE_DICTIONARY) {
+      const names = [entry.name].concat(entry.aliases || []);
+      if (names.some(s => canonicalStoreName(s) === key)) return entry.name;
+    }
+    return '';
+  }
+  window.getEcStoreCanonicalName = getEcStoreCanonicalName;
 
   function isEcStoreName(name) {
-    const key = canonicalStoreName(name);
-    if (!key) return false;
-    return SP_EC_STORE_NAMES.some(s => canonicalStoreName(s) === key);
+    return !!getEcStoreCanonicalName(name);
   }
   window.isEcStoreName = isEcStoreName;
 
   function ensureKnownEcStoreTaxMode(storeName) {
-    const store = canonicalStoreName(storeName);
-    if (!store || !isEcStoreName(store)) return '';
+    const store = getEcStoreCanonicalName(storeName);
+    if (!store) return '';
     if (!db) return 'in';
     if (!db.config) db.config = {};
     if (!db.config.storeTaxModes) db.config.storeTaxModes = {};
@@ -5880,6 +5893,61 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     return db.config.storeTaxModes[store] || 'in';
   }
   window.ensureKnownEcStoreTaxMode = ensureKnownEcStoreTaxMode;
+
+  function selectEcStore(name) {
+    const store = getEcStoreCanonicalName(name) || canonicalStoreName(name);
+    if (!store) return;
+    addCustomStore(store);
+    curStore = store;
+    const ind = document.getElementById('curStoreIndicator');
+    if (ind) ind.innerText = `【 ${curStore} 】で保存します`;
+    try { _spPersistStore(store); } catch (_) {}
+    try { ensureKnownEcStoreTaxMode(store); } catch (_) {}
+    try { syncFirebasePut(); } catch (_) {}
+    renderStoreList([store]);
+    try { updateStoreTaxLearningPrompt(); } catch (_) {}
+    showToast(store + ' を選択しました（税込）', 2200);
+  }
+  window.selectEcStore = selectEcStore;
+
+  async function promptSelectEcStore() {
+    try {
+      var html = '<div style="display:grid;grid-template-columns:1fr;gap:8px;">'
+        + SP_EC_STORE_NAMES.map(function(name) {
+          var esc = name.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          return '<button type="button" class="btn btn-outline-light text-start fw-bold" data-store="' + esc + '" onclick="selectEcStore(this.getAttribute(\'data-store\')); closeEcStoreDialog();">🛒 ' + esc + '</button>';
+        }).join('')
+        + '</div>';
+      var msg = document.getElementById('dialogMsg');
+      var inputArea = document.getElementById('dialogInputArea');
+      var cancel = document.getElementById('dialogCancel');
+      var ok = document.getElementById('dialogOk');
+      var modal = document.getElementById('dialogModal');
+      if (!msg || !inputArea || !cancel || !ok || !modal) throw new Error('dialog missing');
+      msg.innerHTML = '<span class="fw-bold mb-3 d-block">ECサイトを選択</span>' + html;
+      inputArea.style.display = 'none';
+      cancel.style.display = 'block';
+      ok.style.display = 'none';
+      cancel.onclick = function() { closeEcStoreDialog(); };
+      modal.classList.add('show-modal');
+    } catch (e) {
+      const n = await customPrompt('ECサイト名（例：Amazon）');
+      if (n) selectEcStore(n);
+    }
+  }
+  window.promptSelectEcStore = promptSelectEcStore;
+
+  function closeEcStoreDialog() {
+    try {
+      var modal = document.getElementById('dialogModal');
+      if (modal) { modal.classList.remove('show-modal'); modal.style.display = 'none'; }
+      var ok = document.getElementById('dialogOk');
+      if (ok) ok.style.display = 'block';
+      var msg = document.getElementById('dialogMsg');
+      if (msg) msg.innerHTML = '';
+    } catch (_) {}
+  }
+  window.closeEcStoreDialog = closeEcStoreDialog;
 
   function renderStoreList(manualPriority = []) {
     // [v227] セッション: GPSオフ時は前回ストアを先頭に（session lastStoreName を優先）
@@ -5926,7 +5994,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       });
     }
     
-    const customStores = db.config.customStores || [];
+    const customStores = (db.config.customStores || []).map(s => getEcStoreCanonicalName(s) || s);
     const ecStores = SP_EC_STORE_NAMES;
 
     const gpsOrdered = (Array.isArray(window.nearbyStoreNames) && window.nearbyStoreNames.length > 0)
@@ -6004,7 +6072,9 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     }
     function pushUnique(arr, useDisplayNames) {
       for (let i = 0; i < arr.length; i++) {
-        const s    = arr[i];
+        const raw  = String(arr[i] || '').trim();
+        const ec   = getEcStoreCanonicalName(raw);
+        const s    = ec || raw;
         const key  = canonicalStoreName(String(s || '').trim().replace(/\s+/g, ''));
         const disp = (useDisplayNames && displayByCanon[key])
           ? displayByCanon[key]
@@ -6026,8 +6096,10 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     }
     pushUnique(ecStores, false);
     for (const s of sortedFreq) {
-      const key  = canonicalStoreName(String(s || '').trim());
-      const disp = displayStoreName(String(s || '').trim());
+      const ec   = getEcStoreCanonicalName(s);
+      const raw  = ec || s;
+      const key  = canonicalStoreName(String(raw || '').trim());
+      const disp = displayStoreName(String(raw || '').trim());
       if (!key || key === '未設定') continue;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -6124,6 +6196,11 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     addBtn.innerText = '＋店名入力';
     addBtn.onclick = () => promptAddStore();
     list.appendChild(addBtn);
+    const ecBtn = document.createElement('span');
+    ecBtn.className = 'store-tag ec-store';
+    ecBtn.innerText = 'ECサイト選択';
+    ecBtn.onclick = () => promptSelectEcStore();
+    list.appendChild(ecBtn);
     try {
       spDbg('[STORE_RENDER_DONE]', { storeTagCount: list.querySelectorAll('.store-tag').length });
     } catch (_s3) {}
