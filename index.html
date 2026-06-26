@@ -48,9 +48,13 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.311.3  BUILD_ID=3113
+APP_VERSION=v23.9.311.4  BUILD_ID=3114
 
 === ChangeLog B-2 ===
+### v23.9.311.4
+- 仮説：税テスト001など、テスト入力や壊れた店名が履歴由来で候補バーに残ると、通常の買い物で毎回邪魔になる
+- 真因：候補バーはGPS・手入力・履歴を統合するが、ユーザーが「候補から隠す」ための安全な管理UIがない
+- 修正方法：初期設定に「店舗候補整理」を追加し、店名候補を非表示/復帰できるようにする。購入履歴は削除せず、hiddenStoreNamesで表示だけ抑制する
 ### v23.9.311.3
 - 仮説：店舗バーにGPS候補・手入力・履歴・EC辞書をすべて混ぜると、重複店名・壊れた店名・未使用ECサイトが大量表示される
 - 真因：renderStoreListがEC辞書を常時全件pushし、店舗名の表示用重複キーが弱いため「カスミ 土浦駅前店」「カスミ土浦駅前店」や「EC amazon」「Amazon」などが別チップになる
@@ -337,8 +341,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.311.3";
-  const BUILD_ID    = "3113";
+  const APP_VERSION = "v23.9.311.4";
+  const BUILD_ID    = "3114";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -1843,6 +1847,13 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
 
         <div class="mb-3 p-3" style="background:rgba(255,255,255,.045); border:1px solid rgba(255,255,255,.12); border-radius:10px;">
+          <div class="fw-bold mb-1">店舗候補整理</div>
+          <div class="small text-secondary mb-2" style="line-height:1.5;">間違って入力した店名やテスト店名を、候補バーから非表示にします。購入履歴は消えません。</div>
+          <div id="storeCleanupSummary" class="small mb-2 text-secondary"></div>
+          <button type="button" class="btn sp-btn-secondary w-100 py-2 fw-bold sp-menu-btn" data-panel="panelStoreCleanup" onclick="renderStoreCleanupPanel()">店舗候補を整理</button>
+        </div>
+
+        <div class="mb-3 p-3" style="background:rgba(255,255,255,.045); border:1px solid rgba(255,255,255,.12); border-radius:10px;">
           <div class="fw-bold mb-1">ホーム画面</div>
           <div class="small text-secondary mb-2" style="line-height:1.5;">スマホのホーム画面からすぐ開けるようにします。</div>
           <button id="addToHomeBtn" type="button" class="btn btn-outline-success w-100 py-2 fw-bold" onclick="addToHomeScreen()">ホーム画面にアイコンを追加</button>
@@ -1860,6 +1871,14 @@ document.addEventListener('DOMContentLoaded', function() {
             店舗ごとの税込/税別は、買い物中の入力から学習します。設定メニューで手作業管理する方式は使いません。
           </div>
         </div>
+      </div>
+
+      <div id="panelStoreCleanup" class="sp-panel mt-3" style="display:none;">
+        <div class="small text-secondary mb-3" style="line-height:1.6;">
+          候補バーに出したくない店名を非表示にします。購入履歴や価格記録は削除しません。
+        </div>
+        <div id="storeCleanupPanelSummary" class="small mb-2 text-secondary"></div>
+        <div id="storeCleanupList"></div>
       </div>
 
       <div id="panelReferral" class="sp-panel mt-3" style="display:none;">
@@ -2998,6 +3017,7 @@ document.addEventListener('DOMContentLoaded', function() {
     homeCity: "",
     homeCities: [],
     customStores: [],
+    hiddenStoreNames: [], // v311.4: 候補バーから非表示にした店名。購入履歴は消さない
     storeTaxModes: {}, // v311: 端末内学習。店舗ごとの店頭主表示 { "ストア名": "ex" or "in" }。共有投票/信頼度判定はv312以降
     gpsRange: 0.1 // km（GPS店舗検索の基準。段階拡大の起点）
   };
@@ -4612,6 +4632,7 @@ function isQuotaError(e) {
     if (typeof o.config.homeCity !== "string") o.config.homeCity = DEFAULT_CONFIG.homeCity;
     if (!Array.isArray(o.config.homeCities)) o.config.homeCities = o.config.homeCity ? [o.config.homeCity] : [];
     if (!Array.isArray(o.config.customStores)) o.config.customStores = [];
+    if (!Array.isArray(o.config.hiddenStoreNames)) o.config.hiddenStoreNames = [];
     {
       const gr = Number(o.config.gpsRange);
       if (!Number.isFinite(gr) || gr <= 0) {
@@ -4656,6 +4677,10 @@ function isQuotaError(e) {
       .filter(s => typeof s === "string" && s.trim())
       .map(s => s.trim());
     o.config.customStores = [...new Set(o.config.customStores)].slice(0, 20);
+    o.config.hiddenStoreNames = (o.config.hiddenStoreNames || [])
+      .filter(s => typeof s === "string" && s.trim())
+      .map(s => s.trim());
+    o.config.hiddenStoreNames = [...new Set(o.config.hiddenStoreNames)].slice(0, 100);
 
     try {
       o.config.categoryTree = pruneCategoryTreeToParents(o.config.categoryTree);
@@ -5246,6 +5271,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     out.homeCities = hc;
     const cs = [...new Set([...(Array.isArray(out.customStores)?out.customStores:[]), ...(Array.isArray(lc.customStores)?lc.customStores:[])])].filter(Boolean).slice(0,20);
     out.customStores = cs;
+    const hs = [...new Set([...(Array.isArray(out.hiddenStoreNames)?out.hiddenStoreNames:[]), ...(Array.isArray(lc.hiddenStoreNames)?lc.hiddenStoreNames:[])])].filter(Boolean).slice(0,100);
+    out.hiddenStoreNames = hs;
 
     // categoryTreeは"欠けを補う"
     if (!out.categoryTree || typeof out.categoryTree !== 'object') out.categoryTree = {};
@@ -5785,6 +5812,12 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     const raw = (name || "").trim();
     const s = (typeof getEcStoreCanonicalName === 'function' ? getEcStoreCanonicalName(raw) : '') || raw;
     if (!s) return;
+    try {
+      const key = (typeof getStoreChipDedupKey === 'function') ? getStoreChipDedupKey(s) : '';
+      if (key && Array.isArray(db.config.hiddenStoreNames)) {
+        db.config.hiddenStoreNames = db.config.hiddenStoreNames.filter(x => getStoreChipDedupKey(x) !== key);
+      }
+    } catch (_) {}
     db.config.customStores = [s, ...(db.config.customStores || []).filter(x => x !== s)].slice(0, 20);
     saveLocalOnly();
     syncFirebasePut();
@@ -6004,6 +6037,148 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     return n.length > c.length + 2;
   }
 
+  function getHiddenStoreKeySet() {
+    try {
+      db = normalizeDb(db);
+      return new Set((db.config.hiddenStoreNames || [])
+        .map(s => getStoreChipDedupKey(s))
+        .filter(Boolean));
+    } catch (_) {
+      return new Set();
+    }
+  }
+
+  function collectStoreCleanupCandidates() {
+    db = normalizeDb(db);
+    const hiddenKeys = getHiddenStoreKeySet();
+    const rows = new Map();
+    function add(name, source, count) {
+      const raw = String(name || '').trim();
+      if (!raw || raw === '未設定') return;
+      const ec = getEcStoreCanonicalName(raw);
+      const display = getStoreChipDisplayName(ec || raw);
+      const key = getStoreChipDedupKey(display || raw);
+      if (!key) return;
+      const existing = rows.get(key) || {
+        key,
+        name: display || raw,
+        count: 0,
+        custom: false,
+        history: false,
+        hidden: hiddenKeys.has(key),
+        sources: new Set()
+      };
+      if (isBetterStoreChipDisplay(display || raw, existing.name)) existing.name = display || raw;
+      existing.count += Number(count || 0);
+      if (source === 'custom') existing.custom = true;
+      if (source === 'history') existing.history = true;
+      existing.sources.add(source);
+      existing.hidden = hiddenKeys.has(key);
+      rows.set(key, existing);
+    }
+    (db.config.customStores || []).forEach(s => add(s, 'custom', 0));
+    Object.values(db.products || {}).forEach(p => {
+      (p && Array.isArray(p.history) ? p.history : []).forEach(h => {
+        if (h && h.store && h.store !== '未設定') add(h.store, 'history', 1);
+      });
+    });
+    (db.config.hiddenStoreNames || []).forEach(s => add(s, 'hidden', 0));
+    return Array.from(rows.values()).sort((a, b) => {
+      if (a.hidden !== b.hidden) return a.hidden ? 1 : -1;
+      if (a.custom !== b.custom) return a.custom ? -1 : 1;
+      if (b.count !== a.count) return b.count - a.count;
+      return String(a.name).localeCompare(String(b.name), 'ja');
+    });
+  }
+
+  function getStoreCleanupSummaryText() {
+    try {
+      const rows = collectStoreCleanupCandidates();
+      const visible = rows.filter(r => !r.hidden).length;
+      const hidden = rows.filter(r => r.hidden).length;
+      return `表示中 ${visible}件 / 非表示 ${hidden}件`;
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function renderStoreCleanupSummary() {
+    const el = document.getElementById('storeCleanupSummary');
+    if (el) el.textContent = getStoreCleanupSummaryText();
+  }
+
+  function renderStoreCleanupPanel() {
+    try { if (window.SmartPriceModal && typeof window.SmartPriceModal.navigate === 'function') window.SmartPriceModal.navigate('StoreCleanup'); } catch (_) {}
+    db = normalizeDb(db);
+    const summary = document.getElementById('storeCleanupPanelSummary');
+    const list = document.getElementById('storeCleanupList');
+    if (!list) return;
+    const rows = collectStoreCleanupCandidates();
+    if (summary) summary.textContent = getStoreCleanupSummaryText();
+    if (!rows.length) {
+      list.innerHTML = '<div class="small text-secondary p-3" style="background:rgba(255,255,255,.045); border:1px solid rgba(255,255,255,.12); border-radius:10px;">整理できる店舗候補はまだありません。</div>';
+      renderStoreCleanupSummary();
+      return;
+    }
+    list.innerHTML = rows.map(row => {
+      const name = escapeHtml(row.name);
+      const source = row.custom ? '手入力' : (row.history ? '履歴' : '非表示');
+      const countText = row.count > 0 ? `価格記録 ${row.count}件` : '価格記録なし';
+      const status = row.hidden ? '<span class="badge bg-secondary">非表示中</span>' : '<span class="badge bg-success">表示中</span>';
+      const action = row.hidden
+        ? `<button type="button" class="btn btn-sm btn-outline-info" data-store-name="${name}" onclick="unhideStoreCandidate(this.getAttribute('data-store-name'))">戻す</button>`
+        : `<button type="button" class="btn btn-sm btn-outline-warning" data-store-name="${name}" onclick="hideStoreCandidate(this.getAttribute('data-store-name'))">候補から非表示</button>`;
+      return `
+        <div class="mb-2 p-3" style="background:rgba(255,255,255,.045); border:1px solid rgba(255,255,255,.12); border-radius:10px;">
+          <div class="d-flex justify-content-between gap-2 align-items-start">
+            <div style="min-width:0;">
+              <div class="fw-bold" style="word-break:break-word;">${name}</div>
+              <div class="small text-secondary">${escapeHtml(source)} / ${escapeHtml(countText)}</div>
+            </div>
+            <div class="text-end" style="flex:0 0 auto;">${status}</div>
+          </div>
+          <div class="d-grid mt-2">${action}</div>
+        </div>`;
+    }).join('');
+    renderStoreCleanupSummary();
+  }
+
+  function saveStoreCleanupConfig() {
+    saveLocalOnly();
+    try { syncFirebasePut(); } catch (_) {}
+    renderStoreList();
+    renderStoreCleanupPanel();
+    renderStoreCleanupSummary();
+  }
+
+  function hideStoreCandidate(name) {
+    db = normalizeDb(db);
+    const raw = String(name || '').trim();
+    const key = getStoreChipDedupKey(raw);
+    if (!key) return;
+    db.config.hiddenStoreNames = db.config.hiddenStoreNames || [];
+    if (!db.config.hiddenStoreNames.some(s => getStoreChipDedupKey(s) === key)) {
+      db.config.hiddenStoreNames.push(getStoreChipDisplayName(raw) || raw);
+    }
+    db.config.customStores = (db.config.customStores || []).filter(s => getStoreChipDedupKey(s) !== key);
+    db.config.hiddenStoreNames = db.config.hiddenStoreNames.slice(0, 100);
+    saveStoreCleanupConfig();
+    showToast('候補バーから非表示にしました。購入履歴は残っています', 3000);
+  }
+
+  function unhideStoreCandidate(name) {
+    db = normalizeDb(db);
+    const key = getStoreChipDedupKey(name);
+    if (!key) return;
+    db.config.hiddenStoreNames = (db.config.hiddenStoreNames || []).filter(s => getStoreChipDedupKey(s) !== key);
+    saveStoreCleanupConfig();
+    showToast('候補バーに戻しました', 2500);
+  }
+
+  window.renderStoreCleanupPanel = renderStoreCleanupPanel;
+  window.hideStoreCandidate = hideStoreCandidate;
+  window.unhideStoreCandidate = unhideStoreCandidate;
+
   function renderStoreList(manualPriority = []) {
     // [v227] セッション: GPSオフ時は前回ストアを先頭に（session lastStoreName を優先）
     if (!manualPriority.length && !isGpsOn && window._spSessionLastStore) {
@@ -6112,6 +6287,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     const storeNames = [];
     const storeKeys  = [];
     const seen = new Map();
+    const hiddenStoreKeys = getHiddenStoreKeySet();
     const displayNamesArr = Array.isArray(window.nearbyStoreDisplayNames)
       ? window.nearbyStoreDisplayNames : [];
     const displayByCanon = {};
@@ -6135,6 +6311,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
           ? displayByCanon[canonKey]
           : String(s || '').trim());
         if (!key || key === '未設定') continue;
+        if (hiddenStoreKeys.has(key)) continue;
         if (seen.has(key)) {
           const idx = seen.get(key);
           if (isBetterStoreChipDisplay(disp, storeNames[idx])) {
@@ -6163,6 +6340,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       const canonKey = canonicalStoreName(String(raw || '').trim());
       const disp = getStoreChipDisplayName(raw);
       if (!key || key === '未設定') continue;
+      if (hiddenStoreKeys.has(key)) continue;
       if (seen.has(key)) {
         const idx = seen.get(key);
         if (isBetterStoreChipDisplay(disp, storeNames[idx])) {
@@ -6177,7 +6355,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     }
     const maxStoreChips = 18;
     let visibleStoreNames = storeNames.slice(0, maxStoreChips);
-    if (curStore && curStore !== '未設定' && !visibleStoreNames.includes(curStore)) {
+    const curStoreHidden = curStore && hiddenStoreKeys.has(getStoreChipDedupKey(curStore));
+    if (curStore && curStore !== '未設定' && !curStoreHidden && !visibleStoreNames.includes(curStore)) {
       visibleStoreNames = [curStore, ...visibleStoreNames].slice(0, maxStoreChips);
     }
     const finalSet = ['未設定', ...visibleStoreNames];
@@ -7173,6 +7352,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         : '現在：通常の価格記録モード';
       st.className = spRegistrationMode === 'master' ? 'small mb-2 text-info' : 'small mb-2 text-secondary';
     }
+    try { renderStoreCleanupSummary(); } catch (_) {}
   }
 
   function startProductMasterSetup() {
@@ -14588,8 +14768,8 @@ function spVisibleTrace(tag, payload, cls) {
   
   // v23.9.172 SP-260601-006: DeviceId パネル（PC/スマホ照合）を追加
   // v23.9.173 SP-260601-007: Account パネル（アカウント連携・ログイン）を追加
-  const PANELS = { Main: 'settingsMainMenu', InitialSetup: 'panelInitialSetup', Referral: 'panelReferral', Family: 'panelFamily', Support: 'panelSupport', Operator: 'panelOperator', TaxSettings: 'panelTaxSettings', Theme: 'panelTheme', DeviceId: 'panelDeviceId', Account: 'panelAccount' };
-  const TITLES = { Main: '設定', InitialSetup: '初期設定', Referral: '友人紹介', Family: '家族共有', Support: '運営者へ質問', Operator: '管理メニュー', TaxSettings: '店舗の税設定', Theme: 'テーマ設定', DeviceId: '上級者向け', Account: 'アカウント' };
+  const PANELS = { Main: 'settingsMainMenu', InitialSetup: 'panelInitialSetup', StoreCleanup: 'panelStoreCleanup', Referral: 'panelReferral', Family: 'panelFamily', Support: 'panelSupport', Operator: 'panelOperator', TaxSettings: 'panelTaxSettings', Theme: 'panelTheme', DeviceId: 'panelDeviceId', Account: 'panelAccount' };
+  const TITLES = { Main: '設定', InitialSetup: '初期設定', StoreCleanup: '店舗候補整理', Referral: '友人紹介', Family: '家族共有', Support: '運営者へ質問', Operator: '管理メニュー', TaxSettings: '店舗の税設定', Theme: 'テーマ設定', DeviceId: '上級者向け', Account: 'アカウント' };
   
   function init() {
     if (state.initialized) return;
