@@ -48,9 +48,13 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.311.5  BUILD_ID=3115
+APP_VERSION=v23.9.311.6  BUILD_ID=3116
 
 === ChangeLog B-2 ===
+### v23.9.311.6
+- 仮説：「カワチ」「タイヨー」「ウエルシア」「ドンキ・ホーテ」等の店名なし・文字化けエントリが購入履歴・customStores・storeTaxModesに混在し、比較グラフや店舗バーが正しく集計されない
+- 真因：GPS取得時の店名正規化が不完全なため、チェーン名のみ・スペース差異・文字化けの複数バリアントが別ストアとして記録され続けている（バックアップ調査: 126件）
+- 修正方法：SP_STORE_RENAME_MAPを定義し、DB読み込み後に一度だけrunStoreNameMigration()を実行。購入履歴・customStores・storeTaxModesを一括正規化してsaveLocalOnly()+Firebase同期。localStorageフラグ 'sp_store_migration_v3116' で二重実行を防止
 ### v23.9.311.5
 - 仮説：再取得ボタンを押しても画像が出ない商品は、手動で画像を設定する手段がない
 - 真因：refetchProductInfo/refetchProductByJanは同じAPIパイプライン再実行のため、APIに画像データがない商品は何度再実行しても結果が変わらない。ユーザーが外部ブラウザで画像を見つけてもアプリに戻す手段が存在しない
@@ -345,8 +349,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.311.5";
-  const BUILD_ID    = "3115";
+  const APP_VERSION = "v23.9.311.6";
+  const BUILD_ID    = "3116";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -4146,6 +4150,17 @@ document.addEventListener('DOMContentLoaded', function() {
       try { if (typeof updateCloudSyncStatus === 'function') updateCloudSyncStatus(); } catch (_) {}
     } catch (e) {
       try { spDbg('[BOOT_STEP_ERROR]', { step: 'normalizeDb', message: String(e && e.message) }); } catch (_) {}
+    }
+
+    // v311.6: 店名正規化マイグレーション（一度だけ実行）
+    try {
+      const migResult = runStoreNameMigration();
+      if (migResult && !migResult.skipped && migResult.count > 0) {
+        spDbg('[STORE_MIGRATION_APPLIED]', { count: migResult.count });
+        try { syncFirebasePut(); } catch (_) {}
+      }
+    } catch (_mig) {
+      try { spDbg('[STORE_MIGRATION_ERROR]', { err: String(_mig && _mig.message) }); } catch (_) {}
     }
 
     // v23.9.298 P0-3: localStorage読込完了時にも購入履歴を退避（クラウド同期失敗時の保険）
@@ -14438,6 +14453,101 @@ function spVisibleTrace(tag, payload, cls) {
   }
 
   // ===== [image-picker] ここまで =====
+
+  // ===== [store-name-migration] 店名正規化マイグレーション (v311.6) =====
+  const SP_STORE_RENAME_MAP = {
+    "カワチ":         "カワチ土浦真鍋店",
+    "タイヨー":       "タイヨー 土浦店",
+    "タイヨー土浦店": "タイヨー 土浦店",
+    "ウエルシア":     "ウエルシア土浦真鍋店",
+    "ドンキ・ホーテ": "ドン・キホーテ土浦店",
+    "ドンキ・ーテ":   "ドン・キホーテ土浦店",
+  };
+
+  function resolveStoreRename(name) {
+    if (!name) return null;
+    const s = String(name).trim();
+    if (SP_STORE_RENAME_MAP[s]) return SP_STORE_RENAME_MAP[s];
+    // 文字化けドンキ系（ドンキ・で始まりマップにないもの）
+    if (/^ドンキ・/.test(s)) return "ドン・キホーテ土浦店";
+    return null;
+  }
+  window.resolveStoreRename = resolveStoreRename;
+
+  function runStoreNameMigration() {
+    const FLAG_KEY = 'sp_store_migration_v3116';
+    try {
+      if (localStorage.getItem(FLAG_KEY) === 'done') {
+        if (isDebug()) console.log('[StoreMigration] already done, skip');
+        return { skipped: true, count: 0 };
+      }
+    } catch (_) {}
+
+    if (!db || !db.products) return { skipped: true, count: 0 };
+
+    let count = 0;
+    const log = [];
+
+    // 1. 購入履歴の store を正規化（price / date / ts は変更しない）
+    try {
+      Object.keys(db.products).forEach(function(jan) {
+        const p = db.products[jan];
+        if (!Array.isArray(p.history)) return;
+        p.history.forEach(function(h) {
+          const renamed = resolveStoreRename(h.store);
+          if (renamed) {
+            log.push({ jan: jan, from: h.store, to: renamed });
+            h.store = renamed;
+            count++;
+          }
+        });
+      });
+    } catch (_h) {}
+
+    // 2. customStores の bare name を正規化・重複排除
+    try {
+      if (Array.isArray(db.config.customStores)) {
+        db.config.customStores = db.config.customStores.map(function(s) {
+          return resolveStoreRename(s) || s;
+        });
+        db.config.customStores = db.config.customStores.filter(function(s, i, a) {
+          return a.indexOf(s) === i;
+        });
+      }
+    } catch (_cs) {}
+
+    // 3. storeTaxModes のキーを正規化（変換先が既にある場合は既存優先）
+    try {
+      if (db.config.storeTaxModes) {
+        const modes = db.config.storeTaxModes;
+        Object.keys(modes).forEach(function(key) {
+          const renamed = resolveStoreRename(key);
+          if (renamed) {
+            if (!modes[renamed]) {
+              modes[renamed] = modes[key];
+            }
+            delete modes[key];
+          }
+        });
+      }
+    } catch (_tm) {}
+
+    // 4. 保存
+    try { saveLocalOnly(); } catch (_) {}
+
+    // 5. 完了フラグ（二重実行防止）
+    try { localStorage.setItem(FLAG_KEY, 'done'); } catch (_) {}
+
+    spDbg('[STORE_MIGRATION_DONE]', { count: count, samples: log.slice(0, 5) });
+    if (isDebug()) {
+      console.log('[StoreMigration] done:', count, 'entries renamed');
+      if (log.length) console.table(log.slice(0, 20));
+    }
+
+    return { skipped: false, count: count, log: log };
+  }
+  window.runStoreNameMigration = runStoreNameMigration;
+  // ===== [store-name-migration] ここまで =====
 
   // ✅ [image-flow-unify] 画像保存の正式ルート（唯一の導線）
   // 処理順: ①画像選択 → ②blob生成 → ③JAN名でダウンロード → ④IndexedDB保存 → ⑤Firebase保存
