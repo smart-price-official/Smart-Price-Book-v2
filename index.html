@@ -48,9 +48,13 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.317  BUILD_ID=3170
+APP_VERSION=v23.9.318  BUILD_ID=3180
 
 === ChangeLog B-2 ===
+### v23.9.318
+- 仮説：ホーム画面の商品サムネイルが小さく（68x68px）、商品の判断材料として不十分
+- 真因：画像拡大機能が存在せず、長押し等のジェスチャーに対応していない
+- 修正方法：prod-thumbへのtouchstart 500ms長押しでimgZoomOverlay（rgba黒背景・z-index:99900）を表示、最大90vw×80vhでobject-fit:containで拡大。touchmove検出でスクロールと区別。PC向けcontextmenu（右クリック）でも同動作。overlay/img外タップ・ESCで閉じる
 ### v23.9.317
 - 仮説：URLから取り込むボタンが有効にならない・購入履歴で商品名が長いとレイアウトが崩れる・ホーム画像が遅延表示される
 - 真因：①type=urlはAndroid ChromeでペーストのoninputがOS仕様で発火しない ②renderDetailHistory()の左divにoverflow-hiddenがなくflex子要素が長商品名で右側（価格・タップで編集）を圧迫・min-width:0不足 ③IndexedDB読み出しが非同期のため描画後に画像が遅れてpopする
@@ -377,8 +381,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.317";
-  const BUILD_ID    = "3170";
+  const APP_VERSION = "v23.9.318";
+  const BUILD_ID    = "3180";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -23005,6 +23009,98 @@ window.spSetReportPeriod = spSetReportPeriod;
     try { _renderBanner(); } catch(_) {}
   }
 })();
+
+// ===== v318: 商品画像長押し拡大 =====
+(function() {
+  // オーバーレイ生成（1回だけ）
+  const overlay = document.createElement('div');
+  overlay.id = 'imgZoomOverlay';
+  overlay.style.cssText = [
+    'display:none',
+    'position:fixed',
+    'inset:0',
+    'z-index:99900',
+    'background:rgba(0,0,0,0.82)',
+    'align-items:center',
+    'justify-content:center',
+    'cursor:zoom-out',
+    'padding:16px',
+    'box-sizing:border-box',
+    '-webkit-tap-highlight-color:transparent'
+  ].join(';');
+
+  const zoomImg = document.createElement('img');
+  zoomImg.id = 'imgZoomTarget';
+  zoomImg.style.cssText = [
+    'max-width:90vw',
+    'max-height:80vh',
+    'object-fit:contain',
+    'border-radius:12px',
+    'box-shadow:0 8px 40px rgba(0,0,0,0.6)',
+    'transition:opacity 0.18s',
+    'opacity:0',
+    'display:block'
+  ].join(';');
+
+  overlay.appendChild(zoomImg);
+  document.body.appendChild(overlay);
+
+  function openZoom(src) {
+    if (!src || src === placeholderImg()) return;
+    zoomImg.style.opacity = '0';
+    zoomImg.src = src;
+    overlay.style.display = 'flex';
+    requestAnimationFrame(() => { zoomImg.style.opacity = '1'; });
+  }
+
+  function closeZoom() {
+    zoomImg.style.opacity = '0';
+    setTimeout(() => {
+      overlay.style.display = 'none';
+      zoomImg.src = '';
+    }, 180);
+  }
+
+  overlay.addEventListener('click', closeZoom);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeZoom(); });
+
+  // prod-thumb への長押しイベントを委任（historyList が動的生成のため document で受ける）
+  let _longPressTimer = null;
+  let _longPressMoved = false;
+
+  document.addEventListener('touchstart', (e) => {
+    const img = e.target.closest('img.prod-thumb');
+    if (!img) return;
+    _longPressMoved = false;
+    _longPressTimer = setTimeout(() => {
+      if (_longPressMoved) return;
+      const src = img.dataset.objurl || img.src || '';
+      if (src) { openZoom(src); }
+    }, 500);
+  }, { passive: true });
+
+  document.addEventListener('touchmove', () => {
+    _longPressMoved = true;
+    clearTimeout(_longPressTimer);
+  }, { passive: true });
+
+  document.addEventListener('touchend', () => {
+    clearTimeout(_longPressTimer);
+  }, { passive: true });
+
+  // PC向け（右クリックを無効化して代わりに拡大）
+  document.addEventListener('contextmenu', (e) => {
+    const img = e.target.closest('img.prod-thumb');
+    if (!img) return;
+    e.preventDefault();
+    const src = img.dataset.objurl || img.src || '';
+    if (src) openZoom(src);
+  });
+
+  window.openImgZoom = openZoom;
+  window.closeImgZoom = closeZoom;
+})();
+
 </script>
 
 </body>
