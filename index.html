@@ -48,9 +48,13 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.319  BUILD_ID=3190
+APP_VERSION=v23.9.320  BUILD_ID=3200
 
 === ChangeLog B-2 ===
+### v23.9.320
+- 仮説：ホーム画面でイングリッシュマフィン等の特定商品だけ画像が遅れ・消えて復活する
+- 真因：自分専用imageKeyがなく共有画像(getSharedImages)に依存する商品は、renderHistory()が呼ばれるたびにFirebaseから毎回取得するため遅延。list.innerHTML=""でリストが消去されると画像も消え、Firebase応答後に再表示されるため「消えて復活」に見える。v319の_spImgObjUrlCacheはidbKey専用でFirebase共有画像には未適用だった
+- 修正方法：window._spSharedImgCache[JAN]にFirebase共有画像URLをキャッシュ。renderHistory()で!hasMyImage分岐の冒頭でキャッシュチェック→ヒット時はimgEl.srcを即セット（Firebase取得なし）。ミス時のみgetSharedImages()を呼び、成功したらキャッシュ保存。2回目以降の描画で共有画像も遅延ゼロ
 ### v23.9.319
 - 仮説：ホーム画面で商品一覧を表示するたびにIndexedDBを毎回読み直すため画像が後から遅れて表示される
 - 真因：applyImageKeyToImgがキャッシュなしでidbGetを毎回実行するため、カード描画後に非同期で画像が差し込まれる。初回は不可避だが2回目以降も同じ遅延が発生していた
@@ -385,8 +389,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.319";
-  const BUILD_ID    = "3190";
+  const APP_VERSION = "v23.9.320";
+  const BUILD_ID    = "3200";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -6847,18 +6851,26 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       // ✅ IndexedDB画像を適用（優先順位：last.imageKey → it.imageKey、失敗時はimageUrlへフォールバック）
       const imgEl = div.querySelector('img.prod-thumb');
       if (!hasMyImage && fbUrl && imgEl) {
-        (async () => {
-          try {
-            const sharedImages = await getSharedImages(it.code);
-            if (!sharedImages || !sharedImages.length) return;
-            const randomImg = sharedImages[Math.floor(Math.random() * sharedImages.length)];
-            if (!randomImg || !randomImg.imageUrl) return;
-            const el = div.querySelector('img.prod-thumb');
-            if (el) el.src = randomImg.imageUrl;
-          } catch (e) {
-            if (isDebug()) console.warn('[renderHistory] deferred getSharedImages failed:', e);
-          }
-        })();
+        // キャッシュヒット：Firebase再取得不要（再描画時の遅延・消灯を防止）
+        if (window._spSharedImgCache && window._spSharedImgCache[it.code]) {
+          imgEl.src = window._spSharedImgCache[it.code];
+        } else {
+          (async () => {
+            try {
+              const sharedImages = await getSharedImages(it.code);
+              if (!sharedImages || !sharedImages.length) return;
+              const randomImg = sharedImages[Math.floor(Math.random() * sharedImages.length)];
+              if (!randomImg || !randomImg.imageUrl) return;
+              // 次回以降の renderHistory で即時使用
+              if (!window._spSharedImgCache) window._spSharedImgCache = {};
+              window._spSharedImgCache[it.code] = randomImg.imageUrl;
+              const el = div.querySelector('img.prod-thumb');
+              if (el) el.src = randomImg.imageUrl;
+            } catch (e) {
+              if (isDebug()) console.warn('[renderHistory] deferred getSharedImages failed:', e);
+            }
+          })();
+        }
       }
       if (imgEl) {
         imgEl.referrerPolicy = "no-referrer";
