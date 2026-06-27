@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.328  BUILD_ID=3280
+APP_VERSION=v23.9.329  BUILD_ID=3290
 
 === ChangeLog B-2 ===
+### v23.9.329
+- 仮説：スキャン後の入力フォームで商品画像プレビューが表示されない
+- 真因：openFormはdb.products[jan].imageUrlが空（または!exists）の場合にplaceholderを即時表示する。Yahoo非同期lookupが完了してapplyPreviewImageが呼ばれるまで（5〜10秒）ユーザーはNo Imageのままになる。削除→再スキャン時は必ず!existsになりplaceholderになる
+- 修正方法：openFormの!existsブランチとexistsブランチ両方で、placeholder設定直後にyahoo_cache_v2_{jan}をlocalStorageから同期読み取りしてpreview画像を即時表示。非同期lookupが完了すればapplyPreviewImageで上書きされるため問題なし
+
 ### v23.9.328
 - 仮説：スキャン非同期処理と価格登録のタイミング競合により、登録時点でimageUrlがdb.productsに未保存のまま確定してしまう
 - 真因：スキャンのYahoo lookup（GAS経由5〜10秒）が完了する前にユーザーがGOを押して価格登録するケースで、save関数がdb.products[jan]のimageUrlを見つけられず空のままp.imageUrlを保存しない。renderHistory側のv327フォールバックは表示は直るが保存は直っていない
@@ -427,8 +432,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.328";
-  const BUILD_ID    = "3280";
+  const APP_VERSION = "v23.9.329";
+  const BUILD_ID    = "3290";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -7142,6 +7147,15 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       if (prev) {
         prev.src = placeholderImg();
         prev.referrerPolicy = "no-referrer";
+        // [v329] Yahoo ローカルキャッシュから即時表示（非同期lookup完了を待たない）
+        try {
+          const ycRaw = localStorage.getItem('yahoo_cache_v2_' + code);
+          if (ycRaw) {
+            const ycObj = JSON.parse(ycRaw);
+            const ycUrl = ycObj && ycObj.data && ycObj.data.imageUrl;
+            if (ycUrl && /^https?:\/\//.test(String(ycUrl))) prev.src = ycUrl;
+          }
+        } catch(_yco) {}
       }
       tempImgData = null;
       // ※ 商品情報取得は processBarcodeData に一本化（openForm では行わない）
@@ -7189,7 +7203,17 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       const prev = document.getElementById('previewImg');
       if (prev) {
         const last = p.history && p.history.length > 0 ? p.history[p.history.length - 1] : null;
-        prev.src = placeholderImg();
+        // [v329] Yahoo ローカルキャッシュを初期値として設定（imageKeyやimageUrlで上書きされる）
+        let _ycFallbackUrl = '';
+        try {
+          const ycRaw2 = localStorage.getItem('yahoo_cache_v2_' + code);
+          if (ycRaw2) {
+            const ycObj2 = JSON.parse(ycRaw2);
+            const ycUrl2 = ycObj2 && ycObj2.data && ycObj2.data.imageUrl;
+            if (ycUrl2 && /^https?:\/\//.test(String(ycUrl2))) _ycFallbackUrl = ycUrl2;
+          }
+        } catch(_yco2) {}
+        prev.src = _ycFallbackUrl || placeholderImg();
         prev.referrerPolicy = "no-referrer";
         
         let hasMyImage = false;
