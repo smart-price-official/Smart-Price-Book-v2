@@ -48,9 +48,13 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.320  BUILD_ID=3200
+APP_VERSION=v23.9.321  BUILD_ID=3210
 
 === ChangeLog B-2 ===
+### v23.9.321
+- 仮説：JANコードからメーカーを即時特定する手段がなく、毎回Yahoo API呼び出しが必要
+- 真因：GS1企業コードプレフィックス→メーカー名の辞書がSP本体に存在しない
+- 修正方法：GAS buildmakerdict エンドポイント（Yahoo API統計分析）で25社のプレフィックス辞書を生成。SP_JAN_MAKER_DICT定数として実装。getManufacturerFromJan(jan)で6〜9桁を順探索して即時返却。API不要・オフライン対応
 ### v23.9.320
 - 仮説：ホーム画面でイングリッシュマフィン等の特定商品だけ画像が遅れ・消えて復活する
 - 真因：自分専用imageKeyがなく共有画像(getSharedImages)に依存する商品は、renderHistory()が呼ばれるたびにFirebaseから毎回取得するため遅延。list.innerHTML=""でリストが消去されると画像も消え、Firebase応答後に再表示されるため「消えて復活」に見える。v319の_spImgObjUrlCacheはidbKey専用でFirebase共有画像には未適用だった
@@ -389,8 +393,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.320";
-  const BUILD_ID    = "3200";
+  const APP_VERSION = "v23.9.321";
+  const BUILD_ID    = "3210";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -14640,6 +14644,47 @@ function spVisibleTrace(tag, payload, cls) {
 
   // ======================
   // STORE NAME MIGRATION START
+  // ======================
+  // ===== v321: JAN プレフィックス → メーカー名辞書 (buildmakerdict 2026-06-27生成) =====
+  const SP_JAN_MAKER_DICT = {
+    "456245": "アヲハタ",
+    "458985": "キリン",
+    "490100": "江崎グリコ",
+    "490107": "エースコック",
+    "490123": "伊藤ハム",
+    "490130": "カゴメ",
+    "490131": "亀田製菓",
+    "490133": "カルビー",
+    "490177": "サントリー",
+    "490194": "東ハト",
+    "490210": "日清食品",
+    "490211": "日本ハム",
+    "490240": "ハウス食品",
+    "490272": "森永乳業",
+    "490277": "明治",
+    "490288": "森永製菓",
+    "490301": "ヤマザキビスケット",
+    "490305": "雪印メグミルク",
+    "490311": "ユニ・チャーム",
+    "490330": "六甲バター",
+    "490333": "ロッテ",
+    "493072": "キッコーマン",
+    "498707": "小林製薬",
+    "498724": "ロート製薬",
+    "498730": "大正製薬"
+  };
+
+  // JAN コードの先頭 6〜9 桁を順に探索してメーカー名を返す
+  function getManufacturerFromJan(jan) {
+    if (!jan || typeof jan !== 'string') return null;
+    const j = jan.replace(/\D/g, '');
+    for (var len = 6; len <= 9; len++) {
+      var prefix = j.slice(0, len);
+      if (SP_JAN_MAKER_DICT[prefix]) return SP_JAN_MAKER_DICT[prefix];
+    }
+    return null;
+  }
+
   // ======================
   // ===== [store-name-migration] 店名正規化マイグレーション (v311.6) =====
   // v316: 支店名なしのチェーン名のみエントリをストア候補バーから除外するリスト
