@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.327  BUILD_ID=3270
+APP_VERSION=v23.9.328  BUILD_ID=3280
 
 === ChangeLog B-2 ===
+### v23.9.328
+- 仮説：スキャン非同期処理と価格登録のタイミング競合により、登録時点でimageUrlがdb.productsに未保存のまま確定してしまう
+- 真因：スキャンのYahoo lookup（GAS経由5〜10秒）が完了する前にユーザーがGOを押して価格登録するケースで、save関数がdb.products[jan]のimageUrlを見つけられず空のままp.imageUrlを保存しない。renderHistory側のv327フォールバックは表示は直るが保存は直っていない
+- 修正方法：save関数（GO押下時）でtempImgDataもp.imageUrlもない場合にyahoo_cache_v2_{jan}をlocalStorageから読み取ってp.imageUrlに補完。スキャン完了タイミングに依存せず登録時点でimageUrlを確定させる根本修正
+
 ### v23.9.327
 - 仮説：購入履歴レンダリング時に db.products[jan].imageUrl が空のため画像が出ない。スキャン保存の非同期タイミング問題でimageUrlが保存されない場合がある
 - 真因：renderHistory がimageUrlを db.products のみから参照しており、スキャン保存タイミングで imageUrl が未保存の場合は永続的に No Image になる
@@ -422,8 +427,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.327";
-  const BUILD_ID    = "3270";
+  const APP_VERSION = "v23.9.328";
+  const BUILD_ID    = "3280";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -8021,6 +8026,21 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
           imageKey: p.imageKey || '',
           tempType: tempImgData.type || typeof tempImgData
         });
+      }
+
+      // [v328] imageUrlもimageKeyもない場合、Yahooローカルキャッシュから補完（スキャン非同期競合の根本修正）
+      if (!p.imageUrl && !p.imageKey) {
+        try {
+          const ycRaw = localStorage.getItem('yahoo_cache_v2_' + jan);
+          if (ycRaw) {
+            const ycObj = JSON.parse(ycRaw);
+            const ycUrl = ycObj && ycObj.data && ycObj.data.imageUrl;
+            if (ycUrl && /^https?:\/\//.test(String(ycUrl))) {
+              p.imageUrl = ycUrl;
+              spDbg('[IMAGE_YAHOO_CACHE_補完]', { jan, url: ycUrl });
+            }
+          }
+        } catch(_ycs) {}
       }
 
       const rawNameTrim = String(rawName || '').trim();
