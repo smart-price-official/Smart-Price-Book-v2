@@ -48,9 +48,13 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.321  BUILD_ID=3210
+APP_VERSION=v23.9.322  BUILD_ID=3220
 
 === ChangeLog B-2 ===
+### v23.9.322
+- 仮説：SP_JAN_MAKER_DICTは25社固定で、スキャン済み商品や新規スキャン時のメーカー情報が辞書に蓄積されない
+- 真因：A）起動時に購入履歴のmaker情報からプレフィックスを学習する仕組みがない。C）Yahoo/AI/Firebase確定時のmaker情報を辞書に追記するフックがない
+- 修正方法：learnMakerFromJan(jan,maker)を実装（6桁プレフィックス抽出・未登録のみ追記）。learnMakerDictFromHistory()でloadLocal後にdb.products全件を走査して辞書補完。AI確定時(aiRefineName)とFirebase確定時(server-confirmed)の2箇所にlearnMakerFromJanフックを追加。使えば使うほど辞書が育つ
 ### v23.9.321
 - 仮説：JANコードからメーカーを即時特定する手段がなく、毎回Yahoo API呼び出しが必要
 - 真因：GS1企業コードプレフィックス→メーカー名の辞書がSP本体に存在しない
@@ -393,8 +397,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.321";
-  const BUILD_ID    = "3210";
+  const APP_VERSION = "v23.9.322";
+  const BUILD_ID    = "3220";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -4224,6 +4228,8 @@ document.addEventListener('DOMContentLoaded', function() {
       await loadLocal();
       try { spDbg('[LOAD_LOCAL_DONE]', { productCount: Object.keys((db && db.products) || {}).length }); } catch (_) {}
       try { if (typeof updateCloudSyncStatus === 'function') updateCloudSyncStatus(); } catch (_) {}
+      // A: 購入履歴からメーカー辞書を補完（起動時1回）
+      try { learnMakerDictFromHistory(); } catch (_) {}
     } catch (e) {
       try { spDbg('[BOOT_STEP_ERROR]', { step: 'loadLocal', message: String(e && e.message), stack: String(e && e.stack) }); } catch (_) {}
     }
@@ -11162,6 +11168,8 @@ return true;
           source: 'ai-normalized'
         });
         spDbg('[AI_NORMALIZE_DONE] saved to server+local', { jan: currentJan, name: result.name });
+        // C: AI確定メーカーを辞書に追記
+        try { learnMakerFromJan(currentJan, bestMaker || result.maker || ''); } catch(_) {}
       }
 
       btn.textContent = '✅';
@@ -12402,6 +12410,8 @@ function spVisibleTrace(tag, payload, cls) {
           finalInfo.maker = serverConfirmed.confirmedMaker || '';
           finalInfo.category = normalizeCategory(serverConfirmed.confirmedCategory || '');
           sourceUsed = 'server-confirmed';
+          // C: Firebase確定メーカーを辞書に追記
+          try { learnMakerFromJan(jan, finalInfo.maker); } catch(_) {}
 
           // ローカルに保存（次回はLOCAL_HITになる）
           setJanCache(jan, {
@@ -14683,6 +14693,38 @@ function spVisibleTrace(tag, payload, cls) {
       if (SP_JAN_MAKER_DICT[prefix]) return SP_JAN_MAKER_DICT[prefix];
     }
     return null;
+  }
+
+  // C: JAN スキャン時にメーカー確定 → 辞書に追記（6桁プレフィックス）
+  function learnMakerFromJan(jan, maker) {
+    if (!jan || !maker || typeof jan !== 'string' || typeof maker !== 'string') return;
+    const j = jan.replace(/\D/g, '');
+    if (j.length < 6) return;
+    const prefix = j.slice(0, 6);
+    // 既存エントリを上書きしない（静的辞書が優先）
+    if (!SP_JAN_MAKER_DICT[prefix]) {
+      SP_JAN_MAKER_DICT[prefix] = maker;
+      if (isDebug()) console.log('[learnMakerFromJan] learned:', prefix, '->', maker);
+    }
+  }
+
+  // A: 起動時に購入履歴から maker を抽出して辞書を補完
+  function learnMakerDictFromHistory() {
+    try {
+      if (!db || !db.products) return;
+      var learned = 0;
+      Object.keys(db.products).forEach(function(jan) {
+        var prod = db.products[jan];
+        var maker = (prod.maker && prod.maker.trim()) ||
+          (prod.history && prod.history.length && prod.history[0].maker && prod.history[0].maker.trim()) || '';
+        if (!maker) return;
+        learnMakerFromJan(jan, maker);
+        learned++;
+      });
+      if (isDebug()) console.log('[learnMakerDictFromHistory] learned from', learned, 'products');
+    } catch(e) {
+      if (isDebug()) console.warn('[learnMakerDictFromHistory] error:', e);
+    }
   }
 
   // ======================
