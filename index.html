@@ -48,9 +48,13 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.315  BUILD_ID=3150
+APP_VERSION=v23.9.316  BUILD_ID=3160
 
 === ChangeLog B-2 ===
+### v23.9.316
+- 仮説：画像ピッカーでURLから取り込むが常に失敗し、端末にダウンロードした画像を使う手段もなく、ストア候補に「ダイソー」（支店名なし）が混在して使いにくい
+- 真因：spImportImageFromUrl()がselectImageCandidate()を呼ぶが同関数はreturn valueなし（undefined）のため常に失敗判定になる。file inputも未実装。「ダイソー」は履歴にチェーン名のみで記録されSP_STORE_BARE_EXCLUDEフィルターが存在しない
+- 修正方法：spImportImageFromUrl()をdiagnoseAndSaveImage()直接呼び出しに修正。<input type=file>ボタン追加+spSelectLocalFile()でblob→idbPut→saveLocalOnly。SP_STORE_BARE_EXCLUDE=['ダイソー']をrenderStoreListのsortedFreqフィルターに追加
 ### v23.9.315
 - 仮説：index.html が2万行超の単一ファイルで、画像・DB・Firebase・バーコード等が混在しAIレビュー・修正のたびに全体を走査する必要があり作業効率が低い
 - 真因：モジュール分割なし・ビルド基盤なしで全コードが1ファイルに集積している
@@ -369,8 +373,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.315";
-  const BUILD_ID    = "3150";
+  const APP_VERSION = "v23.9.316";
+  const BUILD_ID    = "3160";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -2430,6 +2434,10 @@ document.addEventListener('DOMContentLoaded', function() {
         <button id="imageUrlImportBtn" class="btn btn-outline-info" style="white-space:nowrap; font-size:0.82rem;" onclick="spImportImageFromUrl()" disabled>URLから取り込む</button>
       </div>
       <div id="imageUrlImportStatus" class="small text-secondary mt-1" style="min-height:1.2em;"></div>
+      <div class="mt-2">
+        <input type="file" id="imageFileInput" accept="image/*" style="display:none" onchange="spSelectLocalFile(event)">
+        <button type="button" class="btn btn-outline-success w-100" style="font-size:0.82rem;" onclick="document.getElementById('imageFileInput').click()">📁 端末からダウンロード画像を選ぶ</button>
+      </div>
     </div>
     <div class="mt-3 d-flex gap-2">
       <button class="btn btn-outline-secondary flex-grow-1" onclick="closeImagePickerModal()">閉じる</button>
@@ -6340,7 +6348,12 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     }));
     
     let sortedFreq = Object.keys(freq).sort((a,b) => freq[b] - freq[a]);
-    
+
+    // v316: チェーン名のみ（支店名なし）エントリをストア候補バーから除外
+    if (typeof SP_STORE_BARE_EXCLUDE !== 'undefined' && SP_STORE_BARE_EXCLUDE.length) {
+      sortedFreq = sortedFreq.filter(s => !SP_STORE_BARE_EXCLUDE.includes(s));
+    }
+
     // ✅ GPSが有効で位置情報がある場合、近い順に並び替え
     if (isGpsOn && curPos && Object.keys(storePositions).length > 0) {
       sortedFreq = sortedFreq.sort((a, b) => {
@@ -13917,6 +13930,7 @@ function spVisibleTrace(tag, payload, cls) {
   }
   window.spUpdateImportBtn = spUpdateImportBtn;
 
+  // v316: selectImageCandidate()はreturn valueなしのためdiagnoseAndSaveImage()を直接呼ぶ
   async function spImportImageFromUrl() {
     const input = document.getElementById('imageUrlInput');
     const status = document.getElementById('imageUrlImportStatus');
@@ -13934,10 +13948,12 @@ function spVisibleTrace(tag, payload, cls) {
     if (status) status.textContent = '取り込んでいます…';
     if (btn) btn.disabled = true;
     try {
-      const result = await selectImageCandidate(url);
+      const diagCandidate = { url, source: 'url_import', preview: '-', fetch: '-', blob: '-', indexedDb: '-', firebase: '-', apply: '-', reason: null };
+      const result = await diagnoseAndSaveImage(url, jan, diagCandidate);
       if (result && result.ok) {
         if (input) input.value = '';
         if (status) status.textContent = '';
+        applyPreviewImage(url);
         closeImagePickerModal();
         showToast('✅ 画像を取り込みました', 2500);
         spDbg('[IMAGE_URL_IMPORT_OK]', { jan, url: url.slice(0, 160) });
@@ -13955,6 +13971,38 @@ function spVisibleTrace(tag, payload, cls) {
     }
   }
   window.spImportImageFromUrl = spImportImageFromUrl;
+
+  // v316: 端末からダウンロード済み画像を選んでIndexedDBへ直接保存
+  async function spSelectLocalFile(event) {
+    const file = event && event.target && event.target.files && event.target.files[0];
+    if (!file) return;
+    const jan = String(curBarcode || '').trim();
+    if (!jan) { showToast('JANコードが確定していません', 3000); return; }
+    if (event.target) event.target.value = '';
+    showToast('📁 画像を保存しています…', 1500);
+    try {
+      const imageKey = 'img_' + jan + '_local_' + Date.now();
+      const idbOk = await idbPut(imageKey, file);
+      if (!idbOk) { showToast('端末への保存に失敗しました', 3000); return; }
+      if (!db.products) db.products = {};
+      if (!db.products[jan]) db.products[jan] = { history: [] };
+      const prod = db.products[jan];
+      prod.imageKey = imageKey;
+      const latestHist = Array.isArray(prod.history) && prod.history.length > 0 ? prod.history[0] : null;
+      if (latestHist) latestHist.imageKey = imageKey;
+      saveLocalOnly();
+      const objUrl = URL.createObjectURL(file);
+      const img = document.getElementById('previewImg');
+      if (img) { img.src = objUrl; img.style.opacity = '1'; img.style.filter = 'none'; }
+      closeImagePickerModal();
+      showToast('✅ 画像を保存しました', 2500);
+      spDbg('[IMAGE_LOCAL_FILE_OK]', { jan, imageKey, fileSize: file.size, fileType: file.type });
+    } catch(e) {
+      showToast('画像保存でエラーが発生しました', 3000);
+      spDbg('[IMAGE_LOCAL_FILE_ERR]', { jan, error: String(e) });
+    }
+  }
+  window.spSelectLocalFile = spSelectLocalFile;
 
   // [imagePicker-debug] 画像候補URLを複数ソースから収集
   async function getImageCandidates(jan) {
@@ -14552,6 +14600,9 @@ function spVisibleTrace(tag, payload, cls) {
   // STORE NAME MIGRATION START
   // ======================
   // ===== [store-name-migration] 店名正規化マイグレーション (v311.6) =====
+  // v316: 支店名なしのチェーン名のみエントリをストア候補バーから除外するリスト
+  const SP_STORE_BARE_EXCLUDE = ['ダイソー'];
+
   const SP_STORE_RENAME_MAP = {
     "カワチ":         "カワチ土浦真鍋店",
     "タイヨー":       "タイヨー 土浦店",
