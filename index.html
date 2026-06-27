@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.323  BUILD_ID=3230
+APP_VERSION=v23.9.324  BUILD_ID=3240
 
 === ChangeLog B-2 ===
+### v23.9.324
+- 仮説：renderHistory()でimageKeyの読み込みが失敗した場合、fallbackUrlとして保存されていたshared:img_...が直接imgEl.srcにセットされ、net::ERR_UNKNOWN_URL_SCHEMEエラーが発生している
+- 真因：applyImageKeyToImg().catch()のフォールバック処理でfallbackUrlのスキームチェックが行われておらず、shared:プレフィックスのURLをそのままimg.srcに代入していた（6952・6961行）
+- 修正方法：catchハンドラのfallbackUrl参照を `(fallbackUrl && !fallbackUrl.startsWith('shared:')) ? fallbackUrl : placeholderImg()` に変更。shared:URLはplaceholderに差し替えてエラーを抑止
+
 ### v23.9.323
 - 仮説：Yahoo1件の商品名はプロモ文字列が混入し精度が低い。2回目以降のスキャンでもAPI呼び出しが発生し遅延する
 - 真因：複数ソース（Yahoo5件+楽天5件）を突き合わせてノイズを除去する仕組みがなく、1件目の商品名をそのまま使用していた。またグローバルキャッシュ（全ユーザー共有）が存在しなかった
@@ -402,8 +407,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.323";
-  const BUILD_ID    = "3230";
+  const APP_VERSION = "v23.9.324";
+  const BUILD_ID    = "3240";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -6949,7 +6954,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
               imgEl.src = window._spImgObjUrlCache[_k];
             } else {
               applyImageKeyToImg(imgEl, _k).catch(() => {
-                if (imgEl) imgEl.src = fallbackUrl || placeholderImg();
+                if (imgEl) imgEl.src = (fallbackUrl && !fallbackUrl.startsWith('shared:')) ? fallbackUrl : placeholderImg();
               });
             }
           } else if (it.imageKey && typeof it.imageKey === 'string') {
@@ -6958,7 +6963,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
               imgEl.src = window._spImgObjUrlCache[_k];
             } else {
               applyImageKeyToImg(imgEl, _k).catch(() => {
-                if (imgEl) imgEl.src = fallbackUrl || placeholderImg();
+                if (imgEl) imgEl.src = (fallbackUrl && !fallbackUrl.startsWith('shared:')) ? fallbackUrl : placeholderImg();
               });
             }
           } else if (fallbackUrl) {
