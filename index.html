@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.322  BUILD_ID=3220
+APP_VERSION=v23.9.323  BUILD_ID=3230
 
 === ChangeLog B-2 ===
+### v23.9.323
+- 仮説：Yahoo1件の商品名はプロモ文字列が混入し精度が低い。2回目以降のスキャンでもAPI呼び出しが発生し遅延する
+- 真因：複数ソース（Yahoo5件+楽天5件）を突き合わせてノイズを除去する仕組みがなく、1件目の商品名をそのまま使用していた。またグローバルキャッシュ（全ユーザー共有）が存在しなかった
+- 修正方法：GAS action=janname エンドポイントを新設（GCDエンジン：ノイズ除去→トークン頻度分析→一致率80%以上でそのまま採用・未満でClaude整形→Firebase /global_products/{jan}/に保存）。index.html スキャン時に STEP 2.5 として SPKB先読みを追加（HIT→即時・MISS→janname GASをバックグラウンド実行し次回以降即時返却）。spkbNameLockedフラグで Yahoo/楽天/OFF/Web検索による名前上書きを防止
+
 ### v23.9.322
 - 仮説：SP_JAN_MAKER_DICTは25社固定で、スキャン済み商品や新規スキャン時のメーカー情報が辞書に蓄積されない
 - 真因：A）起動時に購入履歴のmaker情報からプレフィックスを学習する仕組みがない。C）Yahoo/AI/Firebase確定時のmaker情報を辞書に追記するフックがない
@@ -397,8 +402,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.322";
-  const BUILD_ID    = "3220";
+  const APP_VERSION = "v23.9.323";
+  const BUILD_ID    = "3230";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -3954,6 +3959,49 @@ document.addEventListener('DOMContentLoaded', function() {
       console.log('[SAVE_SERVER] confirmed product saved', jan, record);
     } catch(e) {
       spDbg('[SAVE_SERVER] error', { jan, msg: e && e.message ? e.message : String(e) });
+    }
+  }
+
+  /**
+   * [spkb-v323] SPKB global_products から confirmed_name を読み取る
+   * パス: global_products/{jan}
+   */
+  async function lookupSpkbByJan(jan) {
+    if (!jan) return null;
+    try {
+      if (!isFirebaseReady || !firebaseDb) return null;
+      const ref = firebaseDb.ref('global_products/' + jan);
+      const snap = await ref.once('value');
+      if (!snap.exists()) return null;
+      const data = snap.val();
+      if (!data || !data.confirmed_name) return null;
+      return data;
+    } catch(e) {
+      return null;
+    }
+  }
+
+  /**
+   * [spkb-v323] GAS action=janname を呼び出し confirmed_name を取得（Firebase Layer D 保存も行う）
+   */
+  async function callJanNameGas(jan) {
+    const proxyUrl = (window.SP_CONFIG && window.SP_CONFIG.yahooProxyExecUrl)
+      ? window.SP_CONFIG.yahooProxyExecUrl.trim() : '';
+    if (!proxyUrl || !jan) return null;
+    try {
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), 25000);
+      const res = await fetch(
+        proxyUrl + '?action=janname&jan=' + encodeURIComponent(jan),
+        { cache: 'no-store', signal: controller.signal }
+      );
+      clearTimeout(tid);
+      if (!res.ok) return null;
+      const json = await res.json();
+      if (json && json.ok && json.confirmed_name) return json;
+      return null;
+    } catch(e) {
+      return null;
     }
   }
 
@@ -12527,6 +12575,51 @@ function spVisibleTrace(tag, payload, cls) {
         let candidateImageUrl = '';
         let candidateCategory = '';
         let candidateSource = 'none';
+        let spkbNameLocked = false; // [spkb-v323] SPKB確定名は後続APIで上書きしない
+
+        // ========= [spkb-v323] STEP 2.5: SPKB global_products（全ユーザー共有商品名DB） =========
+        try {
+          const spkbSnap = await lookupSpkbByJan(jan);
+          if (spkbSnap && spkbSnap.confirmed_name && !isWeakNameCandidate(spkbSnap.confirmed_name, jan)) {
+            candidateName = spkbSnap.confirmed_name;
+            candidateSource = 'spkb';
+            spkbNameLocked = true;
+            markLookupPipelineStep(jan, 'SPKB', 'HIT', { name: spkbSnap.confirmed_name, source: spkbSnap.confirmed_source || 'engine' });
+            spDbg('[SPKB_HIT]', { jan, name: spkbSnap.confirmed_name });
+            // フォームに即反映
+            if (String(curBarcode || '').trim() === jan && nameInput && !nameInput.value) {
+              nameInput.value = spkbSnap.confirmed_name;
+              nameInput.placeholder = originalPlaceholder;
+            }
+          } else {
+            markLookupPipelineStep(jan, 'SPKB', 'MISS', {});
+            // MISS → janname GAS をバックグラウンドで実行（Firebase保存→次回即時返却）
+            showToast('商品名を調べています... 初回だけ少し時間がかかります', 4000);
+            const _spkbJan = jan;
+            const _spkbNameAtStart = nameAtStart;
+            callJanNameGas(_spkbJan).then(function(jnr) {
+              if (!jnr || !jnr.confirmed_name) return;
+              spDbg('[SPKB_JANNAME_DONE]', { jan: _spkbJan, name: jnr.confirmed_name });
+              // まだ同じ JAN を表示中なら名前を反映
+              if (String(curBarcode || window.currentJan || '').trim() === _spkbJan) {
+                const ni = document.getElementById('inputName');
+                if (ni && (!ni.value || ni.value === _spkbNameAtStart)) {
+                  ni.value = jnr.confirmed_name;
+                }
+              }
+              // ローカル db.jan_dict にキャッシュ（次回 STEP 0.5 でHITになる）
+              try {
+                if (!db.jan_dict) db.jan_dict = {};
+                if (!db.jan_dict[_spkbJan] || !db.jan_dict[_spkbJan].human_verified) {
+                  db.jan_dict[_spkbJan] = { name: jnr.confirmed_name, spkb: true, updated_at: Date.now() };
+                  saveLocalOnly();
+                }
+              } catch (_jdc) {}
+            }).catch(function() {});
+          }
+        } catch (_spkbErr) {
+          spDbg('[SPKB_ERR]', { jan, msg: _spkbErr && _spkbErr.message ? _spkbErr.message : String(_spkbErr) });
+        }
 
         // ✅ 優先順位1: Yahoo最優先
         // v23.9.169 SP-260601-002: 段階5 外部の商品情報を検索中（Yahoo/Rakuten/OFF を包括）
@@ -12569,7 +12662,7 @@ function spVisibleTrace(tag, payload, cls) {
 
           // [yahoo-name-relax] name はスコアに関係なく、空でなければまず採用
           const yahooNameNormalized = normalizeYahooName(yahooInfo.name, jan);
-          if (yahooNameNormalized) {
+          if (yahooNameNormalized && !spkbNameLocked) {
             // [yahoo-clean-maker-sync] 通販ノイズ除去
             let cleanedName = cleanYahooTitleNoise(yahooNameNormalized);
             // [leading-noise-trim] 先頭ノイズ除去
@@ -12670,7 +12763,7 @@ function spVisibleTrace(tag, payload, cls) {
               console.log('[BARCODE] rakuten result name', rakutenInfo?.name || '');
             }
             if (rakutenInfo) {
-              if (!candidateName && rakutenInfo.name) {
+              if (!candidateName && !spkbNameLocked && rakutenInfo.name) {
                 // v23.9.103: 商品名候補ログ（RAW→CLEANED）
                 spDbg('[NAME_CANDIDATE_RAW]', { source: 'rakuten', name: rakutenInfo.name });
                 candidateName = cleanProductName(rakutenInfo.name);
@@ -12722,7 +12815,7 @@ function spVisibleTrace(tag, payload, cls) {
           if (rakutenInfo) {
             // v23.9.103: 商品名候補ログ（RAW→CLEANED）
             spDbg('[NAME_CANDIDATE_RAW]', { source: 'rakuten', name: rakutenInfo.name || '' });
-            candidateName = cleanProductName(rakutenInfo.name || '');
+            if (!spkbNameLocked) candidateName = cleanProductName(rakutenInfo.name || '');
             spDbg('[NAME_CANDIDATE_CLEANED]', { source: 'rakuten', name: candidateName });
             candidateMaker = validateMakerName(rakutenInfo.maker || '');
             candidateImageUrl = rakutenInfo.imageUrl || '';
@@ -12745,7 +12838,7 @@ function spVisibleTrace(tag, payload, cls) {
               console.log('[BARCODE] off result name', offInfo?.name || '');
             }
             if (offInfo) {
-              if (offInfo.name && offInfo.name.trim() && (!candidateName || candidateName.trim().length < 3)) {
+              if (!spkbNameLocked && offInfo.name && offInfo.name.trim() && (!candidateName || candidateName.trim().length < 3)) {
                 // v23.9.103: 商品名候補ログ（RAW→CLEANED）
                 spDbg('[NAME_CANDIDATE_RAW]', { source: 'off', name: offInfo.name });
                 candidateName = cleanProductName(offInfo.name);
@@ -12807,7 +12900,7 @@ function spVisibleTrace(tag, payload, cls) {
                   reason: webJson.ok ? 'found' : webJson.error || 'not_found'
                 });
                 
-                if (webJson.ok && webJson.name) {
+                if (webJson.ok && webJson.name && !spkbNameLocked) {
                   spDbg('[NAME_CANDIDATE_RAW]', { source: 'web_search', name: webJson.name });
                   candidateName = cleanProductName(webJson.name);
                   spDbg('[NAME_CANDIDATE_CLEANED]', { source: 'web_search', name: candidateName });
