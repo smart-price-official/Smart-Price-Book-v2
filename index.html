@@ -48,9 +48,13 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.316  BUILD_ID=3160
+APP_VERSION=v23.9.317  BUILD_ID=3170
 
 === ChangeLog B-2 ===
+### v23.9.317
+- 仮説：URLから取り込むボタンが有効にならない・購入履歴で商品名が長いとレイアウトが崩れる・ホーム画像が遅延表示される
+- 真因：①type=urlはAndroid ChromeでペーストのoninputがOS仕様で発火しない ②renderDetailHistory()の左divにoverflow-hiddenがなくflex子要素が長商品名で右側（価格・タップで編集）を圧迫・min-width:0不足 ③IndexedDB読み出しが非同期のため描画後に画像が遅れてpopする
+- 修正方法：①type=text+inputmode=url+onpaste=setTimeout(spUpdateImportBtn,0)に変更 ②flex-grow-1にoverflow-hidden追加・右divにflex-shrink-0 ms-2追加 ③.prod-thumbにtransition:opacity 0.25sを追加して視覚的遅延を緩和
 ### v23.9.316
 - 仮説：画像ピッカーでURLから取り込むが常に失敗し、端末にダウンロードした画像を使う手段もなく、ストア候補に「ダイソー」（支店名なし）が混在して使いにくい
 - 真因：spImportImageFromUrl()がselectImageCandidate()を呼ぶが同関数はreturn valueなし（undefined）のため常に失敗判定になる。file inputも未実装。「ダイソー」は履歴にチェーン名のみで記録されSP_STORE_BARE_EXCLUDEフィルターが存在しない
@@ -373,8 +377,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.316";
-  const BUILD_ID    = "3160";
+  const APP_VERSION = "v23.9.317";
+  const BUILD_ID    = "3170";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -608,7 +612,7 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
     .card { background-color: var(--sp-card); border: 1px solid var(--sp-border); margin-bottom: 10px; border-radius: 12px; overflow: hidden; }
     .price-card { padding: 12px; border-left: 4px solid var(--sp-border); cursor: pointer; }
     .price-card.cheap { border-left-color: var(--sp-accent); background: linear-gradient(90deg, color-mix(in srgb, var(--sp-danger) 20%, var(--sp-card)) 0%, var(--sp-card) 100%); }
-    .prod-thumb { width: 68px; height: 68px; object-fit: contain; background: #fff; border-radius: 8px; margin-right: 12px; }
+    .prod-thumb { width: 68px; height: 68px; object-fit: contain; background: #fff; border-radius: 8px; margin-right: 12px; transition: opacity 0.25s; }
 
     .price-main { font-size: 1.25rem; font-weight: bold; color: var(--sp-text); line-height: 1; }
     /* v23.9.165 SP-250528-002: 統計帯(平均・最安・直近)がライトテーマで黒く浮く問題を修正。--sp-card-alt は :root(standard)の暗色#26262cをライトテーマが継承するため、テーマ追従する var(--sp-card)/var(--sp-text) に変更 */
@@ -2430,7 +2434,7 @@ document.addEventListener('DOMContentLoaded', function() {
         <a id="imgPickerYahooLink" href="#" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary flex-grow-1" style="font-size:0.78rem;">🛒 Yahoo!</a>
       </div>
       <div class="d-flex gap-2 align-items-center">
-        <input id="imageUrlInput" type="url" placeholder="https://...jpg / .png / .webp を貼り付け" class="form-control sp-bg-card sp-border-muted" style="font-size:0.82rem; flex:1;" oninput="spUpdateImportBtn()">
+        <input id="imageUrlInput" type="text" inputmode="url" placeholder="https://...jpg / .png / .webp を貼り付け" class="form-control sp-bg-card sp-border-muted" style="font-size:0.82rem; flex:1;" oninput="spUpdateImportBtn()" onpaste="setTimeout(spUpdateImportBtn,0)" onchange="spUpdateImportBtn()">
         <button id="imageUrlImportBtn" class="btn btn-outline-info" style="white-space:nowrap; font-size:0.82rem;" onclick="spImportImageFromUrl()" disabled>URLから取り込む</button>
       </div>
       <div id="imageUrlImportStatus" class="small text-secondary mt-1" style="min-height:1.2em;"></div>
@@ -7642,12 +7646,12 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       var _hName = h.name || ((db.products && db.products[curBarcode]) ? db.products[curBarcode].name : '');
       var _hJan = h.jan || curBarcode || '';
       row.innerHTML =
-        '<div class="flex-grow-1">' +
+        '<div class="flex-grow-1 overflow-hidden">' +
           '<span class="text-secondary small">' + dateStr + '</span><br>' +
           '<span class="sp-text-normal small text-truncate d-block">' + spGetDisplayName(_hName, _hJan) + '</span>' +
           '<span class="sp-text-normal fw-bold">' + (displayStoreName(h.store) || '未設定') + '</span>' +
         '</div>' +
-        '<div class="text-end">' +
+        '<div class="text-end flex-shrink-0 ms-2">' +
           '<span class="fw-bold sp-text-normal">主表示：' + formatMainPrice(h) + '</span><br>' +
           (formatReferenceTaxPrice(h) ? '<span class="sp-text-normal small">' + formatReferenceTaxPrice(h) + '</span><br>' : '') +
           '<span class="text-info small">タップで編集</span>' +
