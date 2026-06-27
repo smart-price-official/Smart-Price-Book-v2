@@ -371,10 +371,22 @@
       return Promise.reject(new Error('Invalid parameters'));
     }
     try {
+      // キャッシュヒット：IDB読み出し不要（2回目以降の描画で即時表示）
+      if (window._spImgObjUrlCache && window._spImgObjUrlCache[key]) {
+        const cached = window._spImgObjUrlCache[key];
+        imgEl.src = cached;
+        imgEl.referrerPolicy = "no-referrer";
+        imgEl.dataset.objurl = cached;
+        return Promise.resolve();
+      }
+
       // 1. まず指定されたキーで取得
       let blob = await idbGet(key);
       if (blob) {
         const url = URL.createObjectURL(blob);
+        // キャッシュに保存（次回以降の renderHistory で即時使用）
+        if (!window._spImgObjUrlCache) window._spImgObjUrlCache = {};
+        window._spImgObjUrlCache[key] = url;
         imgEl.src = url;
         imgEl.referrerPolicy = "no-referrer";
         // メモリ解放（置換時）

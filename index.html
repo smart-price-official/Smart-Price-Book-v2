@@ -48,9 +48,13 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.318  BUILD_ID=3180
+APP_VERSION=v23.9.319  BUILD_ID=3190
 
 === ChangeLog B-2 ===
+### v23.9.319
+- 仮説：ホーム画面で商品一覧を表示するたびにIndexedDBを毎回読み直すため画像が後から遅れて表示される
+- 真因：applyImageKeyToImgがキャッシュなしでidbGetを毎回実行するため、カード描画後に非同期で画像が差し込まれる。初回は不可避だが2回目以降も同じ遅延が発生していた
+- 修正方法：window._spImgObjUrlCacheをモジュールスコープで保持。idbGet成功時にObjectURLをキャッシュ保存。renderHistory()でimageKey存在時にキャッシュを同期チェックし、ヒットすれば即時imgEl.srcをセット（IDB読み出しなし）。2回目以降のリスト表示で画像遅延ゼロ
 ### v23.9.318
 - 仮説：ホーム画面の商品サムネイルが小さく（68x68px）、商品の判断材料として不十分
 - 真因：画像拡大機能が存在せず、長押し等のジェスチャーに対応していない
@@ -381,8 +385,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.318";
-  const BUILD_ID    = "3180";
+  const APP_VERSION = "v23.9.319";
+  const BUILD_ID    = "3190";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -3656,10 +3660,22 @@ document.addEventListener('DOMContentLoaded', function() {
       return Promise.reject(new Error('Invalid parameters'));
     }
     try {
+      // キャッシュヒット：IDB読み出し不要（2回目以降の描画で即時表示）
+      if (window._spImgObjUrlCache && window._spImgObjUrlCache[key]) {
+        const cached = window._spImgObjUrlCache[key];
+        imgEl.src = cached;
+        imgEl.referrerPolicy = "no-referrer";
+        imgEl.dataset.objurl = cached;
+        return Promise.resolve();
+      }
+
       // 1. まず指定されたキーで取得
       let blob = await idbGet(key);
       if (blob) {
         const url = URL.createObjectURL(blob);
+        // キャッシュに保存（次回以降の renderHistory で即時使用）
+        if (!window._spImgObjUrlCache) window._spImgObjUrlCache = {};
+        window._spImgObjUrlCache[key] = url;
         imgEl.src = url;
         imgEl.referrerPolicy = "no-referrer";
         // メモリ解放（置換時）
@@ -6858,17 +6874,23 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
                                  : null;
           
           if (last && last.imageKey && typeof last.imageKey === 'string') {
-            applyImageKeyToImg(imgEl, last.imageKey).catch(() => {
-              if (imgEl) {
-                imgEl.src = fallbackUrl || placeholderImg();
-              }
-            });
+            const _k = last.imageKey;
+            if (window._spImgObjUrlCache && window._spImgObjUrlCache[_k]) {
+              imgEl.src = window._spImgObjUrlCache[_k];
+            } else {
+              applyImageKeyToImg(imgEl, _k).catch(() => {
+                if (imgEl) imgEl.src = fallbackUrl || placeholderImg();
+              });
+            }
           } else if (it.imageKey && typeof it.imageKey === 'string') {
-            applyImageKeyToImg(imgEl, it.imageKey).catch(() => {
-              if (imgEl) {
-                imgEl.src = fallbackUrl || placeholderImg();
-              }
-            });
+            const _k = it.imageKey;
+            if (window._spImgObjUrlCache && window._spImgObjUrlCache[_k]) {
+              imgEl.src = window._spImgObjUrlCache[_k];
+            } else {
+              applyImageKeyToImg(imgEl, _k).catch(() => {
+                if (imgEl) imgEl.src = fallbackUrl || placeholderImg();
+              });
+            }
           } else if (fallbackUrl) {
             if (fallbackUrl.startsWith('shared:')) {
               // 共有画像の参照（実際の画像はFirebaseから取得）
