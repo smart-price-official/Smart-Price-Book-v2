@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.326  BUILD_ID=3260
+APP_VERSION=v23.9.327  BUILD_ID=3270
 
 === ChangeLog B-2 ===
+### v23.9.327
+- 仮説：購入履歴レンダリング時に db.products[jan].imageUrl が空のため画像が出ない。スキャン保存の非同期タイミング問題でimageUrlが保存されない場合がある
+- 真因：renderHistory がimageUrlを db.products のみから参照しており、スキャン保存タイミングで imageUrl が未保存の場合は永続的に No Image になる
+- 修正方法：renderHistory の hasMyImage フォールバックに yahoo_cache_v2_{jan} の localStorage キャッシュ参照を追加。キャッシュ命中時は imgSrc に設定し db.products にも書き戻して恒久化
+
 ### v23.9.326
 - 仮説：Firebase confirmed_products HIT後に早期returnするため、Yahoo lookupが実行されず画像が取得できない
 - 真因：STEP 2（Firebase confirmed_products）のHITパスでp.imageUrlの保存コードがなく、かつimageUrl有無に関係なく常にreturnしていた。confirmed_productsはname/makerのみ保持しimageUrlを持たないため、画像なし商品として永続化される
@@ -417,8 +422,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.326";
-  const BUILD_ID    = "3260";
+  const APP_VERSION = "v23.9.327";
+  const BUILD_ID    = "3270";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -6874,10 +6879,29 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
                  (it.imageUrl.startsWith('http://') || it.imageUrl.startsWith('https://') || it.imageUrl.startsWith('data:') || it.imageUrl.startsWith('shared:'))) {
         imgSrc = it.imageUrl.startsWith('shared:') ? placeholderImg() : it.imageUrl;
         hasMyImage = true;
-      } else if (last && last.imageUrl && typeof last.imageUrl === 'string' && 
+      } else if (last && last.imageUrl && typeof last.imageUrl === 'string' &&
                  (last.imageUrl.startsWith('http://') || last.imageUrl.startsWith('https://') || last.imageUrl.startsWith('data:') || last.imageUrl.startsWith('shared:'))) {
         imgSrc = last.imageUrl.startsWith('shared:') ? placeholderImg() : last.imageUrl;
         hasMyImage = true;
+      }
+
+      // Yahoo ローカルキャッシュフォールバック（imageUrl未保存時）
+      if (!hasMyImage) {
+        try {
+          const ycRaw = localStorage.getItem('yahoo_cache_v2_' + it.code);
+          if (ycRaw) {
+            const ycObj = JSON.parse(ycRaw);
+            const ycUrl = ycObj && ycObj.data && ycObj.data.imageUrl;
+            if (ycUrl && /^https?:\/\//.test(String(ycUrl))) {
+              imgSrc = ycUrl;
+              hasMyImage = true;
+              if (db.products[it.code] && !db.products[it.code].imageUrl) {
+                db.products[it.code].imageUrl = ycUrl;
+                setTimeout(saveLocalOnly, 500);
+              }
+            }
+          }
+        } catch(_yc) {}
       }
 
       spImgInvestigationLog('[IMG-RENDER]', it.code, spGetDisplayName(it.name, it.code),
