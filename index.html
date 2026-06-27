@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <!--APP: Smart Price
 AUTHOR: Claude
 POLICY: UI_FREEZE / 単一HTML / VERSION SSOT
@@ -48,9 +48,13 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.314  BUILD_ID=3140
+APP_VERSION=v23.9.315  BUILD_ID=3150
 
 === ChangeLog B-2 ===
+### v23.9.315
+- 仮説：index.html が2万行超の単一ファイルで、画像・DB・Firebase・バーコード等が混在しAIレビュー・修正のたびに全体を走査する必要があり作業効率が低い
+- 真因：モジュール分割なし・ビルド基盤なしで全コードが1ファイルに集積している
+- 修正方法：src/product_image.js としてIndexedDB画像保存・画像ピッカーコード（約700行）を切り出し。build.ps1でsrc/ファイルをindex.htmlに組み込むビルド基盤を整備。CLAUDE.mdに新ワークフロールールを追記
 ### v23.9.314
 - 仮説：画像が見つからない商品で、虫眼鏡検索やURL貼り付け導線が分かりにくく、楽天市場側で見つかるきれいな画像も候補の後ろに回っている
 - 真因：画像ピッカーの外部検索リンクがGoogle/Yahoo/楽天の順で、Yahoo候補が楽天候補より前に表示される。URL入力欄も画像URLの例が弱く、何を貼ればよいか分かりにくい
@@ -365,8 +369,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.314";
-  const BUILD_ID    = "3140";
+  const APP_VERSION = "v23.9.315";
+  const BUILD_ID    = "3150";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -3262,6 +3266,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // FIREBASE CORE END
   // ======================
 
+
   // ======================
   // PRODUCT IMAGE START
   // ======================
@@ -3959,6 +3964,11 @@ document.addEventListener('DOMContentLoaded', function() {
       return null;
     }
   }
+
+
+  // ======================
+  // PRODUCT IMAGE END
+  // ======================
 
   // ======================
   // LOCAL DB AND CONFIG START
@@ -14537,9 +14547,6 @@ function spVisibleTrace(tag, payload, cls) {
   // EXTERNAL PRODUCT LOOKUP END
   // ======================
 
-  // ======================
-  // PRODUCT IMAGE END
-  // ======================
 
   // ======================
   // STORE NAME MIGRATION START
