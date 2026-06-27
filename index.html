@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.325  BUILD_ID=3250
+APP_VERSION=v23.9.326  BUILD_ID=3260
 
 === ChangeLog B-2 ===
+### v23.9.326
+- 仮説：Firebase confirmed_products HIT後に早期returnするため、Yahoo lookupが実行されず画像が取得できない
+- 真因：STEP 2（Firebase confirmed_products）のHITパスでp.imageUrlの保存コードがなく、かつimageUrl有無に関係なく常にreturnしていた。confirmed_productsはname/makerのみ保持しimageUrlを持たないため、画像なし商品として永続化される
+- 修正方法：STEP 2 early returnをimageUrl有無で条件分岐。p.imageUrlがhttp://またはhttps://で始まる場合のみreturn、ない場合はYahoo lookupへ続ける。name/makerは確定済みのままspkbNameLockedで上書きを防止
+
 ### v23.9.325
 - 仮説：スキャン済み商品でimageUrlが空のjan_cacheが保存されると、以降のスキャンで常に早期returnしてYahoo lookupが実行されず画像が取れない
 - 真因：isCacheSufficientの判定条件がfinalInfo.nameのみで、finalInfo.imageUrlの有無を見ていなかった。名前だけあれば「十分」とみなしてreturnするため、画像なしキャッシュが永続化する
@@ -412,8 +417,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.325";
-  const BUILD_ID    = "3250";
+  const APP_VERSION = "v23.9.326";
+  const BUILD_ID    = "3260";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -12501,14 +12506,16 @@ function spVisibleTrace(tag, payload, cls) {
             showToast(`[サーバー確定] ${finalInfo.name.substring(0, 20)}`, 2500);
           }
           markLookupPipelineStep(jan, 'Firebase', 'HIT', { name: finalInfo.name || '', maker: finalInfo.maker || '', reason: 'firebase_rtdb_confirmed' });
-          markLookupPipelineStep(jan, 'Final', 'HIT', { name: finalInfo.name || '', maker: finalInfo.maker || '', reason: 'firebase_early_return' });
           applyPreviewImage(finalInfo.imageUrl || '');
-          processBarcodeInFlight.delete(jan);
-          // v23.9.102: 最終結果ログ（指示書対応）
-          spDbg('[PRODUCT_LOOKUP_FINAL]', { name: finalInfo.name, maker: finalInfo.maker, source: sourceUsed });
-          // v23.9.169 SP-260601-002: 段階8 商品情報を表示しました（Firebase HIT 早期 return）
-          try { if (typeof showLookupStageToast === 'function') showLookupStageToast(8, '商品情報を表示しました', { jan: jan, ev: 'barcode_lookup_stage_done', source: 'server-confirmed', final: true }); } catch (_) {}
-          return; // ✅ サーバーHIT → AI・外部API呼ばない
+          // imageUrlがない場合はYahoo lookupへ続けて画像を取得する（name/makerは確定済み）
+          if (p.imageUrl && p.imageUrl.startsWith('http')) {
+            markLookupPipelineStep(jan, 'Final', 'HIT', { name: finalInfo.name || '', maker: finalInfo.maker || '', reason: 'firebase_early_return' });
+            processBarcodeInFlight.delete(jan);
+            spDbg('[PRODUCT_LOOKUP_FINAL]', { name: finalInfo.name, maker: finalInfo.maker, source: sourceUsed });
+            try { if (typeof showLookupStageToast === 'function') showLookupStageToast(8, '商品情報を表示しました', { jan: jan, ev: 'barcode_lookup_stage_done', source: 'server-confirmed', final: true }); } catch (_) {}
+            return; // ✅ サーバーHIT・imageUrlあり → 外部API不要
+          }
+          // imageUrlなし → Yahoo lookupへ続ける（name/makerはspkbNameLockedで上書き防止）
         }
         
         // v23.9.104: Firebaseミスログ（Claude版の改善: 詳細化）
