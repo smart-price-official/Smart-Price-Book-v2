@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.324  BUILD_ID=3240
+APP_VERSION=v23.9.325  BUILD_ID=3250
 
 === ChangeLog B-2 ===
+### v23.9.325
+- 仮説：スキャン済み商品でimageUrlが空のjan_cacheが保存されると、以降のスキャンで常に早期returnしてYahoo lookupが実行されず画像が取れない
+- 真因：isCacheSufficientの判定条件がfinalInfo.nameのみで、finalInfo.imageUrlの有無を見ていなかった。名前だけあれば「十分」とみなしてreturnするため、画像なしキャッシュが永続化する
+- 修正方法：isCacheSufficient条件に `&& !!finalInfo.imageUrl` を追加。imageUrlがない場合はキャッシュが不十分とみなし、Yahoo lookupまで処理を続ける
+
 ### v23.9.324
 - 仮説：renderHistory()でimageKeyの読み込みが失敗した場合、fallbackUrlとして保存されていたshared:img_...が直接imgEl.srcにセットされ、net::ERR_UNKNOWN_URL_SCHEMEエラーが発生している
 - 真因：applyImageKeyToImg().catch()のフォールバック処理でfallbackUrlのスキームチェックが行われておらず、shared:プレフィックスのURLをそのままimg.srcに代入していた（6952・6961行）
@@ -407,8 +412,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.324";
-  const BUILD_ID    = "3240";
+  const APP_VERSION = "v23.9.325";
+  const BUILD_ID    = "3250";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -12546,8 +12551,8 @@ function spVisibleTrace(tag, payload, cls) {
             console.log("[ProcessBarcode] Cache hit:", cachedData);
           }
 
-          // ✅ キャッシュが十分な場合は、Web検索をスキップ
-          const isCacheSufficient = finalInfo.name && finalInfo.name.length > 3;
+          // ✅ キャッシュが十分な場合は、Web検索をスキップ（imageUrlがない場合はYahoo lookupへ続ける）
+          const isCacheSufficient = finalInfo.name && finalInfo.name.length > 3 && !!finalInfo.imageUrl;
           if (isCacheSufficient) {
             // ✅ DBに保存（キャッシュデータを使用）
             if (finalInfo.name && (!p.name || !p.name.trim())) {
