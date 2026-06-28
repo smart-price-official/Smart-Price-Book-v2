@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.349  BUILD_ID=3490
+APP_VERSION=v23.9.350  BUILD_ID=3500
 
 === ChangeLog B-2 ===
+### v23.9.350
+- 仮説：家族共有の招待受け入れ・発行・参加・メンバー状態更新が全てサイレント失敗している
+- 真因：spAcceptFamilyInvite/spCreateFamilyInvite/spJoinFamilyGroup/updateFamilyMemberStatus/showFamilyMemberStatusの全てがCompat API（firebaseDb.ref().once()/.set()/.update()）を使用。ModularSDKインスタンスにはref()メソッドが存在しないためTypeErrorで全処理がcatch節に落ちていた
+- 修正方法：上記5関数を全てModular SDK（window._fbFns.ref/get/set）に変換。update()相当はget→Object.assign→setで代替
+
 ### v23.9.349
 - 仮説①：spOnboardingInit が通常起動時に早期リターンするため _spTriggerOnboarding が登録されず visibilitychange から呼べない
 - 仮説②：visibilitychange 発火時点で location.href がまだ更新されておらず ?ref= を検出できない
@@ -533,8 +538,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.349";
-  const BUILD_ID    = "3490";
+  const APP_VERSION = "v23.9.350";
+  const BUILD_ID    = "3500";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -20660,21 +20665,28 @@ async function spCreateFamilyInvite(silent) {
       expiresAt: expiresAt,
       used: false
     };
-    await window.firebaseDb.ref('familyInvites/' + code).set(record);
+    // [v350] Modular SDK 使用（Compat API廃止）
+    var fbRef2 = window._fbFns && window._fbFns.ref;
+    var fbGet2 = window._fbFns && window._fbFns.get;
+    var fbSet2 = window._fbFns && window._fbFns.set;
+    if (!fbRef2 || !fbGet2 || !fbSet2) throw new Error('Firebase not ready');
+    await fbSet2(fbRef2(window.firebaseDb, 'familyInvites/' + code), record);
     // [v333] 親自身もグループIDをFirebaseに登録（しないと親がデータを参照できない）
     var groupId = 'G-' + uid.slice(0, 8);
-    await window.firebaseDb.ref('users/' + uid + '/familyGroupId').set(groupId);
+    await fbSet2(fbRef2(window.firebaseDb, 'users/' + uid + '/familyGroupId'), groupId);
     currentFamilyGroupId = groupId;
     try { localStorage.setItem('sp_family_group_id', groupId); } catch(_) {}
     // [v334] familyGroups/{gid} が未存在なら親情報で初期化
     try {
-      var gSnap = await window.firebaseDb.ref('familyGroups/' + groupId).once('value');
-      if (!gSnap.val()) {
-        await window.firebaseDb.ref('familyGroups/' + groupId).set({
+      var gSnap = await fbGet2(fbRef2(window.firebaseDb, 'familyGroups/' + groupId));
+      var gVal = gSnap && gSnap.val ? gSnap.val() : null;
+      if (!gVal) {
+        await fbSet2(fbRef2(window.firebaseDb, 'familyGroups/' + groupId), {
           groupId: groupId, members: [uid], ownerUid: uid, createdAt: Date.now()
         });
-      } else if (!gSnap.val().members || gSnap.val().members.indexOf(uid) < 0) {
-        await window.firebaseDb.ref('familyGroups/' + groupId + '/members/' + gSnap.val().members.length).set(uid);
+      } else if (!gVal.members || gVal.members.indexOf(uid) < 0) {
+        var mLen = Array.isArray(gVal.members) ? gVal.members.length : 0;
+        await fbSet2(fbRef2(window.firebaseDb, 'familyGroups/' + groupId + '/members/' + mLen), uid);
       }
     } catch(_) {}
     // [v334] 親自身の memberStatus を書き込む
@@ -20821,9 +20833,13 @@ async function spJoinFamilyGroup() {
 
     setStatus('確認中…', false);
 
-    // 招待コード検証
-    var inviteSnap = await window.firebaseDb.ref('familyInvites/' + code).once('value');
-    var invite = inviteSnap.val();
+    // 招待コード検証 [v350] Modular SDK
+    var _fbR = window._fbFns && window._fbFns.ref;
+    var _fbG = window._fbFns && window._fbFns.get;
+    var _fbS = window._fbFns && window._fbFns.set;
+    if (!_fbR || !_fbG || !_fbS) { setStatus('Firebase未接続です', true); return; }
+    var inviteSnap = await _fbG(_fbR(window.firebaseDb, 'familyInvites/' + code));
+    var invite = inviteSnap && inviteSnap.val ? inviteSnap.val() : null;
     if (!invite)                      { if (inp) inp.value = ''; setStatus('招待コードが見つかりません', true); return; }
     if (invite.used)                  { if (inp) inp.value = ''; setStatus('この招待コードはすでに使用済みです', true); return; }
     if (Date.now() > invite.expiresAt){ if (inp) inp.value = ''; setStatus('招待コードの有効期限が切れています', true); return; }
@@ -20833,21 +20849,20 @@ async function spJoinFamilyGroup() {
     var groupId = 'G-' + invite.ownerUid.slice(0, 8);
 
     // familyGroups/{groupId} を読み込み・更新
-    var groupRef = window.firebaseDb.ref('familyGroups/' + groupId);
-    var groupSnap = await groupRef.once('value');
-    var group = groupSnap.val() || {
+    var groupSnap = await _fbG(_fbR(window.firebaseDb, 'familyGroups/' + groupId));
+    var group = (groupSnap && groupSnap.val ? groupSnap.val() : null) || {
       groupId: groupId, members: [], ownerUid: invite.ownerUid, createdAt: Date.now()
     };
     if (!Array.isArray(group.members)) group.members = [];
     if (group.members.indexOf(invite.ownerUid) < 0) group.members.push(invite.ownerUid);
     if (group.members.indexOf(uid) < 0)              group.members.push(uid);
-    await groupRef.set(group);
+    await _fbS(_fbR(window.firebaseDb, 'familyGroups/' + groupId), group);
 
     // users/{uid}/familyGroupId に記録
-    await window.firebaseDb.ref('users/' + uid + '/familyGroupId').set(groupId);
+    await _fbS(_fbR(window.firebaseDb, 'users/' + uid + '/familyGroupId'), groupId);
 
     // 招待コードを使用済みに
-    await window.firebaseDb.ref('familyInvites/' + code + '/used').set(true);
+    await _fbS(_fbR(window.firebaseDb, 'familyInvites/' + code + '/used'), true);
 
     if (window.location.search.includes('debug=1')) {
       console.log('[FAMILY] FAMILY_INVITE_USED',   { code: code, uid: uid });
@@ -20983,22 +20998,27 @@ async function spAcceptFamilyInvite(code, overlay) {
     return;
   }
   try {
-    var snap = await window.firebaseDb.ref('familyInvites/' + code).once('value');
-    var invite = snap.val();
+    // [v350] Modular SDK 使用（Compat API廃止）
+    var fbRef = window._fbFns && window._fbFns.ref;
+    var fbGet = window._fbFns && window._fbFns.get;
+    var fbSet = window._fbFns && window._fbFns.set;
+    if (!fbRef || !fbGet || !fbSet || !window.firebaseDb) throw new Error('Firebase not ready');
+
+    var snap = await fbGet(fbRef(window.firebaseDb, 'familyInvites/' + code));
+    var invite = snap && snap.val ? snap.val() : null;
     if (!invite)                      { if (overlay) overlay.remove(); showToast('招待コードが見つかりません', 3000); localStorage.removeItem('sp_pending_fam_code'); return; }
     if (invite.used)                  { if (overlay) overlay.remove(); showToast('この招待コードはすでに使用済みです', 3000); localStorage.removeItem('sp_pending_fam_code'); return; }
     if (Date.now() > invite.expiresAt){ if (overlay) overlay.remove(); showToast('招待コードの有効期限が切れています', 3000); localStorage.removeItem('sp_pending_fam_code'); return; }
     if (invite.ownerUid === uid)       { if (overlay) overlay.remove(); showToast('自分の招待コードには参加できません', 3000); localStorage.removeItem('sp_pending_fam_code'); return; }
     var groupId = 'G-' + invite.ownerUid.slice(0, 8);
-    var groupRef = window.firebaseDb.ref('familyGroups/' + groupId);
-    var groupSnap = await groupRef.once('value');
-    var group = groupSnap.val() || { groupId: groupId, members: [], ownerUid: invite.ownerUid, createdAt: Date.now() };
+    var groupSnap = await fbGet(fbRef(window.firebaseDb, 'familyGroups/' + groupId));
+    var group = (groupSnap && groupSnap.val ? groupSnap.val() : null) || { groupId: groupId, members: [], ownerUid: invite.ownerUid, createdAt: Date.now() };
     if (!Array.isArray(group.members)) group.members = [];
     if (group.members.indexOf(invite.ownerUid) < 0) group.members.push(invite.ownerUid);
     if (group.members.indexOf(uid) < 0)              group.members.push(uid);
-    await groupRef.set(group);
-    await window.firebaseDb.ref('users/' + uid + '/familyGroupId').set(groupId);
-    await window.firebaseDb.ref('familyInvites/' + code + '/used').set(true);
+    await fbSet(fbRef(window.firebaseDb, 'familyGroups/' + groupId), group);
+    await fbSet(fbRef(window.firebaseDb, 'users/' + uid + '/familyGroupId'), groupId);
+    await fbSet(fbRef(window.firebaseDb, 'familyInvites/' + code + '/used'), true);
     // v23.9.281: グループIDをlocalStorageに保存してsyncパスを切り替え
     currentFamilyGroupId = groupId;
     try { localStorage.setItem('sp_family_group_id', groupId); } catch(_) {}
@@ -21063,12 +21083,17 @@ async function updateFamilyMemberStatus() {
     productCount: myProds.length,
     lastSyncAt:   now,
   };
+  // [v350] Modular SDK
   try {
-    var joinSnap = await window.firebaseDb.ref('familyGroups/' + gid + '/memberStatus/' + uid + '/joinedAt').once('value');
-    if (!joinSnap.val()) status.joinedAt = now;
-  } catch(_) {}
-  try {
-    await window.firebaseDb.ref('familyGroups/' + gid + '/memberStatus/' + uid).update(status);
+    var _r = window._fbFns && window._fbFns.ref; var _g = window._fbFns && window._fbFns.get; var _s = window._fbFns && window._fbFns.set;
+    if (_r && _g && _s && window.firebaseDb) {
+      var joinSnap = await _g(_r(window.firebaseDb, 'familyGroups/' + gid + '/memberStatus/' + uid + '/joinedAt'));
+      if (!(joinSnap && joinSnap.val && joinSnap.val())) status.joinedAt = now;
+      // update相当: 既存値にマージ
+      var curSnap = await _g(_r(window.firebaseDb, 'familyGroups/' + gid + '/memberStatus/' + uid));
+      var cur = (curSnap && curSnap.val ? curSnap.val() : null) || {};
+      await _s(_r(window.firebaseDb, 'familyGroups/' + gid + '/memberStatus/' + uid), Object.assign({}, cur, status));
+    }
   } catch(_) {}
 }
 window.updateFamilyMemberStatus = updateFamilyMemberStatus;
@@ -21088,8 +21113,11 @@ async function showFamilyMemberStatus() {
            || (window.firebaseAuth && window.firebaseAuth.currentUser && window.firebaseAuth.currentUser.uid)
            || '';
   try {
-    var snap = await window.firebaseDb.ref('familyGroups/' + gid).once('value');
-    var group = snap.val();
+    // [v350] Modular SDK
+    var _r3 = window._fbFns && window._fbFns.ref; var _g3 = window._fbFns && window._fbFns.get;
+    if (!_r3 || !_g3) { container.innerHTML = '<div class="small text-secondary p-2">Firebase未接続です</div>'; return; }
+    var snap = await _g3(_r3(window.firebaseDb, 'familyGroups/' + gid));
+    var group = snap && snap.val ? snap.val() : null;
     if (!group) {
       container.innerHTML = '<div class="small text-secondary p-2">グループデータが見つかりません</div>';
       return;
