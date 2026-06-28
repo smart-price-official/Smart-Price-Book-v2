@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.343  BUILD_ID=3430
+APP_VERSION=v23.9.344  BUILD_ID=3440
 
 === ChangeLog B-2 ===
+### v23.9.344
+- 仮説：?ref=URLを開くとアプリが繰り返しクラッシュする
+- 真因：renderReferral()内でwindow.firebaseDb.ref()（コンパクトAPI）を呼んでいたがアプリはモジュラーSDKを使用しているため TypeError が発生。加えてinnerのnullチェックが未実装でinner.innerHTML=htmlがnull参照クラッシュを起こしていた
+- 修正方法：Firebase呼び出しをwindow._fbFns.ref/getのモジュラー形式に変更。inner nullガードを追加。focus()をsetTimeout経由に変更しDOM確定後に実行
+
 ### v23.9.343
 - 仮説：友人紹介パネルでハンドルネーム入力欄が毎回空白で手入力が必要になっている
 - 真因：db.config.handleは実在しないフィールドのため自動補完が機能せず、visible inputフィールドが空白のまま表示されていた
@@ -502,8 +507,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.343";
-  const BUILD_ID    = "3430";
+  const APP_VERSION = "v23.9.344";
+  const BUILD_ID    = "3440";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -19977,16 +19982,24 @@ window.spShareFamilyWithText = spShareFamilyWithText;
     inner.innerHTML = html;
   }
 
-  // [v342] 友人紹介：シンプル1画面（アカウント不要）
+  // [v344] 友人紹介：シンプル1画面（アカウント不要）
   var _refReferrerName = '';
   function renderReferral(inner) {
-    // 紹介者名をFirebaseから取得（取れなければ空）
+    if (!inner) return; // nullガード
+
+    // 紹介者名をFirebaseから取得（モジュラーSDK形式・取れなければ空）
     if (!_refReferrerName) {
       try {
-        if (window.firebaseDb && refToken) {
-          window.firebaseDb.ref('referral_tokens/' + refToken).once('value').then(function(snap) {
-            var v = snap && snap.val();
-            if (v && v.handle) { _refReferrerName = v.handle; renderReferral(document.getElementById('spOnboardingInner')); }
+        var fbRef = window._fbFns && window._fbFns.ref;
+        var fbGet = window._fbFns && window._fbFns.get;
+        if (fbRef && fbGet && window.firebaseDb && refToken) {
+          fbGet(fbRef(window.firebaseDb, 'referral_tokens/' + refToken)).then(function(snap) {
+            var v = snap && snap.val ? snap.val() : null;
+            if (v && v.handle) {
+              _refReferrerName = v.handle;
+              var el = document.getElementById('spOnboardingInner');
+              if (el) renderReferral(el);
+            }
           }).catch(function(){});
         }
       } catch(_) {}
@@ -20007,8 +20020,8 @@ window.spShareFamilyWithText = spShareFamilyWithText;
     html += '<div class="small text-secondary text-center mt-3" style="opacity:.6;">アカウント登録なしで今すぐ使えます<br>後からバックアップ設定も可能です</div>';
     html += '</div>';
 
-    inner.innerHTML = html;
-    try { document.getElementById('obRefNickname').focus(); } catch(_) {}
+    try { inner.innerHTML = html; } catch(_) { return; }
+    try { setTimeout(function(){ var el = document.getElementById('obRefNickname'); if(el) el.focus(); }, 100); } catch(_) {}
   }
 
   function spOnboardingStepHtml(num, label, done, bodyHtml) {
