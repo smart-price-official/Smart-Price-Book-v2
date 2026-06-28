@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.346  BUILD_ID=3460
+APP_VERSION=v23.9.347  BUILD_ID=3470
 
 === ChangeLog B-2 ===
+### v23.9.347
+- 仮説：再インストール・機種変更後に紹介URLを開いても登録済みフラグで弾かれオンボーディングが出ない
+- 真因：parseInviteCode()がsmartPrice_invitedBy存在時に早期リターンしていた
+- 修正方法：早期リターンを削除しURLを開くたびに古い紹介情報を上書き。URLさえあれば何度でも再登録できる設計に変更
+
 ### v23.9.346
 - 仮説：友人紹介オンボーディングの検証が既登録フラグのためできない
 - 真因：parseInviteCode()がsmartPrice_invitedByを検出すると早期リターンしトークンを保存しないため、同端末での再テストが不可能
@@ -517,8 +522,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.346";
-  const BUILD_ID    = "3460";
+  const APP_VERSION = "v23.9.347";
+  const BUILD_ID    = "3470";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -19920,8 +19925,10 @@ window.spShareFamilyWithText = spShareFamilyWithText;
     const q = new URL(location.href).searchParams;
     const token = q.get('ref');
     if (!token) return;
-    const savedRef = localStorage.getItem('smartPrice_invitedBy');
-    if (savedRef) return; // 既に保存済み
+
+    // [v347] 以前の紹介情報を上書き（再インストール・機種変更対応）
+    try { localStorage.removeItem('smartPrice_invitedBy'); } catch(_) {}
+    try { localStorage.removeItem('smartPrice_invitedBy_handle'); } catch(_) {}
 
     // まずトークンをそのまま保存（Firebase解決は非同期）
     localStorage.setItem('smartPrice_invitedBy_token', token);
