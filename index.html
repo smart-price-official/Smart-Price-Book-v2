@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.342  BUILD_ID=3420
+APP_VERSION=v23.9.343  BUILD_ID=3430
 
 === ChangeLog B-2 ===
+### v23.9.343
+- 仮説：友人紹介パネルでハンドルネーム入力欄が毎回空白で手入力が必要になっている
+- 真因：db.config.handleは実在しないフィールドのため自動補完が機能せず、visible inputフィールドが空白のまま表示されていた
+- 修正方法：①ハンドルネーム入力欄をhidden化し「表示名: ○○ ✏️変更」のコンパクト表示に変更②自動補完をFirebaseAuth.currentUser.displayName→email prefix→deviceId先頭の順に変更③spEditHandle()でprompt経由の変更のみ受け付ける設計に統一
+
 ### v23.9.342
 - 仮説：友人紹介の受け取り側にメール登録を要求しているため登録が完了しない
 - 真因：referralモードのオンボーディングがfamilyと同じSTEP構成（アカウント作成必須）になっており、ハードルが高すぎる。SmartPriceはアカウント不要で使えるのに不要な登録を強制していた
@@ -497,8 +502,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.342";
-  const BUILD_ID    = "3420";
+  const APP_VERSION = "v23.9.343";
+  const BUILD_ID    = "3430";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -2059,26 +2064,17 @@ document.addEventListener('DOMContentLoaded', function() {
 
       <div id="panelReferral" class="sp-panel mt-3" style="display:none;">
 
-        <!-- ハンドルネーム設定 -->
-        <div class="mb-3">
-          <div class="small text-secondary mb-1">あなたのハンドルネーム <span class="text-warning">※友人に表示される名前</span></div>
-          <div class="d-flex gap-2">
-            <input id="ref-handle-input" class="form-control sp-bg-card sp-border-muted" placeholder="例: たろう、Taro123" maxlength="20">
-            <button class="btn btn-outline-light" onclick="saveHandle()">保存</button>
+        <!-- [v343] ハンドルネーム：自動設定済み・変更のみ表示 -->
+        <div class="mb-3 d-flex align-items-center gap-2" style="background:rgba(255,255,255,.05); border-radius:10px; padding:10px 14px;">
+          <div class="flex-grow-1">
+            <div class="small text-secondary" style="font-size:0.75rem;">友人に表示される名前</div>
+            <div id="ref-handle-display" class="fw-bold sp-text-normal" style="font-size:0.95rem;">-</div>
           </div>
-          <div class="small text-secondary mt-1" style="opacity:.7;">※本名・メールアドレスは使わないでください</div>
+          <button class="btn btn-sm btn-outline-secondary" onclick="spEditHandle()" style="white-space:nowrap;">✏️ 変更</button>
         </div>
-
-        <!-- v23.9.172 SP-260601-006: 紹介ID表示（友人に伝える用） -->
-        <div class="mb-3">
-          <div class="small text-secondary mb-1">あなたの紹介ID:</div>
-          <div class="d-flex gap-2 mb-1 align-items-center flex-wrap">
-            <input id="referralUserIdValue" class="form-control sp-bg-card sp-border-muted" readonly style="font-size:0.85rem; user-select:all; word-break:break-all;" value="-">
-            <button type="button" class="btn sp-btn-secondary" onclick="copyReferralUserId()">コピー</button>
-            <span id="referralUserIdCopyStatus" class="text-success" style="font-size:0.78rem;"></span>
-          </div>
-          <div class="small text-secondary" style="opacity:.8;">友人にこのIDを伝えてください。</div>
-        </div>
+        <!-- hidden inputs（内部処理用） -->
+        <input id="ref-handle-input" type="hidden">
+        <input id="referralUserIdValue" type="hidden" value="-">
 
         <!-- 紹介の説明 -->
         <div class="small text-secondary mb-3" style="line-height:1.6;">
@@ -19629,10 +19625,24 @@ function saveHandle() {
   if (!v) { showToast('ハンドルネームを入力してください', 3000); return; }
   if (v.length > 20) { showToast('20文字以内で入力してください', 3000); return; }
   localStorage.setItem('smartPrice_handle', v);
-  showToast(`ハンドルネームを「${v}」に設定しました ✅`, 2500);
+  showToast(`表示名を「${v}」に設定しました ✅`, 2500);
   updateReferralPanel();
 }
 window.saveHandle = saveHandle;
+
+// [v343] 表示名を変更するプロンプト
+function spEditHandle() {
+  var cur = getHandle();
+  var newVal = window.prompt('友人に表示される名前を入力してください（20文字以内）', cur);
+  if (newVal === null) return;
+  newVal = newVal.trim().slice(0, 20);
+  if (newVal) {
+    localStorage.setItem('smartPrice_handle', newVal);
+    updateReferralPanel();
+    showToast('表示名を変更しました ✅', 2000);
+  }
+}
+window.spEditHandle = spEditHandle;
 
 // ========== ワンタイム紹介トークン生成 ==========
 // IDを直接URLに入れず、専用トークンをFirebase referral_tokensに保存
@@ -19649,19 +19659,23 @@ function updateReferralPanel() {
   const pid = (typeof getDeviceId === 'function') ? getDeviceId() : '';
   let handle = getHandle();
 
-  // [v341] ハンドルネーム未設定なら db.config.handle 等から自動補完して保存
+  // [v343] ハンドルネーム未設定 → Firebase auth → email prefix → deviceId先頭 の順で自動補完
   if (!handle) {
-    var autoHandle = (typeof db !== 'undefined' && db && db.config)
-      ? (db.config.handle || db.config.displayName || db.config.name || '') : '';
+    var authUser = window.firebaseAuth && window.firebaseAuth.currentUser;
+    var autoHandle = (authUser && authUser.displayName)
+      || (authUser && authUser.email ? authUser.email.split('@')[0] : '')
+      || (pid ? pid.slice(0, 8) : '');
     if (autoHandle) {
       localStorage.setItem('smartPrice_handle', autoHandle);
       handle = autoHandle;
     }
   }
 
-  // ハンドルネーム入力欄に現在値を反映
+  // ハンドルネーム表示・hidden更新
+  var displayEl = document.getElementById('ref-handle-display');
+  if (displayEl) displayEl.textContent = handle || '（未設定）';
   const handleInp = document.getElementById('ref-handle-input');
-  if (handleInp && !handleInp.value) handleInp.value = handle;
+  if (handleInp) handleInp.value = handle;
 
   // 紹介リンク生成（IDをそのまま使わずトークン経由）
   // トークンはセッション中固定（シェア時に毎回変えるとリンクが無効になるため）
