@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.336  BUILD_ID=3360
+APP_VERSION=v23.9.337  BUILD_ID=3370
 
 === ChangeLog B-2 ===
+### v23.9.337
+- 仮説：「自分だけ」ボタンを押しても入力画面に変化がなく選択できたか分からない
+- 真因：ボタンの塗りつぶしだけでは変化が小さく気づかない
+- 修正方法：setPrivacyToggle内で「自分だけ」選択時にprivacyStatusMsg要素に「🔒 この購入履歴は家族と共有されません」を表示。「家族と共有」選択時は非表示
+
 ### v23.9.336
 - 仮説：共有／自分だけのトグルが1ボタン切り替えで「今どちらが選ばれているか」が分からない
 - 真因：単一ボタンのラベルが現在状態か次の操作かを区別できないUI
@@ -467,8 +472,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.336";
-  const BUILD_ID    = "3360";
+  const APP_VERSION = "v23.9.337";
+  const BUILD_ID    = "3370";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -1745,6 +1750,7 @@ document.addEventListener('DOMContentLoaded', function() {
               🔒 自分だけ
             </button>
           </div>
+          <div id="privacyStatusMsg" class="small mt-1" style="display:none; color:#aaa; text-align:center;"></div>
         </div>
         <div class="d-flex gap-2 mb-3">
           <button id="delHistBtn" class="btn btn-outline-warning py-3 fw-bold flex-grow-0 px-3 shadow" style="display:none;" onclick="confirmDeleteHist()">この履歴を削除</button>
@@ -8342,13 +8348,16 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     _currentPrivate = !!isPrivate;
     var sharedBtn  = document.getElementById('privacyBtnShared');
     var privateBtn = document.getElementById('privacyBtnPrivate');
+    var msg        = document.getElementById('privacyStatusMsg');
     if (!sharedBtn || !privateBtn) return;
     if (isPrivate) {
       sharedBtn.className  = 'btn flex-grow-1 py-2 fw-bold btn-outline-secondary';
       privateBtn.className = 'btn flex-grow-1 py-2 fw-bold btn-secondary';
+      if (msg) { msg.textContent = '🔒 この購入履歴は家族と共有されません'; msg.style.display = 'block'; }
     } else {
       sharedBtn.className  = 'btn flex-grow-1 py-2 fw-bold btn-success';
       privateBtn.className = 'btn flex-grow-1 py-2 fw-bold btn-outline-secondary';
+      if (msg) { msg.textContent = ''; msg.style.display = 'none'; }
     }
   }
   function togglePrivacyMode() { setPrivacyToggle(!_currentPrivate); }
