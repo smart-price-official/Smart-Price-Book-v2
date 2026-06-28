@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.339  BUILD_ID=3390
+APP_VERSION=v23.9.340  BUILD_ID=3400
 
 === ChangeLog B-2 ===
+### v23.9.340
+- 仮説：奥さんが招待URLをタップしてもオンボーディングが完了できない（Firebase未初期化・タブUI不明瞭）
+- 真因：①spOnboardingInitがfirebaseAuthより先に実行されるためonAuthStateChangedが未登録②新規登録とログインが同列のボタンで既存ユーザーが迷う③spObAcceptInviteがcurrentAuthUid未確認のまま参加処理を呼ぶ
+- 修正方法：①bindAuthListener()を100ms間隔でfirebaseAuth ready待ちリトライに変更②STEP1を「はじめての方」「すでにアカウントをお持ちの方」タブ切替UIに刷新③spObRegisterをタブ状態で登録/ログインを切り替える統合関数に④waitForFirebaseAuth()ヘルパーで全Firebase操作をready待ちに⑤spObAcceptInviteはcurrentUser確認後に参加処理を実行
+
 ### v23.9.339
 - 仮説：?fam=FAM-XXXX や ?ref=TOKEN 付きURLで開いたユーザーが、自分で設定→家族共有へ移動しないと招待承認できず離脱率が高い
 - 真因：招待コードはlocalStorageに保存されるが、その後のUI誘導がなく操作手順が分からない
@@ -482,8 +487,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.339";
-  const BUILD_ID    = "3390";
+  const APP_VERSION = "v23.9.340";
+  const BUILD_ID    = "3400";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -19951,22 +19956,61 @@ window.spShareFamilyWithText = spShareFamilyWithText;
 
   function buildAccountForm() {
     return '<div id="obAccountForm">' +
+      // 初めての方 / すでにある方 タブ
+      '<div class="d-flex mb-3" style="border-bottom:1px solid rgba(255,255,255,.15);">' +
+      '<button id="obTabNew" class="btn btn-sm flex-grow-1 py-2 fw-bold" style="border-radius:0; border-bottom:2px solid var(--sp-primary);" onclick="spObSwitchTab(\'new\')">はじめての方</button>' +
+      '<button id="obTabLogin" class="btn btn-sm flex-grow-1 py-2 fw-bold" style="border-radius:0; border-bottom:2px solid transparent; opacity:.5;" onclick="spObSwitchTab(\'login\')">すでにアカウントをお持ちの方</button>' +
+      '</div>' +
+      '<div id="obTabHintNew" class="small text-secondary mb-2">iCloud / Yahoo / Gmail などのメールで登録できます</div>' +
+      '<div id="obTabHintLogin" class="small text-secondary mb-2" style="display:none;">SmartPriceのメールとパスワードでログイン</div>' +
       '<input id="obEmail" type="email" class="form-control sp-bg-card sp-border-muted mb-2" placeholder="メールアドレス" autocomplete="email">' +
-      '<input id="obPass"  type="password" class="form-control sp-bg-card sp-border-muted mb-2" placeholder="パスワード（6文字以上）" autocomplete="new-password">' +
+      '<input id="obPass"  type="password" class="form-control sp-bg-card sp-border-muted mb-2" placeholder="パスワード（6文字以上）" autocomplete="current-password">' +
       '<div id="obAccountStatus" class="small text-danger mb-2" style="min-height:1.2em;"></div>' +
-      '<div class="d-flex gap-2">' +
-      '<button class="btn sp-btn-primary flex-grow-1 py-2" onclick="spObRegister()">新規登録 →</button>' +
-      '<button class="btn btn-outline-secondary flex-grow-1 py-2" onclick="spObLogin()">ログイン →</button>' +
-      '</div></div>';
+      '<button id="obSubmitBtn" class="btn sp-btn-primary w-100 py-2 fw-bold" onclick="spObRegister()">登録して次へ →</button>' +
+      '</div>';
   }
 
   function buildInviteForm(code, locked) {
-    if (locked) return '<div class="small text-secondary p-2" style="opacity:.5;">STEP 1 を完了してください</div>';
+    if (locked) return '<div class="small text-secondary p-2 text-center" style="opacity:.5;">↑ まずSTEP 1を完了してください</div>';
     return '<div>' +
-      '<div class="small text-secondary mb-2">招待コード：<span class="fw-bold sp-text-normal">' + code + '</span>（自動入力済み）</div>' +
+      '<div class="small text-secondary mb-3" style="background:rgba(76,175,80,.1); border:1px solid rgba(76,175,80,.3); border-radius:8px; padding:10px 12px;">' +
+      '招待コード：<span class="fw-bold sp-text-normal">' + code + '</span><br>' +
+      '<span style="font-size:0.78rem; opacity:.7;">自動で入力されています</span>' +
+      '</div>' +
       '<div id="obInviteStatus" class="small text-danger mb-2" style="min-height:1.2em;"></div>' +
-      '<button class="btn sp-btn-primary w-100 py-2" onclick="spObAcceptInvite()">グループに参加する →</button>' +
+      '<button class="btn sp-btn-primary w-100 py-2 fw-bold" onclick="spObAcceptInvite()">👨‍👩‍👧 グループに参加する →</button>' +
       '</div>';
+  }
+
+  // [v340] タブ切替
+  var _obTab = 'new';
+  window.spObSwitchTab = function(tab) {
+    _obTab = tab;
+    var btnNew   = document.getElementById('obTabNew');
+    var btnLogin = document.getElementById('obTabLogin');
+    var hintNew  = document.getElementById('obTabHintNew');
+    var hintLogin= document.getElementById('obTabHintLogin');
+    var submitBtn= document.getElementById('obSubmitBtn');
+    if (tab === 'new') {
+      if(btnNew)    { btnNew.style.borderBottom    = '2px solid var(--sp-primary)'; btnNew.style.opacity = '1'; }
+      if(btnLogin)  { btnLogin.style.borderBottom  = '2px solid transparent';       btnLogin.style.opacity = '.5'; }
+      if(hintNew)   hintNew.style.display  = '';
+      if(hintLogin) hintLogin.style.display = 'none';
+      if(submitBtn) submitBtn.textContent   = '登録して次へ →';
+    } else {
+      if(btnNew)    { btnNew.style.borderBottom    = '2px solid transparent';       btnNew.style.opacity = '.5'; }
+      if(btnLogin)  { btnLogin.style.borderBottom  = '2px solid var(--sp-primary)'; btnLogin.style.opacity = '1'; }
+      if(hintNew)   hintNew.style.display  = 'none';
+      if(hintLogin) hintLogin.style.display = '';
+      if(submitBtn) submitBtn.textContent   = 'ログインして次へ →';
+    }
+  };
+
+  // [v340] Firebase ready 待ちヘルパー
+  function waitForFirebaseAuth(cb, retries) {
+    if (window.firebaseAuth) { cb(window.firebaseAuth); return; }
+    if ((retries || 0) > 50) { cb(null); return; }
+    setTimeout(function() { waitForFirebaseAuth(cb, (retries || 0) + 1); }, 200);
   }
 
   function buildDoneSection() {
@@ -19976,55 +20020,48 @@ window.spShareFamilyWithText = spShareFamilyWithText;
       '</div>';
   }
 
-  // 新規登録
-  window.spObRegister = async function() {
-    var email = (document.getElementById('obEmail') || {}).value || '';
-    var pass  = (document.getElementById('obPass')  || {}).value || '';
+  // [v340] 登録／ログイン（タブで切替）
+  window.spObRegister = function() {
+    var email = ((document.getElementById('obEmail') || {}).value || '').trim();
+    var pass  = ((document.getElementById('obPass')  || {}).value || '');
     var st    = document.getElementById('obAccountStatus');
     if (!email || !pass) { if(st) st.textContent = 'メールとパスワードを入力してください'; return; }
-    if(st) st.textContent = '登録中…';
-    try {
-      await window.firebaseAuth.createUserWithEmailAndPassword(email.trim(), pass);
-      steps.account.done = true;
-      render();
-    } catch(e) {
-      var msg = '登録に失敗しました';
-      if (e.code === 'auth/email-already-in-use') msg = 'このメールは登録済みです → ログインを試してください';
-      else if (e.code === 'auth/invalid-email')   msg = 'メール形式が正しくありません';
-      else if (e.code === 'auth/weak-password')   msg = 'パスワードは6文字以上にしてください';
-      if(st) st.textContent = msg;
-    }
+    if(st) st.textContent = _obTab === 'new' ? '登録中…' : 'ログイン中…';
+    waitForFirebaseAuth(function(auth) {
+      if (!auth) { if(st) st.textContent = '認証システムが準備できていません。しばらく待って再試行してください'; return; }
+      var promise = _obTab === 'new'
+        ? auth.createUserWithEmailAndPassword(email, pass)
+        : auth.signInWithEmailAndPassword(email, pass);
+      promise.then(function() {
+        steps.account.done = true;
+        render();
+      }).catch(function(e) {
+        var msg = _obTab === 'new' ? '登録に失敗しました' : 'ログインに失敗しました';
+        if (e.code === 'auth/email-already-in-use') msg = 'このメールは登録済みです → 「すでにアカウントをお持ちの方」からログインしてください';
+        else if (e.code === 'auth/invalid-email')   msg = 'メール形式が正しくありません';
+        else if (e.code === 'auth/weak-password')   msg = 'パスワードは6文字以上にしてください';
+        else if (e.code === 'auth/user-not-found' || e.code === 'auth/wrong-password') msg = 'メールまたはパスワードが違います';
+        if(st) st.textContent = msg;
+      });
+    });
   };
 
-  // ログイン
-  window.spObLogin = async function() {
-    var email = (document.getElementById('obEmail') || {}).value || '';
-    var pass  = (document.getElementById('obPass')  || {}).value || '';
-    var st    = document.getElementById('obAccountStatus');
-    if (!email || !pass) { if(st) st.textContent = 'メールとパスワードを入力してください'; return; }
-    if(st) st.textContent = 'ログイン中…';
-    try {
-      await window.firebaseAuth.signInWithEmailAndPassword(email.trim(), pass);
-      steps.account.done = true;
-      render();
-    } catch(e) {
-      var msg = 'ログインに失敗しました';
-      if (e.code === 'auth/user-not-found' || e.code === 'auth/wrong-password') msg = 'メールまたはパスワードが違います';
-      if(st) st.textContent = msg;
-    }
-  };
-
-  // 招待承認
-  window.spObAcceptInvite = async function() {
+  // 招待承認（[v340] Firebase + currentAuthUid ready 待ち）
+  window.spObAcceptInvite = function() {
     var st = document.getElementById('obInviteStatus');
     if(st) st.textContent = '参加中…';
-    try {
-      await spAcceptFamilyInvite(famCode, null);
-      steps.invite.done = true;
-      render();
-    } catch(e) {
-      if(st) st.textContent = '参加に失敗しました。もう一度お試しください';
-    }
+    waitForFirebaseAuth(function(auth) {
+      if (!auth || !auth.currentUser) {
+        if(st) st.textContent = 'ログインが完了していません。STEP1をもう一度確認してください';
+        return;
+      }
+      spAcceptFamilyInvite(famCode, null).then(function() {
+        steps.invite.done = true;
+        render();
+      }).catch(function() {
+        if(st) st.textContent = '参加に失敗しました。もう一度タップしてください';
+      });
+    });
   };
 
   // 完了
@@ -20056,21 +20093,35 @@ window.spShareFamilyWithText = spShareFamilyWithText;
     }
   }
 
-  // auth 状態変化でも再描画
-  if (window.firebaseAuth) {
-    window.firebaseAuth.onAuthStateChanged(function(user) {
-      if (user && !steps.account.done) {
-        steps.account.done = true;
-        render();
+  // [v340] Firebase ready 待ち → onAuthStateChanged を確実に登録
+  function bindAuthListener() {
+    if (window.firebaseAuth) {
+      window.firebaseAuth.onAuthStateChanged(function(user) {
+        if (user && !steps.account.done) {
+          steps.account.done = true;
+          render();
+        }
+      });
+    } else {
+      // firebaseAuth がまだない → 100ms 後に再試行（最大10秒）
+      if (!bindAuthListener._retries) bindAuthListener._retries = 0;
+      if (bindAuthListener._retries < 100) {
+        bindAuthListener._retries++;
+        setTimeout(bindAuthListener, 100);
       }
-    });
+    }
   }
 
-  // DOMContentLoaded 後に表示
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', showOnboarding);
-  } else {
+  // DOMContentLoaded 後に表示 + auth リスナー登録
+  function startOnboarding() {
     showOnboarding();
+    bindAuthListener();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startOnboarding);
+  } else {
+    startOnboarding();
   }
 })();
 
