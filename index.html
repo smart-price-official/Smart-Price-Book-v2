@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.344  BUILD_ID=3440
+APP_VERSION=v23.9.345  BUILD_ID=3450
 
 === ChangeLog B-2 ===
+### v23.9.345
+- 仮説：オンボーディングIIFEが起動時に実行されクラッシュしアプリ全体が停止する
+- 真因：spOnboardingInit IIFEが未保護のまま起動時に即実行されており、内部エラーがアプリ全体のクラッシュに波及していた
+- 修正方法：①IIFEを外側のtry-catchで囲み失敗時はlocalStorageトークンを除去してクラッシュを隔離②startOnboarding内にtry-catch追加③オンボーディング表示をDOMContentLoaded+500ms遅延に変更しアプリ完全ロード後に表示
+
 ### v23.9.344
 - 仮説：?ref=URLを開くとアプリが繰り返しクラッシュする
 - 真因：renderReferral()内でwindow.firebaseDb.ref()（コンパクトAPI）を呼んでいたがアプリはモジュラーSDKを使用しているため TypeError が発生。加えてinnerのnullチェックが未実装でinner.innerHTML=htmlがnull参照クラッシュを起こしていた
@@ -507,8 +512,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.344";
-  const BUILD_ID    = "3440";
+  const APP_VERSION = "v23.9.345";
+  const BUILD_ID    = "3450";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -19922,8 +19927,8 @@ window.spShareFamilyWithText = spShareFamilyWithText;
   } catch(e) {}
 })();
 
-// [v339] オンボーディング
-(function spOnboardingInit() {
+// [v339] オンボーディング（[v345] IIFE全体をtry-catchで保護）
+try { (function spOnboardingInit() {
   // pending検出
   var famCode = '';
   var refToken = '';
@@ -20197,18 +20202,22 @@ window.spShareFamilyWithText = spShareFamilyWithText;
     }
   }
 
-  // DOMContentLoaded 後に表示 + auth リスナー登録
+  // [v345] DOMContentLoaded + 500ms 遅延でアプリ完全ロード後に表示
   function startOnboarding() {
-    showOnboarding();
-    bindAuthListener();
+    setTimeout(function() {
+      try { showOnboarding(); } catch(e) {}
+      try { bindAuthListener(); } catch(e) {}
+    }, 500);
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', startOnboarding);
-  } else {
-    startOnboarding();
-  }
-})();
+  try {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', startOnboarding);
+    } else {
+      startOnboarding();
+    }
+  } catch(e) {}
+})(); } catch(e) { try { localStorage.removeItem('smartPrice_invitedBy_token'); localStorage.removeItem('sp_pending_fam_code'); } catch(_) {} }
 
 async function spShareFamilyId(){
   try{
