@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.329  BUILD_ID=3290
+APP_VERSION=v23.9.330  BUILD_ID=3300
 
 === ChangeLog B-2 ===
+### v23.9.330
+- 仮説：履歴1件削除ボタン（delHistBtn）が編集モードでも非表示になっている
+- 真因：v85fix時に「ゴミ箱ボタンのみ」とコメントしてdelHistBtnをhideに固定したが、ゴミ箱（delProductBtn）は商品ごと全削除するものであり設計ミス。1件削除のUIが存在しない状態になっていた
+- 修正方法：editHistoryMode内でdelHistBtnのdisplayをnoneからblockに変更。履歴1件タップ→編集モード時に「削除」ボタンが表示され、その1件のみ削除できるようになる
+
 ### v23.9.329
 - 仮説：スキャン後の入力フォームで商品画像プレビューが表示されない
 - 真因：openFormはdb.products[jan].imageUrlが空（または!exists）の場合にplaceholderを即時表示する。Yahoo非同期lookupが完了してapplyPreviewImageが呼ばれるまで（5〜10秒）ユーザーはNo Imageのままになる。削除→再スキャン時は必ず!existsになりplaceholderになる
@@ -432,8 +437,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.329";
-  const BUILD_ID    = "3290";
+  const APP_VERSION = "v23.9.330";
+  const BUILD_ID    = "3300";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -7846,8 +7851,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     const taxLearningPrompt = document.getElementById('storeTaxLearningPrompt');
     if (taxLearningPrompt) taxLearningPrompt.style.display = 'none';
     document.getElementById('saveBtn').innerText = "変更確定";
-    // [v85fix] 修正⑥: テキスト「削除」ボタンは非表示（ゴミ箱ボタンのみ）
-    document.getElementById('delHistBtn').style.display = "none";
+    // [v330] 履歴1件削除ボタンを編集モード時に表示
+    document.getElementById('delHistBtn').style.display = "block";
     document.getElementById('storeJumpBtn').style.display = "block";
 
     renderDetailHistory(p.history);
