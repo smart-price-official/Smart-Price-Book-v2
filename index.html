@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.332  BUILD_ID=3320
+APP_VERSION=v23.9.333  BUILD_ID=3330
 
 === ChangeLog B-2 ===
+### v23.9.333
+- 仮説：家族共有の親元が登録状況を見られない
+- 真因：spCreateFamilyInvite（招待コード発行）でfamilyInvitesにのみ書き込み、users/{uid}/familyGroupIdへの書き込みとcurrentFamilyGroupIdの設定がなかった。子（参加側）はspJoinFamilyGroupでfamilyGroupIdをFirebaseに書くため見えるが、親は書かないためcurrentFamilyGroupId=nullのままとなり個人パス（users/{uid}/smart_price.json）を参照し続ける
+- 修正方法：spCreateFamilyInvite内でfamilyInvites書き込み直後にgroupId='G-'+uid.slice(0,8)を計算し、users/{uid}/familyGroupIdに書き込み・currentFamilyGroupId設定・localStorage保存を追加。子の参加処理（spJoinFamilyGroup）と同じgroupId命名規則を使用
+
 ### v23.9.332
 - 仮説：ボタンラベル「この価格を削除」が誤解を招く
 - 真因：「価格」より「履歴」の方が操作対象が明確
@@ -447,8 +452,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.332";
-  const BUILD_ID    = "3320";
+  const APP_VERSION = "v23.9.333";
+  const BUILD_ID    = "3330";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -20073,8 +20078,13 @@ async function spCreateFamilyInvite(silent) {
       used: false
     };
     await window.firebaseDb.ref('familyInvites/' + code).set(record);
+    // [v333] 親自身もグループIDをFirebaseに登録（しないと親がデータを参照できない）
+    var groupId = 'G-' + uid.slice(0, 8);
+    await window.firebaseDb.ref('users/' + uid + '/familyGroupId').set(groupId);
+    currentFamilyGroupId = groupId;
+    try { localStorage.setItem('sp_family_group_id', groupId); } catch(_) {}
     if (window.location.search.includes('debug=1')) {
-      console.log('[FAMILY] FAMILY_INVITE_CREATED', { code: code, ownerUid: uid });
+      console.log('[FAMILY] FAMILY_INVITE_CREATED', { code: code, ownerUid: uid, groupId: groupId });
     }
     // UI 更新（v249: family-invite-result は常時表示になったため show 不要）
     var display = document.getElementById('family-invite-code-display');
