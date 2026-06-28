@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.337  BUILD_ID=3370
+APP_VERSION=v23.9.338  BUILD_ID=3380
 
 === ChangeLog B-2 ===
+### v23.9.338
+- 仮説：家族共有・友人紹介のメンバーが誰か分からない（UID先頭8文字しか表示されない）
+- 真因：memberStatus.handleが未設定の場合UIDが表示される。また相手の名前を自分側で変更する手段がなかった
+- 修正方法：localStorage(sp_family_nicknames/sp_referral_nicknames)でデバイスローカルなニックネームを管理。各メンバー行に✏️ボタンを追加しprompt()で入力→保存→再描画。ニックネームが優先表示され空欄でリセット
+
 ### v23.9.337
 - 仮説：「自分だけ」ボタンを押しても入力画面に変化がなく選択できたか分からない
 - 真因：ボタンの塗りつぶしだけでは変化が小さく気づかない
@@ -472,8 +477,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.337";
-  const BUILD_ID    = "3370";
+  const APP_VERSION = "v23.9.338";
+  const BUILD_ID    = "3380";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -19355,15 +19360,22 @@ async function showReferralStatusV2() {
     html += '<div class="mb-3 small"><span class="sp-text-normal fw-bold fs-5">' + qualified + '人</span>';
     html += '<span class="text-secondary"> / ' + childIds.length + '人 が条件達成</span></div>';
 
+    var _refNick = _getNicknames('sp_referral_nicknames');
     childIds.forEach(function(uid) {
-      var u    = childMap[uid] || {};
-      var ok   = u.status === 'qualified';
-      var name = uid.slice(0, 8) + '…';
-      var reg  = u.registeredAt ? new Date(u.registeredAt).toLocaleDateString('ja-JP') : '—';
+      var u       = childMap[uid] || {};
+      var ok      = u.status === 'qualified';
+      var rawName = uid.slice(0, 8) + '…';
+      var name    = _refNick[uid] || rawName;
+      var reg     = u.registeredAt ? new Date(u.registeredAt).toLocaleDateString('ja-JP') : '—';
+      var safeUid  = uid.replace(/'/g, "\\'");
+      var safeName = rawName.replace(/'/g, "\\'");
 
       html += '<div class="border-top sp-border-muted pt-3 mt-2">';
       html += '<div class="d-flex justify-content-between align-items-center mb-1">';
-      html += '<span class="fw-bold sp-text-normal" style="font-size:0.85rem;">友人（' + name + '）</span>';
+      html += '<span class="fw-bold sp-text-normal" style="font-size:0.85rem;">' + name;
+      // [v338] ✏️ニックネーム編集ボタン
+      html += ' <button class="btn btn-link btn-sm p-0 ms-1" style="font-size:0.75rem; opacity:.6;" onclick="setReferralNickname(\'' + safeUid + '\',\'' + safeName + '\')">✏️</button>';
+      html += '</span>';
       html += '<span class="' + (ok ? 'text-success' : 'text-warning') + ' small">' + (ok ? '✅ 達成' : '⏳ 利用中') + '</span>';
       html += '</div>';
       html += '<div class="small text-secondary mb-2">登録日: ' + reg + '</div>';
@@ -20568,6 +20580,35 @@ window.spAcceptFamilyInvite = spAcceptFamilyInvite;
 
 // ======= 家族招待 ここまで =======
 
+// ===== [v338] ニックネーム管理（家族／友人紹介共通） =====
+function _getNicknames(key) {
+  try { return JSON.parse(localStorage.getItem(key) || '{}'); } catch(_) { return {}; }
+}
+function _setNickname(key, uid, name) {
+  var map = _getNicknames(key);
+  if (name && name.trim()) map[uid] = name.trim();
+  else delete map[uid];
+  try { localStorage.setItem(key, JSON.stringify(map)); } catch(_) {}
+}
+function setFamilyNickname(uid, currentName) {
+  var nicknames = _getNicknames('sp_family_nicknames');
+  var cur = nicknames[uid] || currentName || '';
+  var newName = window.prompt('表示名を変更（空欄でリセット）', cur);
+  if (newName === null) return;
+  _setNickname('sp_family_nicknames', uid, newName);
+  showFamilyMemberStatus();
+}
+function setReferralNickname(uid, currentName) {
+  var nicknames = _getNicknames('sp_referral_nicknames');
+  var cur = nicknames[uid] || currentName || '';
+  var newName = window.prompt('表示名を変更（空欄でリセット）', cur);
+  if (newName === null) return;
+  _setNickname('sp_referral_nicknames', uid, newName);
+  showReferralStatusV2();
+}
+window.setFamilyNickname   = setFamilyNickname;
+window.setReferralNickname = setReferralNickname;
+
 // ===== [v312.1] 家族メンバー登録状況 =====
 async function updateFamilyMemberStatus() {
   var gid = currentFamilyGroupId || localStorage.getItem('sp_family_group_id') || '';
@@ -20618,23 +20659,29 @@ async function showFamilyMemberStatus() {
     }
     var members  = group.members  || [];
     var statuses = group.memberStatus || {};
+    var _famNick = _getNicknames('sp_family_nicknames');
     var html = '<div class="card sp-bg-card sp-border-muted p-3">';
     html += '<h6 class="sp-text-normal mb-3">👨‍👩‍👧 家族メンバー（' + members.length + '人）</h6>';
     members.forEach(function(uid) {
-      var s    = statuses[uid] || {};
-      var isMe = uid === myUid;
-      var name = s.handle || uid.slice(0, 8) + '…';
-      var count = s.productCount != null ? s.productCount + '件' : '—';
+      var s       = statuses[uid] || {};
+      var isMe    = uid === myUid;
+      var rawName = s.handle || uid.slice(0, 8) + '…';
+      var name    = _famNick[uid] || rawName;
+      var count   = s.productCount != null ? s.productCount + '件' : '—';
       var last = s.lastSyncAt
         ? new Date(s.lastSyncAt).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
         : '未確認';
       var joined = s.joinedAt
         ? new Date(s.joinedAt).toLocaleDateString('ja-JP', { year: 'numeric', month: 'numeric', day: 'numeric' })
         : '—';
+      var safeUid  = uid.replace(/'/g, "\\'");
+      var safeName = rawName.replace(/'/g, "\\'");
       html += '<div class="border-top sp-border-muted pt-2 mt-2">';
       html += '<div class="d-flex justify-content-between align-items-center">';
       html += '<span class="fw-bold sp-text-normal" style="font-size:0.9rem;">' + name;
       if (isMe) html += ' <span class="badge bg-secondary" style="font-size:0.7rem;">あなた</span>';
+      // [v338] ✏️ニックネーム編集ボタン
+      html += ' <button class="btn btn-link btn-sm p-0 ms-1" style="font-size:0.75rem; opacity:.6;" onclick="setFamilyNickname(\'' + safeUid + '\',\'' + safeName + '\')">✏️</button>';
       html += '</span><span class="text-info fw-bold">' + count + '</span></div>';
       html += '<div class="small text-secondary mt-1">参加日: ' + joined + '　最終更新: ' + last + '</div>';
       html += '</div>';
