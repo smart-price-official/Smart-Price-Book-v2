@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.338  BUILD_ID=3380
+APP_VERSION=v23.9.339  BUILD_ID=3390
 
 === ChangeLog B-2 ===
+### v23.9.339
+- 仮説：?fam=FAM-XXXX や ?ref=TOKEN 付きURLで開いたユーザーが、自分で設定→家族共有へ移動しないと招待承認できず離脱率が高い
+- 真因：招待コードはlocalStorageに保存されるが、その後のUI誘導がなく操作手順が分からない
+- 修正方法：URLに招待コード/紹介トークンがある場合、DOMContentLoaded後に全画面オンボーディングウィザード（#spOnboarding）を自動表示。STEP1アカウント登録/ログイン→STEP2招待承認（familyのみ）→STEP3完了の3ステップ構成。Firebase onAuthStateChangedで認証完了を検知しステップを自動進行
+
 ### v23.9.338
 - 仮説：家族共有・友人紹介のメンバーが誰か分からない（UID先頭8文字しか表示されない）
 - 真因：memberStatus.handleが未設定の場合UIDが表示される。また相手の名前を自分側で変更する手段がなかった
@@ -477,8 +482,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.338";
-  const BUILD_ID    = "3380";
+  const APP_VERSION = "v23.9.339";
+  const BUILD_ID    = "3390";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -1590,6 +1595,12 @@ window.showVeggieMenu = window.showVeggieMenu || function() {
 #_spSplash .sp-name{color:#fff;font-size:1.6rem;font-weight:bold;font-family:sans-serif;letter-spacing:.05em}
 #_spSplash .sp-sub{color:rgba(255,255,255,.75);font-size:.85rem;font-family:sans-serif}
 </style>
+<!-- [v339] オンボーディングウィザード -->
+<div id="spOnboarding" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; z-index:9999; overflow-y:auto; background:var(--sp-bg); padding:24px 20px 60px;">
+  <div id="spOnboardingInner" style="max-width:420px; margin:0 auto;">
+    <!-- JS で動的生成 -->
+  </div>
+</div>
 <div id="_spSplash">
   <div class="sp-logo">🛒</div>
   <div class="sp-name">Smart Price</div>
@@ -19865,6 +19876,202 @@ window.spShareFamilyWithText = spShareFamilyWithText;
       } catch(e) {}
     }, 3000);
   } catch(e) {}
+})();
+
+// [v339] オンボーディング
+(function spOnboardingInit() {
+  // pending検出
+  var famCode = '';
+  var refToken = '';
+  try { famCode  = localStorage.getItem('sp_pending_fam_code') || ''; } catch(_) {}
+  try { refToken = localStorage.getItem('smartPrice_invitedBy_token') || ''; } catch(_) {}
+
+  var mode = famCode.startsWith('FAM-') ? 'family' : (refToken ? 'referral' : '');
+  if (!mode) return; // 通常起動
+
+  // ステップ状態
+  var steps = {
+    account: { done: false },   // STEP1: アカウント登録/ログイン
+    invite:  { done: false },   // STEP2: 招待承認（familyのみ）
+    done:    { done: false }    // STEP3: 完了
+  };
+
+  // ログイン済みかどうか確認（Firebase auth）
+  function isLoggedIn() {
+    return !!(window.firebaseAuth && window.firebaseAuth.currentUser);
+  }
+
+  function render() {
+    var inner = document.getElementById('spOnboardingInner');
+    if (!inner) return;
+    var loggedIn = isLoggedIn();
+    if (loggedIn && !steps.account.done) steps.account.done = true;
+
+    var title = mode === 'family'
+      ? '家族グループに招待されました'
+      : '友人から招待されました';
+
+    var html = '<div class="text-center mb-4">';
+    html += '<div style="font-size:2rem;">👨‍👩‍👧</div>';
+    html += '<h5 class="sp-text-normal fw-bold mt-2 mb-1">' + title + '</h5>';
+    html += '<div class="small text-secondary">Smart Price へようこそ</div>';
+    html += '</div>';
+
+    // STEP 1: アカウント
+    html += spOnboardingStepHtml(1, steps.account.done ? '✅ アカウント準備完了' : 'アカウントを作成・ログイン', steps.account.done,
+      steps.account.done ? '' : buildAccountForm()
+    );
+
+    // STEP 2: 招待承認（family のみ）
+    if (mode === 'family') {
+      var step2Locked = !steps.account.done;
+      html += spOnboardingStepHtml(2, steps.invite.done ? '✅ グループ参加完了' : '招待を承認', steps.invite.done,
+        steps.invite.done ? '' : buildInviteForm(famCode, step2Locked)
+      );
+    }
+
+    // STEP 完了
+    var lastStep = mode === 'family' ? 3 : 2;
+    var allDone = mode === 'family' ? (steps.account.done && steps.invite.done) : steps.account.done;
+    html += spOnboardingStepHtml(lastStep, allDone ? '🎉 完了！' : '完了', allDone,
+      allDone ? buildDoneSection() : '<div class="small text-secondary p-2" style="opacity:.5;">上のステップを完了してください</div>'
+    );
+
+    inner.innerHTML = html;
+  }
+
+  function spOnboardingStepHtml(num, label, done, bodyHtml) {
+    var borderColor = done ? 'rgba(76,175,80,.5)' : 'rgba(255,255,255,.15)';
+    var bg = done ? 'rgba(76,175,80,.08)' : 'rgba(255,255,255,.03)';
+    return '<div style="border:1px solid ' + borderColor + '; border-radius:14px; padding:16px; margin-bottom:16px; background:' + bg + ';">' +
+      '<div class="fw-bold sp-text-normal mb-2" style="font-size:0.95rem;">STEP ' + num + '　' + label + '</div>' +
+      (bodyHtml || '') +
+      '</div>';
+  }
+
+  function buildAccountForm() {
+    return '<div id="obAccountForm">' +
+      '<input id="obEmail" type="email" class="form-control sp-bg-card sp-border-muted mb-2" placeholder="メールアドレス" autocomplete="email">' +
+      '<input id="obPass"  type="password" class="form-control sp-bg-card sp-border-muted mb-2" placeholder="パスワード（6文字以上）" autocomplete="new-password">' +
+      '<div id="obAccountStatus" class="small text-danger mb-2" style="min-height:1.2em;"></div>' +
+      '<div class="d-flex gap-2">' +
+      '<button class="btn sp-btn-primary flex-grow-1 py-2" onclick="spObRegister()">新規登録 →</button>' +
+      '<button class="btn btn-outline-secondary flex-grow-1 py-2" onclick="spObLogin()">ログイン →</button>' +
+      '</div></div>';
+  }
+
+  function buildInviteForm(code, locked) {
+    if (locked) return '<div class="small text-secondary p-2" style="opacity:.5;">STEP 1 を完了してください</div>';
+    return '<div>' +
+      '<div class="small text-secondary mb-2">招待コード：<span class="fw-bold sp-text-normal">' + code + '</span>（自動入力済み）</div>' +
+      '<div id="obInviteStatus" class="small text-danger mb-2" style="min-height:1.2em;"></div>' +
+      '<button class="btn sp-btn-primary w-100 py-2" onclick="spObAcceptInvite()">グループに参加する →</button>' +
+      '</div>';
+  }
+
+  function buildDoneSection() {
+    return '<div class="text-center py-2">' +
+      '<div class="small text-secondary mb-3">準備が整いました。さっそく使い始めましょう！</div>' +
+      '<button class="btn sp-btn-primary w-100 py-2 fw-bold" onclick="spObFinish()">Smart Price をはじめる 🚀</button>' +
+      '</div>';
+  }
+
+  // 新規登録
+  window.spObRegister = async function() {
+    var email = (document.getElementById('obEmail') || {}).value || '';
+    var pass  = (document.getElementById('obPass')  || {}).value || '';
+    var st    = document.getElementById('obAccountStatus');
+    if (!email || !pass) { if(st) st.textContent = 'メールとパスワードを入力してください'; return; }
+    if(st) st.textContent = '登録中…';
+    try {
+      await window.firebaseAuth.createUserWithEmailAndPassword(email.trim(), pass);
+      steps.account.done = true;
+      render();
+    } catch(e) {
+      var msg = '登録に失敗しました';
+      if (e.code === 'auth/email-already-in-use') msg = 'このメールは登録済みです → ログインを試してください';
+      else if (e.code === 'auth/invalid-email')   msg = 'メール形式が正しくありません';
+      else if (e.code === 'auth/weak-password')   msg = 'パスワードは6文字以上にしてください';
+      if(st) st.textContent = msg;
+    }
+  };
+
+  // ログイン
+  window.spObLogin = async function() {
+    var email = (document.getElementById('obEmail') || {}).value || '';
+    var pass  = (document.getElementById('obPass')  || {}).value || '';
+    var st    = document.getElementById('obAccountStatus');
+    if (!email || !pass) { if(st) st.textContent = 'メールとパスワードを入力してください'; return; }
+    if(st) st.textContent = 'ログイン中…';
+    try {
+      await window.firebaseAuth.signInWithEmailAndPassword(email.trim(), pass);
+      steps.account.done = true;
+      render();
+    } catch(e) {
+      var msg = 'ログインに失敗しました';
+      if (e.code === 'auth/user-not-found' || e.code === 'auth/wrong-password') msg = 'メールまたはパスワードが違います';
+      if(st) st.textContent = msg;
+    }
+  };
+
+  // 招待承認
+  window.spObAcceptInvite = async function() {
+    var st = document.getElementById('obInviteStatus');
+    if(st) st.textContent = '参加中…';
+    try {
+      await spAcceptFamilyInvite(famCode, null);
+      steps.invite.done = true;
+      render();
+    } catch(e) {
+      if(st) st.textContent = '参加に失敗しました。もう一度お試しください';
+    }
+  };
+
+  // 完了
+  window.spObFinish = function() {
+    var el = document.getElementById('spOnboarding');
+    if (el) el.style.display = 'none';
+    // refモードの場合は友人紹介を自動登録
+    if (mode === 'referral') {
+      try {
+        var token = refToken;
+        // 既存の referral 処理を実行
+        setTimeout(function() {
+          try {
+            var ev = new CustomEvent('sp_referral_finalize', { detail: { token: token } });
+            window.dispatchEvent(ev);
+          } catch(_) {}
+        }, 1000);
+      } catch(_) {}
+    }
+    try { localStorage.removeItem('sp_pending_fam_code'); } catch(_) {}
+  };
+
+  // 表示開始（Firebase ready 待ち）
+  function showOnboarding() {
+    var el = document.getElementById('spOnboarding');
+    if (el) {
+      el.style.display = 'block';
+      render();
+    }
+  }
+
+  // auth 状態変化でも再描画
+  if (window.firebaseAuth) {
+    window.firebaseAuth.onAuthStateChanged(function(user) {
+      if (user && !steps.account.done) {
+        steps.account.done = true;
+        render();
+      }
+    });
+  }
+
+  // DOMContentLoaded 後に表示
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', showOnboarding);
+  } else {
+    showOnboarding();
+  }
 })();
 
 async function spShareFamilyId(){
