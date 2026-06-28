@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.331  BUILD_ID=3310
+APP_VERSION=v23.9.332  BUILD_ID=3320
 
 === ChangeLog B-2 ===
+### v23.9.332
+- 仮説：ボタンラベル「この価格を削除」が誤解を招く
+- 真因：「価格」より「履歴」の方が操作対象が明確
+- 修正方法：delHistBtnラベルを「この価格を削除」→「この履歴を削除」に変更
+
 ### v23.9.331
 - 仮説：1件削除と全件削除のボタンが視覚的に区別できない
 - 真因：「削除」「🗑」が隣接・ラベル不明確。削除系ボタンが2つ並ぶため操作ミスが起きる
@@ -442,8 +447,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.331";
-  const BUILD_ID    = "3310";
+  const APP_VERSION = "v23.9.332";
+  const BUILD_ID    = "3320";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -1709,7 +1714,7 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
 
         <div class="d-flex gap-2 mb-3">
-          <button id="delHistBtn" class="btn btn-outline-warning py-3 fw-bold flex-grow-0 px-3 shadow" style="display:none;" onclick="confirmDeleteHist()">この価格を削除</button>
+          <button id="delHistBtn" class="btn btn-outline-warning py-3 fw-bold flex-grow-0 px-3 shadow" style="display:none;" onclick="confirmDeleteHist()">この履歴を削除</button>
           <button id="delProductBtn" class="btn btn-outline-danger py-3 fw-bold flex-grow-0 px-3 shadow" style="display:none;" onclick="confirmDeleteProduct()" title="この商品を完全削除">🗑 商品を削除</button>
           <button id="masterSaveBtn" class="btn sp-btn-primary py-3 fw-bold fs-5 shadow flex-grow-1" style="display:none;" onclick="saveProductMasterOnly()">商品だけ保存</button>
           <button id="saveBtn" class="btn sp-btn-primary py-3 fw-bold fs-5 shadow flex-grow-1" onclick="saveData()">保存</button>
