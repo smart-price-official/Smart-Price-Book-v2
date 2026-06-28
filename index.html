@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.334  BUILD_ID=3340
+APP_VERSION=v23.9.335  BUILD_ID=3350
 
 === ChangeLog B-2 ===
+### v23.9.335
+- 仮説：家族共有時に購入履歴のプライバシーを制御できない（誕生日プレゼントなど完全に隠したい）
+- 真因：全履歴が家族パスに丸ごと同期されており、特定エントリだけ非公開にする仕組みがなかった
+- 修正方法：①登録フォームに「👨‍👩‍👧 家族と共有 / 🔒 自分だけ」トグルボタン追加（家族グループ参加時のみ表示）②saveDataでentry.private=trueを書き込み③editHistoryModeで既存エントリのprivate状態を反映④stripForCloudFamily()を新設しprivateエントリを除外・全エントリprivateな商品は存在ごと除外⑤syncFirebasePutで家族パス時はstripForCloudFamily使用⑥renderDetailHistoryで🔒マーク表示⑦設定→家族共有パネルにデフォルト共有設定（共有/自分だけ）を追加
+
 ### v23.9.334
 - 仮説：親が「家族の登録状況を確認」を押しても何も起こらない
 - 真因：①spCreateFamilyInviteがfamilyGroups/{gid}を初期化しないため子が参加するまでグループデータが存在せず「グループデータが見つかりません」で止まる②showFamilyMemberStatusの結果コンテナが画面外にあり親には何も起きていないように見える
@@ -457,8 +462,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.334";
-  const BUILD_ID    = "3340";
+  const APP_VERSION = "v23.9.335";
+  const BUILD_ID    = "3350";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -1723,6 +1728,14 @@ document.addEventListener('DOMContentLoaded', function() {
           <button id="toggleHistBtn" class="btn btn-sm btn-outline-secondary w-100" onclick="toggleHistoryList()">購入履歴を表示（タップで編集）</button>
         </div>
 
+        <!-- [v335] プライバシートグル：家族共有グループ参加時のみ表示 -->
+        <div id="privacyToggleRow" class="mb-2" style="display:none;">
+          <button id="privacyToggleBtn" class="btn w-100 py-2 fw-bold" data-private="0"
+            onclick="togglePrivacyMode()"
+            style="border-radius:10px; font-size:0.95rem;">
+            👨‍👩‍👧 家族と共有
+          </button>
+        </div>
         <div class="d-flex gap-2 mb-3">
           <button id="delHistBtn" class="btn btn-outline-warning py-3 fw-bold flex-grow-0 px-3 shadow" style="display:none;" onclick="confirmDeleteHist()">この履歴を削除</button>
           <button id="delProductBtn" class="btn btn-outline-danger py-3 fw-bold flex-grow-0 px-3 shadow" style="display:none;" onclick="confirmDeleteProduct()" title="この商品を完全削除">🗑 商品を削除</button>
@@ -2064,6 +2077,20 @@ document.addEventListener('DOMContentLoaded', function() {
           👨‍👩‍👧 家族の登録状況を確認
         </button>
         <div id="family-member-status-list" class="mt-1 mb-3" style="display:none;"></div>
+
+        <!-- [v335] 購入履歴デフォルトプライバシー設定 -->
+        <div class="mb-3 p-3" style="background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.12); border-radius:10px;">
+          <div class="small fw-bold sp-text-normal mb-2">購入履歴のデフォルト共有設定</div>
+          <div class="d-flex gap-2">
+            <button id="defaultPrivacyShared" class="btn btn-sm flex-grow-1 py-2"
+              onclick="setDefaultPrivacy('shared')"
+              style="border-radius:8px;">👨‍👩‍👧 家族と共有</button>
+            <button id="defaultPrivacyPrivate" class="btn btn-sm flex-grow-1 py-2"
+              onclick="setDefaultPrivacy('private')"
+              style="border-radius:8px;">🔒 自分だけ</button>
+          </div>
+          <div class="small text-secondary mt-2" style="opacity:.75;">登録フォームで1件ごとに変更できます</div>
+        </div>
 
         <!-- v23.9.276 SP-260618-FAMUX-001: 未ログイン時かんたん登録フォーム -->
         <div id="family-register-prompt" style="display:none;">
@@ -4955,6 +4982,26 @@ function isQuotaError(e) {
     return out;
   }
 
+  // [v335] 家族パス用：private エントリを除外。全エントリprivateな商品はスキップ
+  function stripForCloudFamily(d) {
+    const out = JSON.parse(JSON.stringify(d));
+    const filtered = {};
+    Object.keys(out.products || {}).forEach(k => {
+      const p = out.products[k];
+      if (!p) return;
+      delete p.image;
+      delete p.imageKey;
+      if (typeof p.imageUrl === 'string' && p.imageUrl.startsWith('data:')) delete p.imageUrl;
+      if (Array.isArray(p.history)) {
+        p.history = p.history.filter(function(h) { return !h.private; });
+        if (p.history.length === 0) return; // 全件private → 商品ごと除外
+      }
+      filtered[k] = p;
+    });
+    out.products = filtered;
+    return out;
+  }
+
   function saveLocalOnly() {
     try {
       localStorage.setItem('smart_price_db', JSON.stringify(db));
@@ -5382,7 +5429,9 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       const uid = getOrCreateUserId();
       // v23.9.281: 家族グループがある場合は共有パスに書き込む
       const targetUrl = getFamilySyncUrl(getSafeUrl(fbUrl), uid);
-      const payload = stripForCloud(db);
+      // [v335] 家族パス時はprivateエントリを除外
+      const _isFamilyPath = !!(currentFamilyGroupId || localStorage.getItem('sp_family_group_id'));
+      const payload = _isFamilyPath ? stripForCloudFamily(db) : stripForCloud(db);
       const _putT0 = Date.now();
       await fetchWithTimeout(targetUrl, {
         method: 'PUT',
@@ -7134,6 +7183,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     if(masterSaveBtn) masterSaveBtn.innerText = '商品だけ保存';
     if(delBtn) delBtn.style.display = 'none';
     if(delProdBtn) delProdBtn.style.display = 'none';
+    try { initPrivacyToggle(); } catch(_) {}
     if(storeJumpBtn) storeJumpBtn.style.display = 'none';
 
     curBarcode = code; editingHistIdx = null;
@@ -7843,6 +7893,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         '<div class="text-end flex-shrink-0 ms-2">' +
           '<span class="fw-bold sp-text-normal">主表示：' + formatMainPrice(h) + '</span><br>' +
           (formatReferenceTaxPrice(h) ? '<span class="sp-text-normal small">' + formatReferenceTaxPrice(h) + '</span><br>' : '') +
+          (h.private ? '<span class="text-secondary small">🔒 自分だけ</span><br>' : '') +
           '<span class="text-info small">タップで編集</span>' +
         '</div>';
       div.appendChild(row);
@@ -7875,6 +7926,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     document.getElementById('delHistBtn').style.display = "block";
     document.getElementById('delProductBtn').style.display = "none";
     document.getElementById('storeJumpBtn').style.display = "block";
+    // [v335] 編集中エントリの private 状態をトグルに反映
+    try { initPrivacyToggle(!!h.private); } catch(_) {}
 
     renderDetailHistory(p.history);
     renderStats(p.history);
@@ -8142,6 +8195,14 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         p.history[editingHistIdx].store = curStore;
         p.history[editingHistIdx].taxModeAtInput = isTaxEx ? 'ex' : 'in';
         p.history[editingHistIdx].taxRateAtInput = taxRateAtInput;
+        // [v335] 編集時もプライバシーフラグを更新
+        try {
+          var _privBtnE = document.getElementById('privacyToggleBtn');
+          if (_privBtnE) {
+            if (_privBtnE.dataset.private === '1') p.history[editingHistIdx].private = true;
+            else delete p.history[editingHistIdx].private;
+          }
+        } catch(_) {}
         showToast("変更を反映しました", 2000);
         if (isDebug()) console.log("[SaveData] History updated:", editingHistIdx);
       } else {
@@ -8173,6 +8234,11 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
           entry.lat = curPos.lat;
           entry.lng = curPos.lng;
         }
+        // [v335] プライバシーフラグ
+        try {
+          var _privBtn = document.getElementById('privacyToggleBtn');
+          if (_privBtn && _privBtn.dataset.private === '1') entry.private = true;
+        } catch(_) {}
         // [data-integrity-check] 保存前 entry 整合性チェック
         const entryCheck = validateHistoryEntry(entry);
         if (!entryCheck.ok) {
@@ -8254,6 +8320,49 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       if (saveBtn) saveBtn.disabled = false;
     }
   }
+
+  // [v335] プライバシートグル
+  function initPrivacyToggle(forcePrivate) {
+    var row = document.getElementById('privacyToggleRow');
+    var btn = document.getElementById('privacyToggleBtn');
+    if (!row || !btn) return;
+    var inFamily = !!(currentFamilyGroupId || (typeof localStorage !== 'undefined' && localStorage.getItem('sp_family_group_id')));
+    row.style.display = inFamily ? 'block' : 'none';
+    if (!inFamily) return;
+    var isPrivate = (forcePrivate !== undefined) ? forcePrivate
+      : (db && db.config && db.config.defaultPrivacy === 'private');
+    setPrivacyToggle(isPrivate);
+  }
+  function setPrivacyToggle(isPrivate) {
+    var btn = document.getElementById('privacyToggleBtn');
+    if (!btn) return;
+    btn.dataset.private = isPrivate ? '1' : '0';
+    btn.textContent = isPrivate ? '🔒 自分だけ' : '👨‍👩‍👧 家族と共有';
+    btn.className = 'btn w-100 py-2 fw-bold ' + (isPrivate ? 'btn-outline-secondary' : 'btn-outline-success');
+  }
+  function togglePrivacyMode() {
+    var btn = document.getElementById('privacyToggleBtn');
+    if (!btn) return;
+    setPrivacyToggle(btn.dataset.private !== '1');
+  }
+  window.togglePrivacyMode = togglePrivacyMode;
+
+  function setDefaultPrivacy(mode) {
+    if (!db.config) db.config = {};
+    db.config.defaultPrivacy = mode;
+    saveLocalOnly();
+    renderDefaultPrivacyButtons();
+  }
+  function renderDefaultPrivacyButtons() {
+    var mode = (db && db.config && db.config.defaultPrivacy) || 'shared';
+    var sharedBtn  = document.getElementById('defaultPrivacyShared');
+    var privateBtn = document.getElementById('defaultPrivacyPrivate');
+    if (sharedBtn)  sharedBtn.className  = 'btn btn-sm flex-grow-1 py-2 ' + (mode === 'shared'  ? 'btn-success'          : 'btn-outline-secondary');
+    if (privateBtn) privateBtn.className = 'btn btn-sm flex-grow-1 py-2 ' + (mode === 'private' ? 'btn-outline-secondary' : 'btn-outline-secondary');
+    if (mode === 'private' && privateBtn) privateBtn.className = 'btn btn-sm flex-grow-1 py-2 btn-secondary';
+  }
+  window.setDefaultPrivacy = setDefaultPrivacy;
+  window.renderDefaultPrivacyButtons = renderDefaultPrivacyButtons;
 
   function toggleHistoryList() {
     const div = document.getElementById('detailHistory');
@@ -15729,6 +15838,10 @@ function spVisibleTrace(tag, payload, cls) {
       if(commonBack) commonBack.style.setProperty('display', showMain ? 'none' : 'grid', 'important');
     }catch(e){}
     
+    // [v335] 家族パネルを開いたときにデフォルトプライバシーボタンを初期化
+    if (normalizedName === 'Family') {
+      try { renderDefaultPrivacyButtons(); } catch(_) {}
+    }
     const prevPanel = state.currentPanel;
     state.currentPanel = normalizedName;
     if (prevPanel !== normalizedName) {
