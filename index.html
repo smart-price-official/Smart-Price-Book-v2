@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.341  BUILD_ID=3410
+APP_VERSION=v23.9.342  BUILD_ID=3420
 
 === ChangeLog B-2 ===
+### v23.9.342
+- 仮説：友人紹介の受け取り側にメール登録を要求しているため登録が完了しない
+- 真因：referralモードのオンボーディングがfamilyと同じSTEP構成（アカウント作成必須）になっており、ハードルが高すぎる。SmartPriceはアカウント不要で使えるのに不要な登録を強制していた
+- 修正方法：referralモードをシンプル1画面に刷新。ニックネーム入力（任意）→「SmartPriceをはじめる」1タップで完了。アカウント登録不要。familyモードはFirebase同期が必要なためアカウント登録フローを維持
+
 ### v23.9.341
 - 仮説：友人紹介パネルを開くとハンドルネーム入力欄が空白になる
 - 真因：smartPrice_handleがlocalStorageに未設定の場合getHandle()が空文字を返し、毎回手入力が必要になっていた
@@ -492,8 +497,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.341";
-  const BUILD_ID    = "3410";
+  const APP_VERSION = "v23.9.342";
+  const BUILD_ID    = "3420";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -19924,40 +19929,72 @@ window.spShareFamilyWithText = spShareFamilyWithText;
   function render() {
     var inner = document.getElementById('spOnboardingInner');
     if (!inner) return;
+
+    // [v342] referral モードはシンプル1画面（アカウント不要）
+    if (mode === 'referral') {
+      renderReferral(inner);
+      return;
+    }
+
+    // family モード：アカウント必要（Firebase同期のため）
     var loggedIn = isLoggedIn();
     if (loggedIn && !steps.account.done) steps.account.done = true;
 
-    var title = mode === 'family'
-      ? '家族グループに招待されました'
-      : '友人から招待されました';
-
     var html = '<div class="text-center mb-4">';
     html += '<div style="font-size:2rem;">👨‍👩‍👧</div>';
-    html += '<h5 class="sp-text-normal fw-bold mt-2 mb-1">' + title + '</h5>';
+    html += '<h5 class="sp-text-normal fw-bold mt-2 mb-1">家族グループに招待されました</h5>';
     html += '<div class="small text-secondary">Smart Price へようこそ</div>';
     html += '</div>';
 
-    // STEP 1: アカウント
     html += spOnboardingStepHtml(1, steps.account.done ? '✅ アカウント準備完了' : 'アカウントを作成・ログイン', steps.account.done,
       steps.account.done ? '' : buildAccountForm()
     );
 
-    // STEP 2: 招待承認（family のみ）
-    if (mode === 'family') {
-      var step2Locked = !steps.account.done;
-      html += spOnboardingStepHtml(2, steps.invite.done ? '✅ グループ参加完了' : '招待を承認', steps.invite.done,
-        steps.invite.done ? '' : buildInviteForm(famCode, step2Locked)
-      );
-    }
+    var step2Locked = !steps.account.done;
+    html += spOnboardingStepHtml(2, steps.invite.done ? '✅ グループ参加完了' : '招待を承認', steps.invite.done,
+      steps.invite.done ? '' : buildInviteForm(famCode, step2Locked)
+    );
 
-    // STEP 完了
-    var lastStep = mode === 'family' ? 3 : 2;
-    var allDone = mode === 'family' ? (steps.account.done && steps.invite.done) : steps.account.done;
-    html += spOnboardingStepHtml(lastStep, allDone ? '🎉 完了！' : '完了', allDone,
-      allDone ? buildDoneSection() : '<div class="small text-secondary p-2" style="opacity:.5;">上のステップを完了してください</div>'
+    var allDone = steps.account.done && steps.invite.done;
+    html += spOnboardingStepHtml(3, allDone ? '🎉 完了！' : '完了', allDone,
+      allDone ? buildDoneSection() : '<div class="small text-secondary p-2 text-center" style="opacity:.5;">↑ まずSTEP 1を完了してください</div>'
     );
 
     inner.innerHTML = html;
+  }
+
+  // [v342] 友人紹介：シンプル1画面（アカウント不要）
+  var _refReferrerName = '';
+  function renderReferral(inner) {
+    // 紹介者名をFirebaseから取得（取れなければ空）
+    if (!_refReferrerName) {
+      try {
+        if (window.firebaseDb && refToken) {
+          window.firebaseDb.ref('referral_tokens/' + refToken).once('value').then(function(snap) {
+            var v = snap && snap.val();
+            if (v && v.handle) { _refReferrerName = v.handle; renderReferral(document.getElementById('spOnboardingInner')); }
+          }).catch(function(){});
+        }
+      } catch(_) {}
+    }
+
+    var fromTxt = _refReferrerName ? '<span class="fw-bold sp-text-normal">「' + _refReferrerName + '」</span>さんから' : '友人から';
+    var html = '<div class="text-center mb-4">';
+    html += '<div style="font-size:2.5rem;">🎉</div>';
+    html += '<h5 class="sp-text-normal fw-bold mt-2 mb-1">Smart Price に招待されました！</h5>';
+    html += '<div class="small text-secondary mt-1">' + fromTxt + 'の紹介です</div>';
+    html += '</div>';
+
+    html += '<div style="border:1px solid rgba(255,255,255,.15); border-radius:14px; padding:20px; background:rgba(255,255,255,.03);">';
+    html += '<div class="small fw-bold sp-text-normal mb-1">あなたのニックネーム（任意）</div>';
+    html += '<div class="small text-secondary mb-2">紹介者の画面に表示される名前です</div>';
+    html += '<input id="obRefNickname" type="text" class="form-control sp-bg-card sp-border-muted mb-3" placeholder="例: みか、Mika、田中" maxlength="20" autocomplete="nickname">';
+    html += '<button class="btn sp-btn-primary w-100 py-3 fw-bold" style="font-size:1.05rem;" onclick="spObStartReferral()">SmartPriceをはじめる 🚀</button>';
+    html += '<div class="small text-secondary text-center mt-3" style="opacity:.6;">アカウント登録なしで今すぐ使えます<br>後からバックアップ設定も可能です</div>';
+    html += '</div>';
+
+    inner.innerHTML = html;
+    try { document.getElementById('obRefNickname').focus(); } catch(_) {}
   }
 
   function spOnboardingStepHtml(num, label, done, bodyHtml) {
@@ -20080,22 +20117,28 @@ window.spShareFamilyWithText = spShareFamilyWithText;
   };
 
   // 完了
+  // [v342] 友人紹介：ニックネームだけ入力してアプリ開始
+  window.spObStartReferral = function() {
+    var nickname = ((document.getElementById('obRefNickname') || {}).value || '').trim();
+    // ニックネームを保存（入力された場合）
+    if (nickname) {
+      try { localStorage.setItem('smartPrice_handle', nickname); } catch(_) {}
+    }
+    // 紹介トークンを記録
+    try {
+      var ev = new CustomEvent('sp_referral_finalize', { detail: { token: refToken, nickname: nickname } });
+      setTimeout(function() { window.dispatchEvent(ev); }, 800);
+    } catch(_) {}
+    // オンボーディングを閉じる
+    var el = document.getElementById('spOnboarding');
+    if (el) el.style.display = 'none';
+    try { localStorage.removeItem('smartPrice_invitedBy_token'); } catch(_) {}
+    try { showToast('SmartPrice へようこそ！🎉', 3000); } catch(_) {}
+  };
+
   window.spObFinish = function() {
     var el = document.getElementById('spOnboarding');
     if (el) el.style.display = 'none';
-    // refモードの場合は友人紹介を自動登録
-    if (mode === 'referral') {
-      try {
-        var token = refToken;
-        // 既存の referral 処理を実行
-        setTimeout(function() {
-          try {
-            var ev = new CustomEvent('sp_referral_finalize', { detail: { token: token } });
-            window.dispatchEvent(ev);
-          } catch(_) {}
-        }, 1000);
-      } catch(_) {}
-    }
     try { localStorage.removeItem('sp_pending_fam_code'); } catch(_) {}
   };
 
