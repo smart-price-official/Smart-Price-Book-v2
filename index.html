@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.333  BUILD_ID=3330
+APP_VERSION=v23.9.334  BUILD_ID=3340
 
 === ChangeLog B-2 ===
+### v23.9.334
+- 仮説：親が「家族の登録状況を確認」を押しても何も起こらない
+- 真因：①spCreateFamilyInviteがfamilyGroups/{gid}を初期化しないため子が参加するまでグループデータが存在せず「グループデータが見つかりません」で止まる②showFamilyMemberStatusの結果コンテナが画面外にあり親には何も起きていないように見える
+- 修正方法：①spCreateFamilyInvite内でfamilyGroups/{gid}が未存在なら親情報で初期化、updateFamilyMemberStatus()呼び出しで親のmemberStatusも書き込み、syncFirebase()でグループパス有効化②showFamilyMemberStatus末尾にcontainer.scrollIntoView()を追加
+
 ### v23.9.333
 - 仮説：家族共有の親元が登録状況を見られない
 - 真因：spCreateFamilyInvite（招待コード発行）でfamilyInvitesにのみ書き込み、users/{uid}/familyGroupIdへの書き込みとcurrentFamilyGroupIdの設定がなかった。子（参加側）はspJoinFamilyGroupでfamilyGroupIdをFirebaseに書くため見えるが、親は書かないためcurrentFamilyGroupId=nullのままとなり個人パス（users/{uid}/smart_price.json）を参照し続ける
@@ -452,8 +457,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.333";
-  const BUILD_ID    = "3330";
+  const APP_VERSION = "v23.9.334";
+  const BUILD_ID    = "3340";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -20083,6 +20088,21 @@ async function spCreateFamilyInvite(silent) {
     await window.firebaseDb.ref('users/' + uid + '/familyGroupId').set(groupId);
     currentFamilyGroupId = groupId;
     try { localStorage.setItem('sp_family_group_id', groupId); } catch(_) {}
+    // [v334] familyGroups/{gid} が未存在なら親情報で初期化
+    try {
+      var gSnap = await window.firebaseDb.ref('familyGroups/' + groupId).once('value');
+      if (!gSnap.val()) {
+        await window.firebaseDb.ref('familyGroups/' + groupId).set({
+          groupId: groupId, members: [uid], ownerUid: uid, createdAt: Date.now()
+        });
+      } else if (!gSnap.val().members || gSnap.val().members.indexOf(uid) < 0) {
+        await window.firebaseDb.ref('familyGroups/' + groupId + '/members/' + gSnap.val().members.length).set(uid);
+      }
+    } catch(_) {}
+    // [v334] 親自身の memberStatus を書き込む
+    try { await updateFamilyMemberStatus(); } catch(_) {}
+    // [v334] syncFirebase を呼びグループパスを有効化
+    try { setTimeout(function(){ try { syncFirebase(); } catch(_){} }, 800); } catch(_) {}
     if (window.location.search.includes('debug=1')) {
       console.log('[FAMILY] FAMILY_INVITE_CREATED', { code: code, ownerUid: uid, groupId: groupId });
     }
@@ -20495,6 +20515,8 @@ async function showFamilyMemberStatus() {
   } catch(e) {
     container.innerHTML = '<div class="small text-secondary p-2">読み込み失敗: ' + (e.message || '') + '</div>';
   }
+  // [v334] 結果が画面外になるためスクロール
+  try { container.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch(_) {}
 }
 window.showFamilyMemberStatus = showFamilyMemberStatus;
 // ===== [v312.1] ここまで =====
