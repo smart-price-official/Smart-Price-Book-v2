@@ -48,9 +48,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.348  BUILD_ID=3480
+APP_VERSION=v23.9.349  BUILD_ID=3490
 
 === ChangeLog B-2 ===
+### v23.9.349
+- 仮説①：spOnboardingInit が通常起動時に早期リターンするため _spTriggerOnboarding が登録されず visibilitychange から呼べない
+- 仮説②：visibilitychange 発火時点で location.href がまだ更新されておらず ?ref= を検出できない
+- 真因：_spTriggerOnboarding の定義が if(!mode)return の後にあるため PWA通常起動時は未定義になる。またvisibilitychange一回チェックでは URL更新タイミングを外す
+- 修正方法：_spTriggerOnboarding を早期リターン前に移動。visibilitychange を500ms×10回ポーリングに変更。_spProcessRefUrl にhistory.replaceStateを追加して重複処理を防止
+
 ### v23.9.348
 - 仮説：PWAがバックグラウンド起動中にURLを開くとページリロードなしでフォアグラウンドに戻るため parseInviteCode が実行されずオンボーディングが表示されない
 - 真因：招待URL処理IIFEはページロード時1回のみ実行。既存PWAウィンドウへのフォーカス切り替えでは再実行されない
@@ -527,8 +533,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.348";
-  const BUILD_ID    = "3480";
+  const APP_VERSION = "v23.9.349";
+  const BUILD_ID    = "3490";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -19938,6 +19944,9 @@ function _spProcessRefUrl() {
     // まずトークンをそのまま保存（Firebase解決は非同期）
     localStorage.setItem('smartPrice_invitedBy_token', token);
 
+    // URLをクリーン（ポーリング重複防止）
+    try { history.replaceState(null, '', location.pathname + location.hash); } catch(_) {}
+
     // Firebaseが使えればtoken→uid解決
     setTimeout(() => {
       try {
@@ -19968,14 +19977,22 @@ function _spProcessRefUrl() {
 _spProcessFamUrl();
 _spProcessRefUrl();
 
-// [v348] visibilitychange：PWAがフォアグラウンドに戻ったとき再チェック
+// [v349] visibilitychange：ポーリングでlocation.href更新を待つ
 document.addEventListener('visibilitychange', function() {
   if (document.visibilityState !== 'visible') return;
-  var famDetected = _spProcessFamUrl();
-  var refDetected = _spProcessRefUrl();
-  if ((famDetected || refDetected) && typeof window._spTriggerOnboarding === 'function') {
-    setTimeout(window._spTriggerOnboarding, 600);
-  }
+  var checks = 0;
+  var poll = setInterval(function() {
+    checks++;
+    var famDetected = _spProcessFamUrl();
+    var refDetected = _spProcessRefUrl();
+    if (famDetected || refDetected) {
+      clearInterval(poll);
+      if (typeof window._spTriggerOnboarding === 'function') {
+        setTimeout(window._spTriggerOnboarding, 300);
+      }
+    }
+    if (checks >= 10) clearInterval(poll); // 5秒で打ち切り
+  }, 500);
 });
 
 // [v339] オンボーディング（[v345] IIFE全体をtry-catchで保護）
@@ -19987,6 +20004,23 @@ try { (function spOnboardingInit() {
   try { refToken = localStorage.getItem('smartPrice_invitedBy_token') || ''; } catch(_) {}
 
   var mode = famCode.startsWith('FAM-') ? 'family' : (refToken ? 'referral' : '');
+
+  // [v349] 早期リターン前に定義（visibilitychangeから動的呼出し対応）
+  window._spTriggerOnboarding = function() {
+    try {
+      var fam2 = ''; var ref2 = '';
+      try { fam2 = localStorage.getItem('sp_pending_fam_code') || ''; } catch(_) {}
+      try { ref2 = localStorage.getItem('smartPrice_invitedBy_token') || ''; } catch(_) {}
+      var newMode = fam2.startsWith('FAM-') ? 'family' : (ref2 ? 'referral' : '');
+      if (!newMode) return;
+      var el = document.getElementById('spOnboarding');
+      if (el && el.style.display === 'block') return;
+      mode = newMode; famCode = fam2; refToken = ref2;
+      showOnboarding();
+      bindAuthListener();
+    } catch(_) {}
+  };
+
   if (!mode) return; // 通常起動
 
   // ステップ状態
@@ -20233,23 +20267,6 @@ try { (function spOnboardingInit() {
       render();
     }
   }
-
-  // [v348] visibilitychange から動的にトリガーできるよう公開
-  window._spTriggerOnboarding = function() {
-    try {
-      var fam = localStorage.getItem('sp_pending_fam_code') || '';
-      var ref = localStorage.getItem('smartPrice_invitedBy_token') || '';
-      var newMode = fam.startsWith('FAM-') ? 'family' : (ref ? 'referral' : '');
-      if (!newMode) return;
-      var el = document.getElementById('spOnboarding');
-      if (el && el.style.display === 'block') return; // すでに表示中
-      mode = newMode;
-      famCode = fam;
-      refToken = ref;
-      showOnboarding();
-      bindAuthListener();
-    } catch(_) {}
-  };
 
   // [v340] Firebase ready 待ち → onAuthStateChanged を確実に登録
   function bindAuthListener() {
