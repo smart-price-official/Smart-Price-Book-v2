@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.345  BUILD_ID=3450
+APP_VERSION=v23.9.346  BUILD_ID=3460
 
 === ChangeLog B-2 ===
+### v23.9.346
+- 仮説：友人紹介オンボーディングの検証が既登録フラグのためできない
+- 真因：parseInviteCode()がsmartPrice_invitedByを検出すると早期リターンしトークンを保存しないため、同端末での再テストが不可能
+- 修正方法：管理モードに「友人紹介テストリセット」ボタンを追加。smartPrice_invitedBy/token/handleをlocalStorageから削除してURLを再度開くと初回扱いになる
+
 ### v23.9.345
 - 仮説：オンボーディングIIFEが起動時に実行されクラッシュしアプリ全体が停止する
 - 真因：spOnboardingInit IIFEが未保護のまま起動時に即実行されており、内部エラーがアプリ全体のクラッシュに波及していた
@@ -512,8 +517,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.345";
-  const BUILD_ID    = "3450";
+  const APP_VERSION = "v23.9.346";
+  const BUILD_ID    = "3460";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -2380,6 +2385,14 @@ document.addEventListener('DOMContentLoaded', function() {
             <div id="sharedUserIdMsg" class="small mt-1"></div>
           </div>
           
+          <!-- [v346] 友人紹介テストリセット -->
+          <div class="mt-3 mb-2 p-2" style="border:1px solid rgba(255,100,100,0.4); border-radius:8px;">
+            <div class="small text-danger mb-1">🧪 友人紹介テストリセット</div>
+            <div class="small text-secondary mb-2">紹介登録済みフラグを消去します。URLを再度開くとオンボーディング画面が表示されます。</div>
+            <button type="button" class="btn btn-outline-danger w-100 py-2" onclick="spResetReferralForTest()">🔄 紹介フラグをリセット</button>
+            <div id="spReferralResetStatus" class="small mt-1 text-success" style="min-height:1.2em;"></div>
+          </div>
+
         </div>
       <!-- v23.9.165 SP-250528-001: パネル末尾[戻る]を settingsCommonBack に共通化（panelOperator） -->
     </div>
@@ -19071,6 +19084,17 @@ async function spGenerateEditorToken() {
   }
 }
 window.spGenerateEditorToken = spGenerateEditorToken;
+
+// [v346] 友人紹介テストリセット
+function spResetReferralForTest() {
+  try { localStorage.removeItem('smartPrice_invitedBy'); } catch(_) {}
+  try { localStorage.removeItem('smartPrice_invitedBy_token'); } catch(_) {}
+  try { localStorage.removeItem('smartPrice_invitedBy_handle'); } catch(_) {}
+  var st = document.getElementById('spReferralResetStatus');
+  if (st) st.textContent = '✅ リセット完了。URLを再度開いてください。';
+  try { showToast('友人紹介フラグをリセットしました', 3000); } catch(_) {}
+}
+window.spResetReferralForTest = spResetReferralForTest;
 
 // 発行済みコード一覧を表示
 async function spListEditorTokens() {
