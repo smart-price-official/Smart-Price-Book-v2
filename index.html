@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.340  BUILD_ID=3400
+APP_VERSION=v23.9.341  BUILD_ID=3410
 
 === ChangeLog B-2 ===
+### v23.9.341
+- 仮説：友人紹介パネルを開くとハンドルネーム入力欄が空白になる
+- 真因：smartPrice_handleがlocalStorageに未設定の場合getHandle()が空文字を返し、毎回手入力が必要になっていた
+- 修正方法：updateReferralPanel()内でhandle未設定時にdb.config.handle / displayName / nameから自動補完してlocalStorageに保存。次回以降は保存値が使われる
+
 ### v23.9.340
 - 仮説：奥さんが招待URLをタップしてもオンボーディングが完了できない（Firebase未初期化・タブUI不明瞭）
 - 真因：①spOnboardingInitがfirebaseAuthより先に実行されるためonAuthStateChangedが未登録②新規登録とログインが同列のボタンで既存ユーザーが迷う③spObAcceptInviteがcurrentAuthUid未確認のまま参加処理を呼ぶ
@@ -487,8 +492,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.340";
-  const BUILD_ID    = "3400";
+  const APP_VERSION = "v23.9.341";
+  const BUILD_ID    = "3410";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -19637,7 +19642,17 @@ function genReferralToken(pid) {
 // ========== 紹介パネル表示更新 ==========
 function updateReferralPanel() {
   const pid = (typeof getDeviceId === 'function') ? getDeviceId() : '';
-  const handle = getHandle();
+  let handle = getHandle();
+
+  // [v341] ハンドルネーム未設定なら db.config.handle 等から自動補完して保存
+  if (!handle) {
+    var autoHandle = (typeof db !== 'undefined' && db && db.config)
+      ? (db.config.handle || db.config.displayName || db.config.name || '') : '';
+    if (autoHandle) {
+      localStorage.setItem('smartPrice_handle', autoHandle);
+      handle = autoHandle;
+    }
+  }
 
   // ハンドルネーム入力欄に現在値を反映
   const handleInp = document.getElementById('ref-handle-input');
