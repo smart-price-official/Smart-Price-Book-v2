@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.335  BUILD_ID=3350
+APP_VERSION=v23.9.336  BUILD_ID=3360
 
 === ChangeLog B-2 ===
+### v23.9.336
+- 仮説：共有／自分だけのトグルが1ボタン切り替えで「今どちらが選ばれているか」が分からない
+- 真因：単一ボタンのラベルが現在状態か次の操作かを区別できないUI
+- 修正方法：「👨‍👩‍👧 家族と共有」「🔒 自分だけ」の2ボタン並列に変更。選択中=塗りつぶし・非選択=アウトラインで状態を明示。_currentPrivate変数で状態管理しprivacyToggleBtnへの依存を排除
+
 ### v23.9.335
 - 仮説：家族共有時に購入履歴のプライバシーを制御できない（誕生日プレゼントなど完全に隠したい）
 - 真因：全履歴が家族パスに丸ごと同期されており、特定エントリだけ非公開にする仕組みがなかった
@@ -462,8 +467,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.335";
-  const BUILD_ID    = "3350";
+  const APP_VERSION = "v23.9.336";
+  const BUILD_ID    = "3360";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -1728,13 +1733,18 @@ document.addEventListener('DOMContentLoaded', function() {
           <button id="toggleHistBtn" class="btn btn-sm btn-outline-secondary w-100" onclick="toggleHistoryList()">購入履歴を表示（タップで編集）</button>
         </div>
 
-        <!-- [v335] プライバシートグル：家族共有グループ参加時のみ表示 -->
+        <!-- [v336] プライバシー2ボタン：家族共有グループ参加時のみ表示 -->
         <div id="privacyToggleRow" class="mb-2" style="display:none;">
-          <button id="privacyToggleBtn" class="btn w-100 py-2 fw-bold" data-private="0"
-            onclick="togglePrivacyMode()"
-            style="border-radius:10px; font-size:0.95rem;">
-            👨‍👩‍👧 家族と共有
-          </button>
+          <div class="d-flex gap-2">
+            <button id="privacyBtnShared" class="btn flex-grow-1 py-2 fw-bold"
+              onclick="setPrivacyToggle(false)" style="border-radius:10px; font-size:0.9rem;">
+              👨‍👩‍👧 家族と共有
+            </button>
+            <button id="privacyBtnPrivate" class="btn flex-grow-1 py-2 fw-bold"
+              onclick="setPrivacyToggle(true)" style="border-radius:10px; font-size:0.9rem;">
+              🔒 自分だけ
+            </button>
+          </div>
         </div>
         <div class="d-flex gap-2 mb-3">
           <button id="delHistBtn" class="btn btn-outline-warning py-3 fw-bold flex-grow-0 px-3 shadow" style="display:none;" onclick="confirmDeleteHist()">この履歴を削除</button>
@@ -8195,13 +8205,10 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         p.history[editingHistIdx].store = curStore;
         p.history[editingHistIdx].taxModeAtInput = isTaxEx ? 'ex' : 'in';
         p.history[editingHistIdx].taxRateAtInput = taxRateAtInput;
-        // [v335] 編集時もプライバシーフラグを更新
+        // [v336] 編集時もプライバシーフラグを更新
         try {
-          var _privBtnE = document.getElementById('privacyToggleBtn');
-          if (_privBtnE) {
-            if (_privBtnE.dataset.private === '1') p.history[editingHistIdx].private = true;
-            else delete p.history[editingHistIdx].private;
-          }
+          if (_currentPrivate) p.history[editingHistIdx].private = true;
+          else delete p.history[editingHistIdx].private;
         } catch(_) {}
         showToast("変更を反映しました", 2000);
         if (isDebug()) console.log("[SaveData] History updated:", editingHistIdx);
@@ -8234,11 +8241,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
           entry.lat = curPos.lat;
           entry.lng = curPos.lng;
         }
-        // [v335] プライバシーフラグ
-        try {
-          var _privBtn = document.getElementById('privacyToggleBtn');
-          if (_privBtn && _privBtn.dataset.private === '1') entry.private = true;
-        } catch(_) {}
+        // [v336] プライバシーフラグ
+        try { if (_currentPrivate) entry.private = true; } catch(_) {}
         // [data-integrity-check] 保存前 entry 整合性チェック
         const entryCheck = validateHistoryEntry(entry);
         if (!entryCheck.ok) {
@@ -8322,10 +8326,11 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
   }
 
   // [v335] プライバシートグル
+  // [v336] 2ボタン版：選択中=塗りつぶし・非選択=アウトライン
+  var _currentPrivate = false;
   function initPrivacyToggle(forcePrivate) {
     var row = document.getElementById('privacyToggleRow');
-    var btn = document.getElementById('privacyToggleBtn');
-    if (!row || !btn) return;
+    if (!row) return;
     var inFamily = !!(currentFamilyGroupId || (typeof localStorage !== 'undefined' && localStorage.getItem('sp_family_group_id')));
     row.style.display = inFamily ? 'block' : 'none';
     if (!inFamily) return;
@@ -8334,17 +8339,19 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     setPrivacyToggle(isPrivate);
   }
   function setPrivacyToggle(isPrivate) {
-    var btn = document.getElementById('privacyToggleBtn');
-    if (!btn) return;
-    btn.dataset.private = isPrivate ? '1' : '0';
-    btn.textContent = isPrivate ? '🔒 自分だけ' : '👨‍👩‍👧 家族と共有';
-    btn.className = 'btn w-100 py-2 fw-bold ' + (isPrivate ? 'btn-outline-secondary' : 'btn-outline-success');
+    _currentPrivate = !!isPrivate;
+    var sharedBtn  = document.getElementById('privacyBtnShared');
+    var privateBtn = document.getElementById('privacyBtnPrivate');
+    if (!sharedBtn || !privateBtn) return;
+    if (isPrivate) {
+      sharedBtn.className  = 'btn flex-grow-1 py-2 fw-bold btn-outline-secondary';
+      privateBtn.className = 'btn flex-grow-1 py-2 fw-bold btn-secondary';
+    } else {
+      sharedBtn.className  = 'btn flex-grow-1 py-2 fw-bold btn-success';
+      privateBtn.className = 'btn flex-grow-1 py-2 fw-bold btn-outline-secondary';
+    }
   }
-  function togglePrivacyMode() {
-    var btn = document.getElementById('privacyToggleBtn');
-    if (!btn) return;
-    setPrivacyToggle(btn.dataset.private !== '1');
-  }
+  function togglePrivacyMode() { setPrivacyToggle(!_currentPrivate); }
   window.togglePrivacyMode = togglePrivacyMode;
 
   function setDefaultPrivacy(mode) {
