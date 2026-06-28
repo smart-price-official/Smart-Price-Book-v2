@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.330  BUILD_ID=3300
+APP_VERSION=v23.9.331  BUILD_ID=3310
 
 === ChangeLog B-2 ===
+### v23.9.331
+- 仮説：1件削除と全件削除のボタンが視覚的に区別できない
+- 真因：「削除」「🗑」が隣接・ラベル不明確。削除系ボタンが2つ並ぶため操作ミスが起きる
+- 修正方法：案B排他設計。通常モードは「🗑 商品を削除」（赤）のみ、履歴1件タップ時は「この価格を削除」（オレンジ）のみ表示し商品削除は隠す。editHistoryModeでdelHistBtn=block/delProductBtn=none、openFormでリセット
+
 ### v23.9.330
 - 仮説：履歴1件削除ボタン（delHistBtn）が編集モードでも非表示になっている
 - 真因：v85fix時に「ゴミ箱ボタンのみ」とコメントしてdelHistBtnをhideに固定したが、ゴミ箱（delProductBtn）は商品ごと全削除するものであり設計ミス。1件削除のUIが存在しない状態になっていた
@@ -437,8 +442,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.330";
-  const BUILD_ID    = "3300";
+  const APP_VERSION = "v23.9.331";
+  const BUILD_ID    = "3310";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -1704,8 +1709,8 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
 
         <div class="d-flex gap-2 mb-3">
-          <button id="delHistBtn" class="btn btn-outline-secondary py-3 fw-bold flex-grow-0 px-3 shadow" style="display:none;" onclick="confirmDeleteHist()">削除</button>
-          <button id="delProductBtn" class="btn btn-outline-danger py-3 fw-bold flex-grow-0 px-3 shadow" style="display:none;" onclick="confirmDeleteProduct()" title="この商品を完全削除">🗑</button>
+          <button id="delHistBtn" class="btn btn-outline-warning py-3 fw-bold flex-grow-0 px-3 shadow" style="display:none;" onclick="confirmDeleteHist()">この価格を削除</button>
+          <button id="delProductBtn" class="btn btn-outline-danger py-3 fw-bold flex-grow-0 px-3 shadow" style="display:none;" onclick="confirmDeleteProduct()" title="この商品を完全削除">🗑 商品を削除</button>
           <button id="masterSaveBtn" class="btn sp-btn-primary py-3 fw-bold fs-5 shadow flex-grow-1" style="display:none;" onclick="saveProductMasterOnly()">商品だけ保存</button>
           <button id="saveBtn" class="btn sp-btn-primary py-3 fw-bold fs-5 shadow flex-grow-1" onclick="saveData()">保存</button>
         </div>
@@ -7851,8 +7856,9 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     const taxLearningPrompt = document.getElementById('storeTaxLearningPrompt');
     if (taxLearningPrompt) taxLearningPrompt.style.display = 'none';
     document.getElementById('saveBtn').innerText = "変更確定";
-    // [v330] 履歴1件削除ボタンを編集モード時に表示
+    // [v331] 案B排他: 履歴編集モードは「この価格を削除」のみ・商品削除は隠す
     document.getElementById('delHistBtn').style.display = "block";
+    document.getElementById('delProductBtn').style.display = "none";
     document.getElementById('storeJumpBtn').style.display = "block";
 
     renderDetailHistory(p.history);
