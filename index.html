@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.351  BUILD_ID=3510
+APP_VERSION=v23.9.352  BUILD_ID=3520
 
 === ChangeLog B-2 ===
+### v23.9.352
+- 仮説：友人紹介メールのURLに?ref=TOKENが含まれていないためホーム画面しか開かない
+- 真因：FRIEND_SHARE_TEMPLATESがhttps://smapri.jp固定文字列で、spSelectReferralTemplate()がトークン付きURLを[紹介URL]プレースホルダーで差し込む処理が存在しなかった
+- 修正方法：テンプレートのhttps://smapri.jpを[紹介URL]プレースホルダーに変更。spSelectReferralTemplate()でref-link inputのトークン付きURLを[紹介URL]と置換してtextareaに反映
+
 ### v23.9.351
 - 仮説①：v350でCompat APIをModular SDKに変換したが_fbFnsは未定義のため全家族共有操作がサイレント失敗していた
 - 仮説②：PWA起動中にURLタップするとlocation.hrefが変わらずvisibilitychangeポーリングでも?ref=を検出できない
@@ -546,8 +551,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.351";
-  const BUILD_ID    = "3510";
+  const APP_VERSION = "v23.9.352";
+  const BUILD_ID    = "3520";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -19853,9 +19858,9 @@ window.spReferralShare1Tap = spReferralShare1Tap;
 // ========== [v234 SP-250609-SHARE-002] 共有テンプレート ==========
 
 var FRIEND_SHARE_TEMPLATES = [
-  '最近使い始めた「スマプラ」っていうアプリが結構便利だよ♪\nお店ごとの値段を比べられるから、どこで買うのが安いかすぐ分かるの。\n無料で使えるから良かったら試してみてね！\n\nhttps://smapri.jp',
-  '買い物前にスマプラを見るようにしたら、同じ商品でもお店によって値段が違うのが分かって面白いよ！\nバーコードで簡単に登録できるし、節約にも役立つからおすすめ♪\n\nhttps://smapri.jp',
-  '節約したい人におすすめの「スマプラ」を紹介するね。\nよく買う商品の値段を記録して、お得なお店を見つけやすくなるよ！\n無料だから気軽に使ってみてね。\n\nhttps://smapri.jp'
+  '最近使い始めた「スマプラ」っていうアプリが結構便利だよ♪\nお店ごとの値段を比べられるから、どこで買うのが安いかすぐ分かるの。\n無料で使えるから良かったら試してみてね！\n\n[紹介URL]',
+  '買い物前にスマプラを見るようにしたら、同じ商品でもお店によって値段が違うのが分かって面白いよ！\nバーコードで簡単に登録できるし、節約にも役立つからおすすめ♪\n\n[紹介URL]',
+  '節約したい人におすすめの「スマプラ」を紹介するね。\nよく買う商品の値段を記録して、お得なお店を見つけやすくなるよ！\n無料だから気軽に使ってみてね。\n\n[紹介URL]'
 ];
 window.FRIEND_SHARE_TEMPLATES = FRIEND_SHARE_TEMPLATES;
 
@@ -19872,8 +19877,10 @@ window.FAMILY_SHARE_TEMPLATES = FAMILY_SHARE_TEMPLATES;
 var _spRefTmplIdx = 0;
 function spSelectReferralTemplate(idx) {
   _spRefTmplIdx = idx;
-  // v23.9.271 SP-260617-SHAREDOMAINREMOVE-001: URLをテキストに付加しない（キャリアスパム回避）
   var text = FRIEND_SHARE_TEMPLATES[idx];
+  // [v352] [紹介URL] をトークン付きURLで置換
+  var refLink = (document.getElementById('ref-link') || {}).value || SP_SHARE_PUBLIC_URL;
+  text = text.replace(/\[紹介URL\]/g, refLink);
   var ta = document.getElementById('referral-share-text');
   if (ta) ta.value = text;
   for (var i = 0; i < 3; i++) {
