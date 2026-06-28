@@ -6,7 +6,7 @@
  * TITLE: PWAオフライン最小セット（安全寄り）
  */
 
-const CACHE_NAME = "smart-price-book-cache-v23.9.350";
+const CACHE_NAME = "smart-price-book-cache-v23.9.351";
 const RUNTIME_CACHE = "smart-price-book-runtime-v23.9.287";
 
 const PRECACHE_URLS = [
@@ -57,6 +57,16 @@ self.addEventListener("fetch", (event) => {
 
   // HTML遷移はネット優先→失敗時キャッシュ
   if (req.mode === "navigate") {
+    // [v351] 招待URLを既存クライアントに postMessage（PWA起動中でも検出できる）
+    const navUrl = new URL(req.url);
+    const refToken = navUrl.searchParams.get('ref');
+    const famCode  = navUrl.searchParams.get('fam');
+    if (refToken || famCode) {
+      self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clients => {
+        clients.forEach(c => c.postMessage({ type: 'SP_INVITE_URL', ref: refToken, fam: famCode }));
+      });
+    }
+
     event.respondWith((async () => {
       try {
         const fresh = await fetch(req);
