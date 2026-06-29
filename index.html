@@ -48,9 +48,17 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.352  BUILD_ID=3520
+APP_VERSION=v23.9.353  BUILD_ID=3530
 
 === ChangeLog B-2 ===
+### v23.9.353
+- 仮説①：友人紹介メールにhttps://smapri.jpが二重に出る。_spShareContentのurl引数にSP_SHARE_PUBLIC_URLを渡していたため
+- 仮説②：商品名不明の商品はYahoo APIに無いマイナー商品だが、スキャン後にcallJanNameGasが非同期で名前を取得しても履歴画面に反映されない
+- 真因①：spShareReferralWithText()がurl引数にSP_SHARE_PUBLIC_URLを渡しShareAPIがURLを追加→テキスト内のref URL＋プレーンURLの二重表示
+- 真因②：callJanNameGasの結果はdb.jan_dictに保存されるがdb.products[jan].nameは更新されず、spGetDisplayNameも参照していない
+- 修正方法①：_spShareContent呼び出しのurl引数をnullに変更
+- 修正方法②：spGetDisplayNameでdb.jan_dictを参照。renderHistory後に商品名不明のJANをcallJanNameGasで最大5件バックグラウンド再ルックアップし結果をdb.productsに反映・再描画
+
 ### v23.9.352
 - 仮説：友人紹介メールのURLに?ref=TOKENが含まれていないためホーム画面しか開かない
 - 真因：FRIEND_SHARE_TEMPLATESがhttps://smapri.jp固定文字列で、spSelectReferralTemplate()がトークン付きURLを[紹介URL]プレースホルダーで差し込む処理が存在しなかった
@@ -551,8 +559,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.352";
-  const BUILD_ID    = "3520";
+  const APP_VERSION = "v23.9.353";
+  const BUILD_ID    = "3530";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -3391,6 +3399,11 @@ document.addEventListener('DOMContentLoaded', function() {
     var n = String(name || '').trim();
     var j = String(jan || '').trim();
     if (!n || n === j) {
+      // [v353] jan_dict にキャッシュ済みの名前があれば使う
+      try {
+        var cached = db && db.jan_dict && db.jan_dict[j];
+        if (cached && cached.name && cached.name !== j) return cached.name;
+      } catch(_) {}
       return '商品名不明（' + j + '）';
     }
     return n;
@@ -7251,6 +7264,44 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       if (!displayedCount && hasAnyHistory) {
         try { spDbg('[HISTORY_RENDER_EMPTY_REASON]', { reason: 'no_cards_after_loop', totalEntries }); } catch (_he2) {}
       }
+
+      // [v353] 商品名不明の商品をバックグラウンドで再ルックアップ
+      try {
+        var unknownJans = [];
+        if (db && db.products) {
+          Object.keys(db.products).forEach(function(jan) {
+            var p = db.products[jan];
+            if (!p || !p.history || !p.history.length) return;
+            var n = String(p.name || '').trim();
+            var cached = db.jan_dict && db.jan_dict[jan] && db.jan_dict[jan].name;
+            if ((!n || n === jan) && !cached) unknownJans.push(jan);
+            // jan_dict にあれば即座に products に反映してlocalStorageへ保存
+            if (cached && cached !== jan && (!n || n === jan)) {
+              db.products[jan].name = cached;
+            }
+          });
+        }
+        if (unknownJans.length > 0) {
+          // 1件ずつ順番に（API負荷軽減）・最大5件まで
+          var toLookup = unknownJans.slice(0, 5);
+          (function lookupNext(i) {
+            if (i >= toLookup.length) { try { saveLocalOnly(); renderHistory(); } catch(_) {} return; }
+            callJanNameGas(toLookup[i]).then(function(r) {
+              if (r && r.confirmed_name) {
+                var jan2 = toLookup[i];
+                if (db.products[jan2]) db.products[jan2].name = r.confirmed_name;
+                if (!db.jan_dict) db.jan_dict = {};
+                db.jan_dict[jan2] = { name: r.confirmed_name, spkb: true, updated_at: Date.now() };
+              }
+              setTimeout(function() { lookupNext(i + 1); }, 800);
+            }).catch(function() { setTimeout(function() { lookupNext(i + 1); }, 800); });
+          })(0);
+        } else if (unknownJans.length === 0) {
+          // jan_dict 反映分をまとめて保存
+          try { saveLocalOnly(); } catch(_) {}
+        }
+      } catch(_rl) {}
+
     } catch (_hdone) {}
 
     } catch (histRenderOuter) {
@@ -19896,8 +19947,8 @@ window.spSelectReferralTemplate = spSelectReferralTemplate;
 async function spShareReferralWithText() {
   var ta = document.getElementById('referral-share-text');
   var text = ta ? ta.value : (FRIEND_SHARE_TEMPLATES[0] || '');
-  // v23.9.283: URLをnullからSP_SHARE_PUBLIC_URLに変更（友人がアクセスできるよう）
-  await _spShareContent('Smart Price 友人紹介', text, SP_SHARE_PUBLIC_URL || null);
+  // [v353] URL引数をnullに（テキスト内に?ref=URLが入るため二重URL防止）
+  await _spShareContent('Smart Price 友人紹介', text, null);
 }
 window.spShareReferralWithText = spShareReferralWithText;
 
