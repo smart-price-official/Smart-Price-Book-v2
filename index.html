@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.355  BUILD_ID=3550
+APP_VERSION=v23.9.356  BUILD_ID=3560
 
 === ChangeLog B-2 ===
+### v23.9.356
+- 仮説：パスワードリセットが「通信失敗 not_found」になる
+- 真因：handlePasswordResetClick()が/api/auth/reset-passwordという未実装サーバーAPIを呼んでいた
+- 修正方法：_spApiCall廃止→window.firebaseAuth.sendPasswordResetEmail(email)に直接変更。エラーコード別メッセージも日本語化
+
 ### v23.9.355
 - 仮説①：updateReferralStatus()がwindow._fbFns（未定義）に依存しているためFirebase書き込みが一切実行されていない
 - 仮説②：showReferralStatusV2()がdb.config.firebaseUrl（未設定）を参照するため常に「Firebase未設定」と表示される
@@ -572,8 +577,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.355";
-  const BUILD_ID    = "3550";
+  const APP_VERSION = "v23.9.356";
+  const BUILD_ID    = "3560";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -16902,21 +16907,20 @@ function spVisibleTrace(tag, payload, cls) {
     var email = emailEl ? String(emailEl.value || '').trim() : '';
     function setMsg(t, cls) { if (msg) { msg.textContent = t; msg.className = 'small mt-2 ' + cls; } }
     if (!email) { setMsg('メールアドレスを入力してください', 'text-warning'); return; }
+    if (!window.firebaseAuth) { setMsg('✗ 認証サービスに接続できません', 'text-danger'); return; }
     setMsg('送信中…', 'text-secondary');
+    // [v356] _spApiCall(/api/auth/reset-password)は未実装→Firebase Auth直接使用
     try {
-      var ret = await _spApiCall('/api/auth/reset-password', 'POST', { email: email });
-      if (ret.ok) {
-        setMsg('✓ パスワードリセットメールを送信しました', 'text-success');
-        try { spDbg('[PASSWORD_RESET_OK]', { email: email }); } catch (_) {}
-      } else if (ret.networkError) {
-        setMsg('✗ 通信エラー: ' + ret.networkError, 'text-danger');
-      } else {
-        var detail = (ret.body && (ret.body.detail || ret.body.error)) || ('HTTP ' + ret.status);
-        setMsg('✗ 送信失敗: ' + detail, 'text-danger');
-        try { spDbg('[PASSWORD_RESET_ERR]', { status: ret.status, detail: detail }); } catch (_) {}
-      }
+      await window.firebaseAuth.sendPasswordResetEmail(email);
+      setMsg('✓ パスワードリセットメールを送信しました。メールをご確認ください', 'text-success');
+      try { spDbg('[PASSWORD_RESET_OK]', { email: email }); } catch (_) {}
     } catch (e) {
-      setMsg('✗ 通信エラー: ' + (e && e.message ? e.message : String(e)), 'text-danger');
+      var code = e && e.code ? e.code : '';
+      var detail = code === 'auth/user-not-found' ? 'このメールアドレスは登録されていません'
+                 : code === 'auth/invalid-email'  ? 'メールアドレスの形式が正しくありません'
+                 : (e && e.message ? e.message : String(e));
+      setMsg('✗ ' + detail, 'text-danger');
+      try { spDbg('[PASSWORD_RESET_ERR]', { code: code, detail: detail }); } catch (_) {}
     }
   }
   window.handlePasswordResetClick = handlePasswordResetClick;
