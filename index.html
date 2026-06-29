@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.359  BUILD_ID=3590
+APP_VERSION=v23.9.360  BUILD_ID=3600
 
 === ChangeLog B-2 ===
+### v23.9.360
+- 仮説：updateReferralStatus()がdb.config.personalId未設定で即リターンしていた
+- 真因：personalIdを設定するコードが存在しない。新規ユーザーは常にnull→if(!myId)returnで処理が止まる
+- 修正方法：myId = db.config.personalId || getDeviceId() に変更。showReferralStatusV2と同じ方式に統一
+
 ### v23.9.359
 - 仮説：OPPOがオンボーディング（ニックネーム入力）完了時点ではGoogleログイン前のため、Firebase Rules auth!=nullで書き込みが全て拒否されていた
 - 真因：spObStartReferral()でトークンを削除→onAuthStateChanged到達時にトークンが消えている。かつ_spProcessRefUrl()の3秒後解決も未ログインのため失敗
@@ -599,8 +604,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.359";
-  const BUILD_ID    = "3590";
+  const APP_VERSION = "v23.9.360";
+  const BUILD_ID    = "3600";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -19330,7 +19335,8 @@ function checkReferralQualification(referredUserId) {
 function updateReferralStatus() {
   if (!db || !db.config || !db.config.referredBy) return;
 
-  var myId = db.config.personalId;
+  // [v360] personalIdが未設定の新規ユーザーに対応→getDeviceId()をfallbackに使用
+  var myId = db.config.personalId || (typeof getDeviceId === 'function' ? getDeviceId() : null);
   var inviterId = db.config.referredBy;
   var qualified = checkReferralQualification(myId);
 
