@@ -48,9 +48,16 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.356  BUILD_ID=3560
+APP_VERSION=v23.9.357  BUILD_ID=3570
 
 === ChangeLog B-2 ===
+### v23.9.357
+- 仮説：「紹介した友人の利用状況」に誰も表示されない
+- 真因①：referral_tokensのFirebase書き込みが_fbFns依存（未定義）のためトークンが存在しない→友人側がトークンを解決できない
+- 真因②：spObStartReferral()がsp_referral_finalizeイベントをdispatchするがリスナーが存在しない→db.config.referredByが設定されない→updateReferralStatus()が即リターンして何も書かない
+- 修正方法①：referral_tokens書き込みをwindow.firebaseDb.ref().set()に変更
+- 修正方法②：sp_referral_finalizeのaddEventListenerを追加。referral_tokens/{token}からinviterUidを取得→db.config.referredByに保存→updateReferralStatus()呼び出し
+
 ### v23.9.356
 - 仮説：パスワードリセットが「通信失敗 not_found」になる
 - 真因：handlePasswordResetClick()が/api/auth/reset-passwordという未実装サーバーAPIを呼んでいた
@@ -577,8 +584,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.356";
-  const BUILD_ID    = "3560";
+  const APP_VERSION = "v23.9.357";
+  const BUILD_ID    = "3570";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -19325,6 +19332,32 @@ function updateReferralStatus() {
 window.checkReferralQualification = checkReferralQualification;
 window.updateReferralStatus = updateReferralStatus;
 
+// [v357] sp_referral_finalize リスナー（オンボーディング完了時に紹介関係をFirebaseに保存）
+window.addEventListener('sp_referral_finalize', function(ev) {
+  try {
+    var token = ev && ev.detail && ev.detail.token ? ev.detail.token : '';
+    if (!token || !window.firebaseDb) return;
+    // referral_tokens/{token} からinviterUidを取得してdb.config.referredByに保存
+    window.firebaseDb.ref('referral_tokens/' + token).once('value').then(function(snap) {
+      var data = snap && snap.val ? snap.val() : null;
+      if (!data || !data.uid) return;
+      var inviterUid = data.uid;
+      if (!db.config) db.config = {};
+      if (!db.config.referredBy) {
+        db.config.referredBy = inviterUid;
+        if (typeof saveLocalOnly === 'function') saveLocalOnly();
+        try { spDbg('[REFERRAL_FINALIZE]', { inviterUid: inviterUid, token: token }); } catch(_) {}
+      }
+      // Firebase referrals/{inviterUid}/{myId} に自分の利用状況を書き込む
+      setTimeout(function() {
+        try { if (typeof updateReferralStatus === 'function') updateReferralStatus(); } catch(_) {}
+      }, 1000);
+    }).catch(function(e) {
+      try { spDbg('[REFERRAL_FINALIZE_ERR]', { token: token, err: String(e) }); } catch(_) {}
+    });
+  } catch(e) {}
+});
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // v22.0: 複数端末同期（ユーザIDベース）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -19829,17 +19862,15 @@ function updateReferralPanel() {
     token = genReferralToken(pid);
     sessionStorage.setItem('sp_ref_token', token);
     // Firebaseにtoken→pid のマッピングを保存（利用可能な場合）
+    // [v357] _fbFns依存を除去→Compat API直接使用
     try {
       if (window.firebaseDb && pid) {
-        const { ref: fbRef, set } = window._fbFns || {};
-        if (fbRef && set) {
-          set(fbRef(window.firebaseDb, `referral_tokens/${token}`), {
-            uid: pid,
-            handle: handle || '',
-            createdAt: Date.now(),
-            used: false
-          });
-        }
+        window.firebaseDb.ref('referral_tokens/' + token).set({
+          uid: pid,
+          handle: handle || '',
+          createdAt: Date.now(),
+          used: false
+        });
       }
     } catch(e) {}
   }
