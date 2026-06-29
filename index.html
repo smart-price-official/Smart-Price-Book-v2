@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.353  BUILD_ID=3530
+APP_VERSION=v23.9.354  BUILD_ID=3540
 
 === ChangeLog B-2 ===
+### v23.9.354
+- 仮説：商品名不明時にユーザーが状況を理解できず、入力すべきか登録すべきか判断できない
+- 真因：全ルックアップ失敗（Yahoo/Rakuten/OFF/WebSearch全MISS）時にUIに何も案内が出ず、ユーザーが困惑する
+- 修正方法：スキャン後にルックアップ全失敗した場合のみ#unknownProductHintを表示。マイナー商品である旨＋商品名任意入力の案内＋急いでいればそのまま登録OKの案内を表示。入力した瞬間にヒント非表示。管理スタッフが翌日Firebase global/unresolvedを見て調査・辞書補強するハイブリッド運用を前提とする
+
 ### v23.9.353
 - 仮説①：友人紹介メールにhttps://smapri.jpが二重に出る。_spShareContentのurl引数にSP_SHARE_PUBLIC_URLを渡していたため
 - 仮説②：商品名不明の商品はYahoo APIに無いマイナー商品だが、スキャン後にcallJanNameGasが非同期で名前を取得しても履歴画面に反映されない
@@ -559,8 +564,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.353";
-  const BUILD_ID    = "3530";
+  const APP_VERSION = "v23.9.354";
+  const BUILD_ID    = "3540";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -1786,10 +1791,16 @@ document.addEventListener('DOMContentLoaded', function() {
           </div>
           <div class="flex-grow-1">
             <div class="d-flex align-items-center mb-2 gap-1">
-              <input type="text" id="inputName" class="form-control sp-bg-card sp-border-muted" placeholder="商品名（内容量）" style="flex:1;" oninput="try{ if(typeof updateRefetchBtnVisibility==='function') updateRefetchBtnVisibility(); }catch(_){}">
+              <input type="text" id="inputName" class="form-control sp-bg-card sp-border-muted" placeholder="商品名（内容量）" style="flex:1;" oninput="try{ if(typeof updateRefetchBtnVisibility==='function') updateRefetchBtnVisibility(); }catch(_){} try{ if(this.value){ var _h=document.getElementById('unknownProductHint'); if(_h) _h.style.display='none'; } }catch(_){}">
               <button id="aiNameBtn" onclick="aiRefineName()" title="AIで商品名を整える" class="sp-ai-btn">✨</button>
               <!-- v23.9.167 SP-250530-004: 商品情報を再取得（AI補完失敗 or 画像なしの時に出る） -->
               <button id="refetchBtn" onclick="refetchProductInfo()" title="商品情報を再取得（AI+画像）" class="sp-ai-btn" style="display:none;">🔄</button>
+            </div>
+            <!-- [v354] 商品名不明ヒント：マイナー商品でルックアップ失敗時のみ表示 -->
+            <div id="unknownProductHint" style="display:none; margin-top:6px; padding:8px 10px; background:rgba(255,193,7,0.1); border:1px solid rgba(255,193,7,0.3); border-radius:8px; font-size:0.8rem; line-height:1.5;">
+              <span style="color:#ffc107; font-weight:bold;">📦 マイナー商品のため自動取得できませんでした</span><br>
+              <span style="color:var(--sp-text,#ddd);">お時間があれば上の欄に商品名を入力いただけると助かります。</span><br>
+              <span style="color:var(--sp-text-secondary,#999);">急いでいる場合はそのまま登録してOKです。後日スタッフが調べて更新します。</span>
             </div>
             <select id="inputCategory" class="form-control sp-bg-card sp-border-muted mb-2" style="font-size:0.85rem; padding:4px;"></select>
             <!-- ✅ サブカテゴリ復活（最小UI） -->
@@ -12628,6 +12639,8 @@ function spVisibleTrace(tag, payload, cls) {
       if (nameInput && !nameAtStart) {
         nameInput.placeholder = '商品情報を取得中…';
       }
+      // [v354] スキャン開始時はヒントを非表示にリセット
+      try { var _uh0 = document.getElementById('unknownProductHint'); if (_uh0) _uh0.style.display = 'none'; } catch(_) {}
       
       try {
           const p = db.products[jan] || { history: [] };
@@ -13565,6 +13578,8 @@ function spVisibleTrace(tag, payload, cls) {
         const hasData = finalInfo.name || finalInfo.maker || finalInfo.imageUrl;
         if (hasData) {
           showToast("商品情報を取得しました", 3000);
+          // [v354] 商品名が取得できたらヒントを非表示
+          try { var _uhOk = document.getElementById('unknownProductHint'); if (_uhOk) _uhOk.style.display = 'none'; } catch(_) {}
         }
         // v23.9.167 SP-250530-004: 取得後に再取得ボタンの表示判定を更新（成否どちらでも）
         try { if (typeof window.updateRefetchBtnVisibility === 'function') setTimeout(window.updateRefetchBtnVisibility, 100); } catch (_) {}
@@ -13622,6 +13637,12 @@ function spVisibleTrace(tag, payload, cls) {
           // v23.9.169 SP-260601-002: 段階9 商品情報が見つかりませんでした（旧 8 秒 showToast は append 方式のため置換）
           //   ※ JAN 詳細表示は debug 時のみに格下げ。通常運用ではステージトースト本文のみ表示
           try { if (typeof showLookupStageToast === 'function') showLookupStageToast(9, '商品情報が見つかりませんでした。手入力または再取得できます', { jan: jan, ev: 'barcode_lookup_stage_failed', final: true, ms: 5000 }); } catch (_) {}
+          // [v354] マイナー商品ヒントを表示（inputNameが空の時のみ）
+          try {
+            var _uhFail = document.getElementById('unknownProductHint');
+            var _niNow = document.getElementById('inputName');
+            if (_uhFail && _niNow && !_niNow.value) _uhFail.style.display = 'block';
+          } catch(_) {}
           if (isDebug()) { try { showToast(`商品情報が見つかりませんでした\nJAN: ${jan}\n商品名・メーカーを手入力してください`, 8000); } catch (_) {} }
           try { spDbg('[LOOKUP_TOAST_FALLBACK]', { reason: 'no_product_data', jan: jan }); } catch (_ltf) {}
           // v23.9.153: 商品名未解決をローカルに記録
