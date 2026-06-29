@@ -48,7 +48,7 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.363  BUILD_ID=3630
+APP_VERSION=v23.9.364  BUILD_ID=3640
 
 === ChangeLog B-2 ===
 ### v23.9.361
@@ -609,8 +609,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.363";
-  const BUILD_ID    = "3630";
+  const APP_VERSION = "v23.9.364";
+  const BUILD_ID    = "3640";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -20148,12 +20148,21 @@ function _spProcessRefUrl() {
     // [v362] Firebaseが使えればtoken→uid解決（デバッグトースト付き）
     setTimeout(() => {
       try {
-        // [v363] デバッグalert：token取得とfirebaseDb状態を確認
-        alert('[DBG1] token=' + token.slice(0,8) + '\nfb=' + (!!window.firebaseDb));
+        // [v364] デバッグ表示：画面に固定バナーで表示（消えない）
+        try {
+          var _dbgDiv = document.createElement('div');
+          _dbgDiv.id = 'sp-dbg-banner';
+          _dbgDiv.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#c00;color:#fff;z-index:99999;padding:16px;font-size:16px;font-family:monospace;word-break:break-all;';
+          _dbgDiv.textContent = '[DBG1] token=' + token.slice(0,8) + '... fb=' + (!!window.firebaseDb);
+          document.body.appendChild(_dbgDiv);
+        } catch(_dbgE) {}
         if (window.firebaseDb) {
           window.firebaseDb.ref('referral_tokens/' + token).once('value').then(function(snap) {
             var data = snap && snap.val ? snap.val() : null;
-            alert('[DBG2] data=' + (data ? 'OK uid=' + (data.uid||'').slice(0,8) : 'NULL'));
+            try {
+              var _d = document.getElementById('sp-dbg-banner');
+              if (_d) _d.textContent = '[DBG2] data=' + (data ? 'OK uid=' + (data.uid||'').slice(0,8) : 'NULL') + ' fb=true';
+            } catch(_) {}
             // [v361] usedチェックを外す（used:trueでも処理・同じリンク再処理を許容）
             if (data && data.uid) {
               localStorage.setItem('smartPrice_invitedBy', data.uid);
