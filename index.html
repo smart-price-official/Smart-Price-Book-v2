@@ -48,9 +48,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.358  BUILD_ID=3580
+APP_VERSION=v23.9.359  BUILD_ID=3590
 
 === ChangeLog B-2 ===
+### v23.9.359
+- 仮説：OPPOがオンボーディング（ニックネーム入力）完了時点ではGoogleログイン前のため、Firebase Rules auth!=nullで書き込みが全て拒否されていた
+- 真因：spObStartReferral()でトークンを削除→onAuthStateChanged到達時にトークンが消えている。かつ_spProcessRefUrl()の3秒後解決も未ログインのため失敗
+- 修正方法①：spObStartReferral()でsmartPrice_invitedBy_tokenを削除しない（ログイン後まで保持）
+- 修正方法②：onAuthStateChangedにトークン未解決ケースを追加。ログイン後にreferral_tokens/{token}を解決→_spFinalizeReferral呼び出し
+
 ### v23.9.358
 - 仮説：友人紹介リンクを踏んでもオンボーディング完了時のみ処理されるため、既ログイン済みユーザーや再検証時に紹介関係が保存されない
 - 真因①：_spProcessRefUrl()のreferral_tokens解決が_fbFns依存（未定義）→smartPrice_invitedByが保存されない
@@ -593,8 +599,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.358";
-  const BUILD_ID    = "3580";
+  const APP_VERSION = "v23.9.359";
+  const BUILD_ID    = "3590";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -3083,13 +3089,29 @@ document.addEventListener('DOMContentLoaded', function() {
       if (user) {
         currentAuthUid = user.uid;
         if (isDebug()) console.log('[Firebase] Auth state changed, UID:', currentAuthUid);
-        // [v358] ログイン後に未処理の紹介トークンをチェックして紹介関係を書き込む
+        // [v359] ログイン後に未処理の紹介トークン/招待者UIDをチェックして紹介関係を書き込む
         setTimeout(function() {
           try {
             var _pendingInvitedBy = localStorage.getItem('smartPrice_invitedBy');
+            var _pendingToken = localStorage.getItem('smartPrice_invitedBy_token');
             if (_pendingInvitedBy && typeof window._spFinalizeReferral === 'function') {
+              // 既にUID解決済みの場合
               window._spFinalizeReferral(_pendingInvitedBy);
               try { localStorage.removeItem('smartPrice_invitedBy'); } catch(_) {}
+            } else if (_pendingToken && window.firebaseDb) {
+              // トークンまだ未解決（ログイン前にオンボーディング完了したケース）→ ここでUID解決
+              window.firebaseDb.ref('referral_tokens/' + _pendingToken).once('value').then(function(snap) {
+                var data = snap && snap.val ? snap.val() : null;
+                if (data && data.uid && !data.used) {
+                  try { localStorage.setItem('smartPrice_invitedBy', data.uid); } catch(_) {}
+                  try { localStorage.setItem('smartPrice_invitedBy_handle', data.handle || ''); } catch(_) {}
+                  try { window.firebaseDb.ref('referral_tokens/' + _pendingToken + '/used').set(true); } catch(_) {}
+                  var _fromName = data.handle ? '「' + data.handle + '」' : '友人';
+                  try { showToast(_fromName + 'の紹介で登録されました ✅', 4000); } catch(_) {}
+                  try { localStorage.removeItem('smartPrice_invitedBy_token'); } catch(_) {}
+                  if (typeof window._spFinalizeReferral === 'function') window._spFinalizeReferral(data.uid);
+                }
+              }).catch(function() {});
             }
           } catch(_) {}
         }, 2000);
@@ -20435,7 +20457,7 @@ try { (function spOnboardingInit() {
     // オンボーディングを閉じる
     var el = document.getElementById('spOnboarding');
     if (el) el.style.display = 'none';
-    try { localStorage.removeItem('smartPrice_invitedBy_token'); } catch(_) {}
+    // [v359] トークンはログイン後のonAuthStateChangedで処理するため削除しない
     try { showToast('SmartPrice へようこそ！🎉', 3000); } catch(_) {}
   };
 
