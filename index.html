@@ -48,9 +48,18 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.357  BUILD_ID=3570
+APP_VERSION=v23.9.358  BUILD_ID=3580
 
 === ChangeLog B-2 ===
+### v23.9.358
+- 仮説：友人紹介リンクを踏んでもオンボーディング完了時のみ処理されるため、既ログイン済みユーザーや再検証時に紹介関係が保存されない
+- 真因①：_spProcessRefUrl()のreferral_tokens解決が_fbFns依存（未定義）→smartPrice_invitedByが保存されない
+- 真因②：ログイン済みユーザーがリンクを踏んでも紹介関係を処理するフックがなかった
+- 真因③：onAuthStateChangedで未処理の招待トークンをチェックする仕組みがなかった
+- 修正方法①：_spProcessRefUrl()をCompat API直接使用に変更
+- 修正方法②：window._spFinalizeReferral()を追加（inviterUid→db.config.referredBy保存→updateReferralStatus呼び出し）
+- 修正方法③：onAuthStateChangedでlocalStorage[smartPrice_invitedBy]をチェック→_spFinalizeReferralを呼び出す
+
 ### v23.9.357
 - 仮説：「紹介した友人の利用状況」に誰も表示されない
 - 真因①：referral_tokensのFirebase書き込みが_fbFns依存（未定義）のためトークンが存在しない→友人側がトークンを解決できない
@@ -584,8 +593,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.357";
-  const BUILD_ID    = "3570";
+  const APP_VERSION = "v23.9.358";
+  const BUILD_ID    = "3580";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -3074,6 +3083,16 @@ document.addEventListener('DOMContentLoaded', function() {
       if (user) {
         currentAuthUid = user.uid;
         if (isDebug()) console.log('[Firebase] Auth state changed, UID:', currentAuthUid);
+        // [v358] ログイン後に未処理の紹介トークンをチェックして紹介関係を書き込む
+        setTimeout(function() {
+          try {
+            var _pendingInvitedBy = localStorage.getItem('smartPrice_invitedBy');
+            if (_pendingInvitedBy && typeof window._spFinalizeReferral === 'function') {
+              window._spFinalizeReferral(_pendingInvitedBy);
+              try { localStorage.removeItem('smartPrice_invitedBy'); } catch(_) {}
+            }
+          } catch(_) {}
+        }, 2000);
         // v23.9.281: Firebaseから家族グループIDを取得してsyncパスを切り替え
         try {
           firebaseDb.ref('users/' + user.uid + '/familyGroupId').once('value').then(function(snap) {
@@ -19332,6 +19351,24 @@ function updateReferralStatus() {
 window.checkReferralQualification = checkReferralQualification;
 window.updateReferralStatus = updateReferralStatus;
 
+// [v358] 紹介関係をFirebaseに書き込む共通関数（ログイン後・URL踏んだ直後どちらからも呼ばれる）
+window._spFinalizeReferral = function(inviterUid) {
+  try {
+    if (!inviterUid || !window.firebaseDb) return;
+    if (!db || !db.config) return;
+    if (!db.config.referredBy) {
+      db.config.referredBy = inviterUid;
+      try { if (typeof saveLocalOnly === 'function') saveLocalOnly(); } catch(_) {}
+    }
+    // localStorageをクリーン
+    try { localStorage.removeItem('smartPrice_invitedBy_token'); } catch(_) {}
+    // 500ms後にFirebase書き込み（db初期化が完了してから）
+    setTimeout(function() {
+      try { if (typeof updateReferralStatus === 'function') updateReferralStatus(); } catch(_) {}
+    }, 500);
+  } catch(e) {}
+};
+
 // [v357] sp_referral_finalize リスナー（オンボーディング完了時に紹介関係をFirebaseに保存）
 window.addEventListener('sp_referral_finalize', function(ev) {
   try {
@@ -20075,25 +20112,25 @@ function _spProcessRefUrl() {
     // URLをクリーン（ポーリング重複防止）
     try { history.replaceState(null, '', location.pathname + location.hash); } catch(_) {}
 
-    // Firebaseが使えればtoken→uid解決
+    // [v358] Firebaseが使えればtoken→uid解決（Compat API直接使用・_fbFns依存除去）
     setTimeout(() => {
       try {
         if (window.firebaseDb) {
-          const { ref: fbRef, get } = window._fbFns || {};
-          if (fbRef && get) {
-            get(fbRef(window.firebaseDb, `referral_tokens/${token}`)).then(snap => {
-              const data = snap && snap.val ? snap.val() : null;
-              if (data && data.uid && !data.used) {
-                localStorage.setItem('smartPrice_invitedBy', data.uid);
-                localStorage.setItem('smartPrice_invitedBy_handle', data.handle || '');
-                // トークンを使用済みにする（使い回し防止）
-                const { set } = window._fbFns || {};
-                if (set) set(fbRef(window.firebaseDb, `referral_tokens/${token}/used`), true);
-                const fromName = data.handle ? `「${data.handle}」` : '友人';
-                showToast(`${fromName}の紹介で登録されました ✅`, 4000);
-              }
-            }).catch(() => {});
-          }
+          window.firebaseDb.ref('referral_tokens/' + token).once('value').then(function(snap) {
+            var data = snap && snap.val ? snap.val() : null;
+            if (data && data.uid && !data.used) {
+              localStorage.setItem('smartPrice_invitedBy', data.uid);
+              localStorage.setItem('smartPrice_invitedBy_handle', data.handle || '');
+              // トークンを使用済みにする
+              try { window.firebaseDb.ref('referral_tokens/' + token + '/used').set(true); } catch(_) {}
+              var fromName = data.handle ? '「' + data.handle + '」' : '友人';
+              try { showToast(fromName + 'の紹介で登録されました ✅', 4000); } catch(_) {}
+              // [v358] すでにログイン済みなら即座に紹介関係を書き込む
+              try {
+                if (typeof window._spFinalizeReferral === 'function') window._spFinalizeReferral(data.uid);
+              } catch(_) {}
+            }
+          }).catch(function() {});
         }
       } catch(e) {}
     }, 3000);
