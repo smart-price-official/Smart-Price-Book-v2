@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.360  BUILD_ID=3600
+APP_VERSION=v23.9.361  BUILD_ID=3610
 
 === ChangeLog B-2 ===
+### v23.9.361
+- 仮説：referral_tokensのused:trueフラグが処理をブロックしていた
+- 真因：過去のテストでused:trueが書き込まれ、_spProcessRefUrl()とonAuthStateChangedの両方でif(!data.used)により処理をスキップしていた
+- 修正方法：usedチェックを2箇所から削除。同じリンクの再処理を許容する（上書きになるだけで無害）
+
 ### v23.9.360
 - 仮説：updateReferralStatus()がdb.config.personalId未設定で即リターンしていた
 - 真因：personalIdを設定するコードが存在しない。新規ユーザーは常にnull→if(!myId)returnで処理が止まる
@@ -604,8 +609,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.360";
-  const BUILD_ID    = "3600";
+  const APP_VERSION = "v23.9.361";
+  const BUILD_ID    = "3610";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -3107,10 +3112,10 @@ document.addEventListener('DOMContentLoaded', function() {
               // トークンまだ未解決（ログイン前にオンボーディング完了したケース）→ ここでUID解決
               window.firebaseDb.ref('referral_tokens/' + _pendingToken).once('value').then(function(snap) {
                 var data = snap && snap.val ? snap.val() : null;
-                if (data && data.uid && !data.used) {
+                // [v361] usedチェックを外す
+                if (data && data.uid) {
                   try { localStorage.setItem('smartPrice_invitedBy', data.uid); } catch(_) {}
                   try { localStorage.setItem('smartPrice_invitedBy_handle', data.handle || ''); } catch(_) {}
-                  try { window.firebaseDb.ref('referral_tokens/' + _pendingToken + '/used').set(true); } catch(_) {}
                   var _fromName = data.handle ? '「' + data.handle + '」' : '友人';
                   try { showToast(_fromName + 'の紹介で登録されました ✅', 4000); } catch(_) {}
                   try { localStorage.removeItem('smartPrice_invitedBy_token'); } catch(_) {}
@@ -20146,14 +20151,13 @@ function _spProcessRefUrl() {
         if (window.firebaseDb) {
           window.firebaseDb.ref('referral_tokens/' + token).once('value').then(function(snap) {
             var data = snap && snap.val ? snap.val() : null;
-            if (data && data.uid && !data.used) {
+            // [v361] usedチェックを外す（used:trueでも処理・同じリンク再処理を許容）
+            if (data && data.uid) {
               localStorage.setItem('smartPrice_invitedBy', data.uid);
               localStorage.setItem('smartPrice_invitedBy_handle', data.handle || '');
-              // トークンを使用済みにする
-              try { window.firebaseDb.ref('referral_tokens/' + token + '/used').set(true); } catch(_) {}
               var fromName = data.handle ? '「' + data.handle + '」' : '友人';
               try { showToast(fromName + 'の紹介で登録されました ✅', 4000); } catch(_) {}
-              // [v358] すでにログイン済みなら即座に紹介関係を書き込む
+              // すでにログイン済みなら即座に紹介関係を書き込む
               try {
                 if (typeof window._spFinalizeReferral === 'function') window._spFinalizeReferral(data.uid);
               } catch(_) {}
