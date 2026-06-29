@@ -48,9 +48,17 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.354  BUILD_ID=3540
+APP_VERSION=v23.9.355  BUILD_ID=3550
 
 === ChangeLog B-2 ===
+### v23.9.355
+- 仮説①：updateReferralStatus()がwindow._fbFns（未定義）に依存しているためFirebase書き込みが一切実行されていない
+- 仮説②：showReferralStatusV2()がdb.config.firebaseUrl（未設定）を参照するため常に「Firebase未設定」と表示される
+- 真因①：v350事故と同じ_fbFns依存。_ref・_setがundefinedになりif条件が偽→友人の利用データがreferrals/{inviterId}/{myId}に書き込まれない
+- 真因②：SmartPriceはwindow.SP_CONFIGでFirebaseを初期化するためdb.config.firebaseUrlは常に空→fbBaseが空→Firebase未設定分岐が常に実行される
+- 修正方法①：updateReferralStatus()の_fbFns依存を除去。window.firebaseDb.ref(_path).once('value')→update()でCompat API直接使用
+- 修正方法②：showReferralStatusV2()のdb.config.firebaseUrl/fetchをwindow.firebaseDb.ref('referrals/'+myId).once('value')に置換
+
 ### v23.9.354
 - 仮説：商品名不明時にユーザーが状況を理解できず、入力すべきか登録すべきか判断できない
 - 真因：全ルックアップ失敗（Yahoo/Rakuten/OFF/WebSearch全MISS）時にUIに何も案内が出ず、ユーザーが困惑する
@@ -564,8 +572,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.354";
-  const BUILD_ID    = "3540";
+  const APP_VERSION = "v23.9.355";
+  const BUILD_ID    = "3550";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -19281,38 +19289,32 @@ function updateReferralStatus() {
   }
 
   // Firebase referrals/{inviterId}/{myId} に自分の利用状況を書き込む
+  // [v355] _fbFns依存を除去→Compat API直接使用
   try {
-    var _fns = window._fbFns || {};
-    var _ref = _fns.ref;
-    var _set = _fns.set;
-    if (window.firebaseDb && _ref && _set && inviterId && myId) {
-      var _prods = db.products ? Object.values(db.products).filter(function(p) { return p.userId === myId; }) : [];
-      var _storeSet = {};
-      _prods.forEach(function(p) { if (p.store) _storeSet[p.store] = 1; });
-      var _storeCount = Object.keys(_storeSet).length;
-      var _writeData = {
-        products: _prods.length,
-        stores: _storeCount,
-        status: qualified ? 'qualified' : 'in_progress',
-        updatedAt: Date.now()
-      };
-      if (qualified) {
-        _writeData.qualifiedAt = db.config.referralQualifiedDate || Date.now();
-      }
-      // v312.2: 月別データと登録日を追加
-      try { _writeData.monthly = buildMonthlyStats(myId); } catch(_) {}
-      // registeredAt は初回のみ設定（update()で既存値を保持）
-      var _path = 'referrals/' + inviterId + '/' + myId;
-      // set() → update() に変更して既存フィールドを保護
-      if (typeof window.firebaseDb.ref(_path).update === 'function') {
-        window.firebaseDb.ref(_path).once('value').then(function(snap) {
-          if (!snap.val() || !snap.val().registeredAt) _writeData.registeredAt = Date.now();
-          window.firebaseDb.ref(_path).update(_writeData);
-        }).catch(function() { window.firebaseDb.ref(_path).update(_writeData); });
-      } else {
-        _set(_ref(window.firebaseDb, _path), _writeData);
-      }
+    if (!window.firebaseDb || !inviterId || !myId) return;
+    var _prods = db.products ? Object.values(db.products).filter(function(p) { return p.userId === myId; }) : [];
+    var _storeSet = {};
+    _prods.forEach(function(p) { if (p.store) _storeSet[p.store] = 1; });
+    var _storeCount = Object.keys(_storeSet).length;
+    var _writeData = {
+      products: _prods.length,
+      stores: _storeCount,
+      status: qualified ? 'qualified' : 'in_progress',
+      updatedAt: Date.now()
+    };
+    if (qualified) {
+      _writeData.qualifiedAt = db.config.referralQualifiedDate || Date.now();
     }
+    // v312.2: 月別データと登録日を追加
+    try { _writeData.monthly = buildMonthlyStats(myId); } catch(_) {}
+    // registeredAt は初回のみ設定（update()で既存値を保持）
+    var _path = 'referrals/' + inviterId + '/' + myId;
+    window.firebaseDb.ref(_path).once('value').then(function(snap) {
+      if (!snap.val() || !snap.val().registeredAt) _writeData.registeredAt = Date.now();
+      window.firebaseDb.ref(_path).update(_writeData);
+    }).catch(function() {
+      try { window.firebaseDb.ref(_path).update(_writeData); } catch(_) {}
+    });
   } catch(e) {}
 }
 
@@ -19488,16 +19490,15 @@ async function showReferralStatusV2() {
     return;
   }
 
-  var rawFbUrl = (db && db.config && db.config.firebaseUrl || '').trim();
-  var fbBase = rawFbUrl.replace(/\/[^/]+\.json$/, '').replace(/\/$/, '');
-  if (!fbBase) {
-    container.innerHTML = '<div class="small text-secondary p-2">Firebase未設定です</div>';
+  // [v355] db.config.firebaseUrl依存を除去→Compat SDK直接使用
+  if (!window.firebaseDb) {
+    container.innerHTML = '<div class="card sp-bg-card sp-border-muted p-3 small text-secondary">Firebase接続を確認中です。しばらく待ってから再度お試しください。</div>';
     return;
   }
 
   try {
-    var res = await fetch(fbBase + '/referrals/' + myId + '.json', { cache: 'no-store' });
-    var childMap = res.ok ? await res.json() : null;
+    var snap = await window.firebaseDb.ref('referrals/' + myId).once('value');
+    var childMap = snap.val();
 
     if (!childMap || typeof childMap !== 'object' || !Object.keys(childMap).length) {
       container.innerHTML = '<div class="card sp-bg-card sp-border-muted p-3 small text-secondary">まだ紹介者はいません。<br>紹介リンクを友人に送りましょう！</div>';
