@@ -48,7 +48,7 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.376  BUILD_ID=3760
+APP_VERSION=v23.9.377  BUILD_ID=3770
 
 === ChangeLog B-2 ===
 ### v23.9.370
@@ -637,8 +637,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.376";
-  const BUILD_ID    = "3760";
+  const APP_VERSION = "v23.9.377";
+  const BUILD_ID    = "3770";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -12686,6 +12686,18 @@ function spVisibleTrace(tag, payload, cls) {
   // ✅ バーコードデータ処理（スキャン/手入力共通）with OFF優先 + dirtyフラグ保護 + P0タイムラグ対策
   // v23.9.167 SP-250530-006: 第3引数 scannerFormat（EAN_13/EAN_8等）を任意で受け取り誤読取り調査用ログに記録
   async function processBarcodeData(code, debugSourceTag, scannerFormat) {
+    // [v377] 取得元トースト（IIFE内でshowToastを直接使う・確実に動く）
+    function _showSrcToast(src) {
+      try {
+        var m = { manual_master:'✅ 手動登録済みデータ', jan_dict:'✅ JAN辞書から取得',
+          local:'✅ 保存済みデータから取得', 'server-confirmed':'✅ サーバー確認済みデータ',
+          cache:'✅ 商品DBキャッシュから取得', spkb:'✅ 商品DBから取得',
+          yahoo:'✅ Yahoo APIから取得', rakuten:'✅ 楽天市場から取得' };
+        showToast(m[src] || (src ? '✅ ' + src : '✅ 商品情報を取得しました'), 8000);
+        var b = document.getElementById('lookupSourceBanner');
+        if (b) { b.textContent = m[src] || (src ? '✅ ' + src : '✅ 商品情報を取得しました'); b.style.display = 'block'; setTimeout(function(){ b.style.display='none'; }, 8000); }
+      } catch(_) {}
+    }
     // ✅ P0: JAN正規化（数字のみに統一・空白・ハイフン除去）
     let jan = normalizeJan(code);
     // v23.9.167 SP-250530-006: 誤読取り調査ログ用の補助情報
@@ -12888,6 +12900,7 @@ function spVisibleTrace(tag, payload, cls) {
             try { spDbg('[PRODUCT_LOOKUP_FINAL]', { name: finalInfo.name, maker: finalInfo.maker, source: sourceUsed }); } catch (_) {}
             // v23.9.169 SP-260601-002: 段階8 商品情報を表示しました（manual_master HIT 早期 return）
             try { if (typeof showLookupStageToast === 'function') showLookupStageToast(8, '商品情報を表示しました', { jan: jan, ev: 'barcode_lookup_stage_done', source: 'manual_master', final: true }); } catch (_) {}
+            _showSrcToast('manual_master');
             return; // ✅ 手動正本マスターHIT → 以降の lookup をすべてスキップ
           }
         } catch (_mmErr) {
@@ -12927,6 +12940,7 @@ function spVisibleTrace(tag, payload, cls) {
             processBarcodeInFlight.delete(jan);
             try { spDbg('[PRODUCT_LOOKUP_FINAL]', { name: finalInfo.name, maker: finalInfo.maker, source: 'jan_dict' }); } catch (_) {}
             try { if (typeof showLookupStageToast === 'function') showLookupStageToast(8, '商品情報を表示しました', { jan, ev: 'barcode_lookup_stage_done', source: 'jan_dict', final: true }); } catch (_) {}
+            _showSrcToast('jan_dict');
             return; // ✅ JAN辞書HIT → API をすべてスキップ
           }
         } catch (_jdErr) {
@@ -12991,6 +13005,7 @@ function spVisibleTrace(tag, payload, cls) {
           spDbg('[PRODUCT_LOOKUP_FINAL]', { name: finalInfo.name, maker: finalInfo.maker, source: sourceUsed });
           // v23.9.169 SP-260601-002: 段階8 商品情報を表示しました（localStorage HIT 早期 return）
           try { if (typeof showLookupStageToast === 'function') showLookupStageToast(8, '商品情報を表示しました', { jan: jan, ev: 'barcode_lookup_stage_done', source: 'local', final: true }); } catch (_) {}
+          _showSrcToast('local');
           return; // ✅ ローカルHIT → AI・外部API呼ばない
         }
         
@@ -13062,6 +13077,7 @@ function spVisibleTrace(tag, payload, cls) {
             processBarcodeInFlight.delete(jan);
             spDbg('[PRODUCT_LOOKUP_FINAL]', { name: finalInfo.name, maker: finalInfo.maker, source: sourceUsed });
             try { if (typeof showLookupStageToast === 'function') showLookupStageToast(8, '商品情報を表示しました', { jan: jan, ev: 'barcode_lookup_stage_done', source: 'server-confirmed', final: true }); } catch (_) {}
+            _showSrcToast('server-confirmed');
             return; // ✅ サーバーHIT・imageUrlあり → 外部API不要
           }
           // imageUrlなし → Yahoo lookupへ続ける（name/makerはspkbNameLockedで上書き防止）
@@ -13131,6 +13147,7 @@ function spVisibleTrace(tag, payload, cls) {
             markLookupPipelineStep(jan, 'Final', 'HIT', { name: finalInfo.name || '', maker: finalInfo.maker || '', reason: 'jan_cache_sufficient' });
             // v23.9.169 SP-260601-002: 段階8 商品情報を表示しました（cache HIT 早期 return）
             try { if (typeof showLookupStageToast === 'function') showLookupStageToast(8, '商品情報を表示しました', { jan: jan, ev: 'barcode_lookup_stage_done', source: 'cache', final: true }); } catch (_) {}
+            _showSrcToast('cache');
             return;
           }
         }
@@ -13872,6 +13889,7 @@ function spVisibleTrace(tag, payload, cls) {
             if (typeof showLookupStageToast === 'function') {
               if (fn) {
                 showLookupStageToast(8, '商品情報を表示しました', { jan: jan, ev: 'barcode_lookup_stage_done', source: String(sourceUsed || ''), final: true });
+                _showSrcToast(String(sourceUsed || ''));
               } else {
                 // 段階9 は L10532 の fallback 側で既に最終表示済の場合もあるが、ここは念のため失敗確定として呼ぶ
                 showLookupStageToast(9, '商品情報が見つかりませんでした。手入力または再取得できます', { jan: jan, ev: 'barcode_lookup_stage_failed', final: true, ms: 5000 });
