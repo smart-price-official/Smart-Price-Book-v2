@@ -48,7 +48,7 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.373  BUILD_ID=3730
+APP_VERSION=v23.9.374  BUILD_ID=3740
 
 === ChangeLog B-2 ===
 ### v23.9.370
@@ -637,8 +637,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.373";
-  const BUILD_ID    = "3730";
+  const APP_VERSION = "v23.9.374";
+  const BUILD_ID    = "3740";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -1843,6 +1843,7 @@ document.addEventListener('DOMContentLoaded', function() {
   <div id="formView" style="display:none;">
     <div class="card p-3 shadow-lg">
       <div id="curStoreIndicator" class="text-danger small fw-bold mb-2 text-center" style="opacity:0.8;"></div>
+      <div id="lookupSourceBanner" style="display:none;font-size:12px;color:#aaa;text-align:center;margin-bottom:6px;padding:4px 8px;background:rgba(255,255,255,0.07);border-radius:6px;"></div>
 
       <div class="text-center mb-2">
         <button id="storeJumpBtn" class="btn btn-sm btn-outline-secondary w-100" style="display:none;" onclick="jumpToStoreChips()">店名を変更（上に移動）</button>
@@ -5085,11 +5086,28 @@ document.addEventListener('DOMContentLoaded', function() {
         window.__lookupStageToastEl = el;
       }
       if (opts.final) {
+        // [v374] #lookupSourceBanner にソース表示（フォーム内・人間が読める時間）
+        try {
+          var _srcMap = {
+            'manual_master': '✅ 手動登録済みデータ', 'jan_dict': '✅ JAN辞書から取得',
+            'local': '✅ 保存済みデータから取得', 'server-confirmed': '✅ サーバー確認済みデータ',
+            'cache': '✅ 商品DBキャッシュから取得', 'spkb': '✅ 商品DBから取得',
+            'yahoo': '✅ Yahoo APIから取得', 'rakuten': '✅ 楽天市場から取得'
+          };
+          var _srcKey = String(opts.source || '');
+          var _srcLabel = _srcMap[_srcKey] || (_srcKey ? '✅ ' + _srcKey + ' から取得' : '✅ 商品情報を取得しました');
+          var _banner = document.getElementById('lookupSourceBanner');
+          if (_banner) {
+            _banner.textContent = _srcLabel;
+            _banner.style.display = 'block';
+            setTimeout(function() { try { _banner.style.display = 'none'; } catch(_) {} }, 5000);
+          }
+        } catch(_sb) {}
         var _doneEl = el;
         setTimeout(function() {
           try { if (_doneEl && _doneEl.parentNode) _doneEl.remove(); } catch(_) {}
           if (window.__lookupStageToastEl === _doneEl) window.__lookupStageToastEl = null;
-        }, opts.ms || 3500);
+        }, opts.ms || 5000);
       }
     } catch(_e) {}
   };
@@ -23281,7 +23299,7 @@ function showLookupStageToast(stage, message, opts) {
   var text = opts.noPrefix ? String(message) : ('(' + stage + '/9) ' + message);
   // [v369] IIFE内ブリッジ経由でshowToastを呼ぶ（グローバルスコープからはshowToast識別子にアクセス不可のため）
   if (typeof window.__spShowStageToast === 'function') {
-    window.__spShowStageToast(stage, text, { noPrefix: true, final: !!opts.final, ms: opts.ms });
+    window.__spShowStageToast(stage, text, { noPrefix: true, final: !!opts.final, ms: opts.ms, source: opts.source || '' });
   }
   // spOpLog（指示書通り 10 種類のイベント・slow は commit③ で追加配線）
   try {
