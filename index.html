@@ -48,7 +48,7 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.379  BUILD_ID=3790
+APP_VERSION=v23.9.380  BUILD_ID=3800
 
 === ChangeLog B-2 ===
 ### v23.9.370
@@ -637,8 +637,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.379";
-  const BUILD_ID    = "3790";
+  const APP_VERSION = "v23.9.380";
+  const BUILD_ID    = "3800";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -15359,6 +15359,21 @@ function spVisibleTrace(tag, payload, cls) {
   // ======================
   // ===== v321: JAN プレフィックス → メーカー名辞書 (buildmakerdict 2026-06-27生成) =====
   const SP_JAN_MAKER_DICT = {
+    // 9桁プレフィックス（最優先）
+    // 8桁プレフィックス
+    // 7桁プレフィックス
+    "4901301": "花王",
+    "4906156": "ライオン",
+    "4987241": "資生堂",
+    "4987205": "コーセー",
+    "4987063": "ポーラ",
+    "4902506": "P&Gジャパン",
+    "4902430": "ユニリーバ",
+    "4987404": "ニベア花王",
+    "4901340": "牛乳石鹸",
+    "4902088": "マンダム",
+    "4987072": "ロート製薬",
+    // 6桁プレフィックス
     "456245": "アヲハタ",
     "458985": "キリン",
     "490100": "江崎グリコ",
@@ -15380,17 +15395,21 @@ function spVisibleTrace(tag, payload, cls) {
     "490311": "ユニ・チャーム",
     "490330": "六甲バター",
     "490333": "ロッテ",
+    "490348": "大塚製薬",
+    "490360": "武田薬品",
+    "490367": "第一三共ヘルスケア",
+    "490374": "エスエス製薬",
     "493072": "キッコーマン",
     "498707": "小林製薬",
     "498724": "ロート製薬",
     "498730": "大正製薬"
   };
 
-  // JAN コードの先頭 6〜9 桁を順に探索してメーカー名を返す
+  // [v380] JAN コードの先頭 9→6 桁を長い順に探索（長いほど優先・カゴメと花王の衝突を解消）
   function getManufacturerFromJan(jan) {
     if (!jan || typeof jan !== 'string') return null;
     const j = jan.replace(/\D/g, '');
-    for (var len = 6; len <= 9; len++) {
+    for (var len = 9; len >= 6; len--) {
       var prefix = j.slice(0, len);
       if (SP_JAN_MAKER_DICT[prefix]) return SP_JAN_MAKER_DICT[prefix];
     }
