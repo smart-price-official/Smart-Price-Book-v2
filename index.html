@@ -48,7 +48,7 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.372  BUILD_ID=3720
+APP_VERSION=v23.9.373  BUILD_ID=3730
 
 === ChangeLog B-2 ===
 ### v23.9.370
@@ -637,8 +637,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.372";
-  const BUILD_ID    = "3720";
+  const APP_VERSION = "v23.9.373";
+  const BUILD_ID    = "3730";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -12638,12 +12638,15 @@ function spVisibleTrace(tag, payload, cls) {
   // ✅ バーコードデータ処理（スキャン/手入力共通）with OFF優先 + dirtyフラグ保護 + P0タイムラグ対策
   // v23.9.167 SP-250530-006: 第3引数 scannerFormat（EAN_13/EAN_8等）を任意で受け取り誤読取り調査用ログに記録
   async function processBarcodeData(code, debugSourceTag, scannerFormat) {
-    // [v372] デバッグ: processBarcodeData到達確認（DOM直書き・showToast不使用）
+    // [v373] デバッグ: showToastの動作確認
     try {
+      var _toastResult = null;
+      var _toastErr = '';
+      try { _toastResult = showToast('🔍 テスト', 5000); } catch(e) { _toastErr = String(e); }
       var _d = document.getElementById('spDbgBanner') || document.createElement('div');
       _d.id = 'spDbgBanner';
-      _d.style.cssText = 'position:fixed;top:60px;left:0;right:0;background:#00cc00;color:#000;font-weight:bold;font-size:16px;z-index:9999999;padding:8px;text-align:center;';
-      _d.textContent = '★ processBarcode到達: ' + code;
+      _d.style.cssText = 'position:fixed;top:60px;left:0;right:0;background:orange;color:#000;font-weight:bold;font-size:14px;z-index:9999999;padding:8px;text-align:center;';
+      _d.textContent = 'showToast結果: ' + (typeof _toastResult) + ' / ' + (_toastResult ? 'OK' : 'null') + (_toastErr ? ' ERR:'+_toastErr : '');
       if (!document.getElementById('spDbgBanner')) document.body.appendChild(_d);
     } catch(_dbg) {}
     // ✅ P0: JAN正規化（数字のみに統一・空白・ハイフン除去）
