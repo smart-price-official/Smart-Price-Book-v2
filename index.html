@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.368  BUILD_ID=3680
+APP_VERSION=v23.9.369  BUILD_ID=3690
 
 === ChangeLog B-2 ===
+### v23.9.369
+- 仮説：v368後もスキャン進捗トーストが出ない
+- 真因：showLookupStageToastはグローバルスコープにありIIFE内のshowToast識別子に永遠にアクセスできない構造的問題
+- 修正方法：IIFE内にwindow.__spShowStageToastブリッジ関数を新設（showToastを直接使用）。showLookupStageToastはブリッジ経由でトーストを表示するよう変更
+
 ### v23.9.368
 - 仮説：v367後もスキャン進捗トーストが出ない
 - 真因：showLookupStageToast内でshowToast識別子を直接使用しており、window.showToastエクスポートだけでは識別子解決できない
@@ -627,8 +632,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.368";
-  const BUILD_ID    = "3680";
+  const APP_VERSION = "v23.9.369";
+  const BUILD_ID    = "3690";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -5056,9 +5061,31 @@ document.addEventListener('DOMContentLoaded', function() {
     __toastEnsureContainer();
   });
 
-  // [v367] showToast/clearToastsをグローバルに公開（showLookupStageToastなどIIFE外から参照できるようにする）
+  // [v367] showToast/clearToastsをグローバルに公開
   window.showToast = showToast;
   window.clearToasts = clearToasts;
+
+  // [v369] スキャン進捗トーストブリッジ（IIFE内でshowToastを直接使い、グローバルのshowLookupStageToastから呼び出せるようにする）
+  window.__spShowStageToast = function(stage, message, opts) {
+    try {
+      opts = opts || {};
+      var text = opts.noPrefix ? String(message) : ('(' + stage + '/9) ' + message);
+      var el = window.__lookupStageToastEl;
+      if (el && document.body.contains(el)) {
+        el.textContent = text;
+      } else {
+        el = showToast(text, 0, { sticky: true });
+        window.__lookupStageToastEl = el;
+      }
+      if (opts.final) {
+        var _doneEl = el;
+        setTimeout(function() {
+          try { if (_doneEl && _doneEl.parentNode) _doneEl.remove(); } catch(_) {}
+          if (window.__lookupStageToastEl === _doneEl) window.__lookupStageToastEl = null;
+        }, opts.ms || 3500);
+      }
+    } catch(_e) {}
+  };
 function isQuotaError(e) {
     if (!e) return false;
     return (
@@ -23227,23 +23254,9 @@ function showLookupStageToast(stage, message, opts) {
   opts = opts || {};
   // v23.9.169 SP-260601-003: opts.noPrefix=true で「(N/9) 」を省略（slow/timeout 用）
   var text = opts.noPrefix ? String(message) : ('(' + stage + '/9) ' + message);
-  var el = window.__lookupStageToastEl;
-  try {
-    if (el && document.body.contains(el)) {
-      // 置換更新（append しない）
-      el.textContent = text;
-    } else {
-      // 既存要素が無い／削除済み → 新規 sticky 作成して参照保持
-      el = window.showToast(text, 0, { sticky: true });
-      window.__lookupStageToastEl = el;
-    }
-  } catch (_e) {}
-  if (opts.final) {
-    var _doneEl = el;
-    setTimeout(function () {
-      try { if (_doneEl && _doneEl.parentNode) _doneEl.remove(); } catch (_) {}
-      if (window.__lookupStageToastEl === _doneEl) window.__lookupStageToastEl = null;
-    }, opts.ms || 3500);
+  // [v369] IIFE内ブリッジ経由でshowToastを呼ぶ（グローバルスコープからはshowToast識別子にアクセス不可のため）
+  if (typeof window.__spShowStageToast === 'function') {
+    window.__spShowStageToast(stage, text, { noPrefix: true, final: !!opts.final, ms: opts.ms });
   }
   // spOpLog（指示書通り 10 種類のイベント・slow は commit③ で追加配線）
   try {
