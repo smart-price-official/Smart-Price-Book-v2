@@ -48,7 +48,7 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.381  BUILD_ID=3810
+APP_VERSION=v23.9.382  BUILD_ID=3820
 
 === ChangeLog B-2 ===
 ### v23.9.370
@@ -637,7 +637,7 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.381";
+  const APP_VERSION = "v23.9.382";
   const BUILD_ID    = "3800";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
@@ -9644,41 +9644,91 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         } catch(e) {}
       }
 
-      const proxyUrl = (window.SP_CONFIG && window.SP_CONFIG.yahooProxyExecUrl)
-        ? window.SP_CONFIG.yahooProxyExecUrl.trim() : '';
+      // [v382] プロキシURL一覧（config.json の yahooProxyUrls 優先）
+      const _allProxies = (function() {
+        var urls = (window.SP_CONFIG && Array.isArray(window.SP_CONFIG.yahooProxyUrls))
+          ? window.SP_CONFIG.yahooProxyUrls.filter(function(u){ return u && u.indexOf('http') === 0; })
+          : [];
+        if (!urls.length) {
+          var single = window.SP_CONFIG && window.SP_CONFIG.yahooProxyExecUrl;
+          if (single) urls = [single.trim()];
+        }
+        return urls;
+      })();
       // APIキーはGASプロキシ内で管理（HTMLには置かない）
       // config.jsonにyahooClientIdがあれば直接API呼び出しのフォールバックとして使用
       const appId = (window.SP_CONFIG && window.SP_CONFIG.yahooClientId)
         ? window.SP_CONFIG.yahooClientId.trim() : '';
 
-      let result = null;
+      // [v382] クォータエラー判定
+      function _isQuotaErr(json) {
+        if (!json) return false;
+        var e = String(json.error || '');
+        return json.ok === false && (e.indexOf('429') !== -1 || e.indexOf('urlfetch') !== -1 || e.indexOf('多すぎ') !== -1 || e.indexOf('quota') !== -1);
+      }
 
-      // ① GASプロキシ優先
-      if (proxyUrl) {
-        try {
-          if (isDebug()) showToast(`[Yahoo] プロキシ検索中...`, 2000);
-          const controller = new AbortController();
-          const tid = setTimeout(() => controller.abort(), 12000);
-          const res = await fetch(`${proxyUrl}?jan=${encodeURIComponent(jan)}`, {
-            cache: 'no-store', signal: controller.signal
-          });
-          clearTimeout(tid);
-          if (res.ok) {
-            const json = await res.json();
-            if (json && json.name) {
-              result = normalizeYahooProductInfo({
-                name: json.name,
-                maker: json.maker || '',
-                imageUrl: json.imageUrl || '',
-                imageUrls: Array.isArray(json.imageUrls) ? json.imageUrls : [],
-                category: json.category || json.genreName || json.genreCategory || ''
-              });
-              if (isDebug()) showToast(`[Yahoo] プロキシOK: ${json.name.substring(0,20)}`, 3000);
+      let result = null;
+      let _proxyUsed = '';
+      let _proxyResult = 'none'; // 'ok' | 'quota' | 'fail' | 'none'
+
+      // [v382] ① GASプロキシ ローテーション（クォータ切れなら次へ）
+      if (_allProxies.length) {
+        var _startIdx = (window.__spProxyIdx || 0) % _allProxies.length;
+        for (var _pi = 0; _pi < _allProxies.length; _pi++) {
+          var _pUrl = _allProxies[(_startIdx + _pi) % _allProxies.length];
+          try {
+            if (isDebug()) showToast(`[Yahoo] プロキシ${_pi+1}/${_allProxies.length} 検索中...`, 2000);
+            const controller = new AbortController();
+            const tid = setTimeout(() => controller.abort(), 12000);
+            const res = await fetch(`${_pUrl}?jan=${encodeURIComponent(jan)}`, {
+              cache: 'no-store', signal: controller.signal
+            });
+            clearTimeout(tid);
+            if (res.ok) {
+              const json = await res.json();
+              if (_isQuotaErr(json)) {
+                // クォータ切れ → 次のプロキシへ
+                _proxyResult = 'quota';
+                spDbg('[PROXY_QUOTA]', { url: _pUrl, jan, error: json.error });
+                window.__spProxyIdx = (_startIdx + _pi + 1) % _allProxies.length; // 次回は次のプロキシから
+                continue;
+              }
+              if (json && json.name) {
+                result = normalizeYahooProductInfo({
+                  name: json.name, maker: json.maker || '',
+                  imageUrl: json.imageUrl || '',
+                  imageUrls: Array.isArray(json.imageUrls) ? json.imageUrls : [],
+                  category: json.category || json.genreName || json.genreCategory || ''
+                });
+                _proxyUsed = _pUrl;
+                _proxyResult = 'ok';
+                if (isDebug()) showToast(`[Yahoo] プロキシOK: ${json.name.substring(0,20)}`, 3000);
+                break;
+              }
+              _proxyResult = 'empty';
+              break; // 成功したが商品なし → 次のプロキシへ回さない（Yahooに存在しない商品）
             }
+          } catch(e) {
+            _proxyResult = 'fail';
+            if (isDebug()) showToast(`[Yahoo] プロキシ失敗: ${e.message}`, 3000);
           }
-        } catch(e) {
-          if (isDebug()) showToast(`[Yahoo] プロキシ失敗: ${e.message}`, 3000);
         }
+        // [v382] 全プロキシ クォータ切れ → ユーザーに明示
+        if (_proxyResult === 'quota' && !result) {
+          try {
+            var _ind2 = document.getElementById('curStoreIndicator');
+            if (_ind2) {
+              _ind2.style.color = '#ff9800';
+              _ind2.textContent = '⚠️ 本日の商品情報取得上限に達しました。明日もう一度お試しください。';
+              setTimeout(function(){ try{ _ind2.textContent=''; _ind2.style.color=''; }catch(_){} }, 15000);
+            }
+            try { showToast('⚠️ 本日のAPI上限に達しました。明日お試しください。\nJAN: ' + jan, 10000); } catch(_) {}
+          } catch(_) {}
+          // 計測ログ
+          try { spDbg('[PROXY_ALL_QUOTA]', { jan, proxies: _allProxies.length }); } catch(_) {}
+        }
+        // [v382] プロキシ計測ログ
+        try { spDbg('[PROXY_LOG]', { jan, result: _proxyResult, proxyUsed: _proxyUsed, totalProxies: _allProxies.length }); } catch(_) {}
       }
 
       // ② Yahoo直接API（プロキシが失敗/未設定の場合）
@@ -13222,6 +13272,8 @@ function spVisibleTrace(tag, payload, cls) {
             spkbNameLocked = true;
             markLookupPipelineStep(jan, 'SPKB', 'HIT', { name: spkbSnap.confirmed_name, source: spkbSnap.confirmed_source || 'engine' });
             spDbg('[SPKB_HIT]', { jan, name: spkbSnap.confirmed_name });
+            // [v382] SPKB HIT 計測ログ
+            try { spDbg('[SPKB_STAT]', { jan, hit: true, name: spkbSnap.confirmed_name }); } catch(_) {}
             // フォームに即反映
             if (String(curBarcode || '').trim() === jan && nameInput && !nameInput.value) {
               nameInput.value = spkbSnap.confirmed_name;
@@ -13229,6 +13281,8 @@ function spVisibleTrace(tag, payload, cls) {
             }
           } else {
             markLookupPipelineStep(jan, 'SPKB', 'MISS', {});
+            // [v382] SPKB MISS 計測ログ
+            try { spDbg('[SPKB_STAT]', { jan, hit: false }); } catch(_) {}
             // MISS → janname GAS をバックグラウンドで実行（Firebase保存→次回即時返却）
             showToast('商品名を調べています... 初回だけ少し時間がかかります', 4000);
             const _spkbJan = jan;
@@ -13909,7 +13963,8 @@ function spVisibleTrace(tag, payload, cls) {
               lastSeenAt: Date.now(),
               source: 'barcode_lookup_failed',
               store: curStore,
-              status: 'unresolved'
+              status: 'unresolved',
+              quotaExceeded: (typeof _proxyResult !== 'undefined' && _proxyResult === 'quota') // [v382] クォータ切れフラグ
             };
             // v23.9.267 SP-260616-NODISMISSCLEAR-001: dismissed状態はスキャン再試行でクリアしない
             saveLocalOnly();
