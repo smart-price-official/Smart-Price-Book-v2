@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.369  BUILD_ID=3690
+APP_VERSION=v23.9.370  BUILD_ID=3700
 
 === ChangeLog B-2 ===
+### v23.9.370
+- 仮説：showLookupStageToastチェーン経由では永遠にトーストが出ない
+- 真因：IIFE内外の壁を何層経由しても解決できない構造問題
+- 修正方法：processBarcodeData内（IIFE内）からshowToastを直接呼びwindow.__scanProgressToastとして管理。__spShowStageToastブリッジ呼び出し時に自動消去
+
 ### v23.9.369
 - 仮説：v368後もスキャン進捗トーストが出ない
 - 真因：showLookupStageToastはグローバルスコープにありIIFE内のshowToast識別子に永遠にアクセスできない構造的問題
@@ -632,8 +637,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.369";
-  const BUILD_ID    = "3690";
+  const APP_VERSION = "v23.9.370";
+  const BUILD_ID    = "3700";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -5070,6 +5075,8 @@ document.addEventListener('DOMContentLoaded', function() {
     try {
       opts = opts || {};
       var text = opts.noPrefix ? String(message) : ('(' + stage + '/9) ' + message);
+      // [v370] 検索中トーストを消す
+      try { if (window.__scanProgressToast && window.__scanProgressToast.parentNode) { window.__scanProgressToast.remove(); window.__scanProgressToast = null; } } catch(_) {}
       var el = window.__lookupStageToastEl;
       if (el && document.body.contains(el)) {
         el.textContent = text;
@@ -12770,6 +12777,13 @@ function spVisibleTrace(tag, payload, cls) {
         window.__lookupJanOnlySaveOk = false;
         try { scheduleProductLookupSlowWatchers(jan); } catch (_sch) {}
         try { showLookupProgressToast(); } catch (_pt) {}
+        // [v370] 直接showToastで進捗表示（IIFE内なので確実に動く）
+        try {
+          if (window.__scanProgressToast && window.__scanProgressToast.parentNode) {
+            window.__scanProgressToast.remove();
+          }
+          window.__scanProgressToast = showToast('🔍 商品情報を検索中...', 0, { sticky: true });
+        } catch(_) {}
         let rakutenInvoked = false;
         let offInvoked = false;
         let yahooInfo = null;
