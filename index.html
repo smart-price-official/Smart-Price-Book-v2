@@ -48,9 +48,17 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.365  BUILD_ID=3650
+APP_VERSION=v23.9.366  BUILD_ID=3660
 
 === ChangeLog B-2 ===
+### v23.9.366
+- 仮説：友人の利用状況タップで「fbBase is not defined」エラー
+- 真因：fetchGrandchildren()がfbBase変数（未定義）をURLとして使用していた
+- 修正方法：fetchGrandchildren()をCompatSDK db.ref().once('value')に書き直し。呼び出しをfbBase→window.firebaseDbに変更
+
+### v23.9.365
+- sw.js CACHE_NAME を v23.9.365 に更新・デバッグコード削除
+
 ### v23.9.361
 - 仮説：referral_tokensのused:trueフラグが処理をブロックしていた
 - 真因：過去のテストでused:trueが書き込まれ、_spProcessRefUrl()とonAuthStateChangedの両方でif(!data.used)により処理をスキップしていた
@@ -609,8 +617,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.365";
-  const BUILD_ID    = "3650";
+  const APP_VERSION = "v23.9.366";
+  const BUILD_ID    = "3660";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -19569,15 +19577,15 @@ function buildMonthlyStats(myId) {
 }
 window.buildMonthlyStats = buildMonthlyStats;
 
-async function fetchGrandchildren(fbBaseUrl, childIds) {
+// [v366] fbBaseUrl依存を除去→Compat SDK直接使用
+async function fetchGrandchildren(db, childIds) {
   var results = {};
+  if (!db || !childIds || !childIds.length) return results;
   await Promise.all(childIds.map(async function(childId) {
     try {
-      var res = await fetch(fbBaseUrl + '/referrals/' + childId + '.json', { cache: 'no-store' });
-      if (res.ok) {
-        var data = await res.json();
-        if (data && typeof data === 'object') results[childId] = data;
-      }
+      var snap = await db.ref('referrals/' + childId).once('value');
+      var data = snap && snap.val ? snap.val() : null;
+      if (data && typeof data === 'object') results[childId] = data;
     } catch(_) {}
   }));
   return results;
@@ -19613,7 +19621,7 @@ async function showReferralStatusV2() {
     }
 
     var childIds = Object.keys(childMap);
-    var grandMap = await fetchGrandchildren(fbBase, childIds);
+    var grandMap = await fetchGrandchildren(window.firebaseDb, childIds);
 
     // 直近3ヶ月のキー
     var monthKeys = [];
