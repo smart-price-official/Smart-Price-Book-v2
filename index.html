@@ -48,7 +48,7 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.377  BUILD_ID=3770
+APP_VERSION=v23.9.378  BUILD_ID=3780
 
 === ChangeLog B-2 ===
 ### v23.9.370
@@ -637,8 +637,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.377";
-  const BUILD_ID    = "3770";
+  const APP_VERSION = "v23.9.378";
+  const BUILD_ID    = "3780";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -12692,10 +12692,19 @@ function spVisibleTrace(tag, payload, cls) {
         var m = { manual_master:'✅ 手動登録済みデータ', jan_dict:'✅ JAN辞書から取得',
           local:'✅ 保存済みデータから取得', 'server-confirmed':'✅ サーバー確認済みデータ',
           cache:'✅ 商品DBキャッシュから取得', spkb:'✅ 商品DBから取得',
-          yahoo:'✅ Yahoo APIから取得', rakuten:'✅ 楽天市場から取得' };
-        showToast(m[src] || (src ? '✅ ' + src : '✅ 商品情報を取得しました'), 8000);
-        var b = document.getElementById('lookupSourceBanner');
-        if (b) { b.textContent = m[src] || (src ? '✅ ' + src : '✅ 商品情報を取得しました'); b.style.display = 'block'; setTimeout(function(){ b.style.display='none'; }, 8000); }
+          yahoo:'✅ Yahoo APIから取得', rakuten:'✅ 楽天市場から取得',
+          none:'❌ 商品情報が見つかりませんでした', '':'❌ 商品情報が見つかりませんでした' };
+        var label = m[src] !== undefined ? m[src] : (src ? '✅ ' + src : '❌ 商品情報が見つかりませんでした');
+        // [v378] curStoreIndicatorに直接書き込む（トースト不要・確実に見える）
+        var ind = document.getElementById('curStoreIndicator');
+        if (ind) {
+          var orig = ind.textContent;
+          ind.style.color = src && src !== 'none' ? '#00c853' : '#ff5252';
+          ind.textContent = label;
+          setTimeout(function() { try { ind.textContent = orig; ind.style.color = ''; } catch(_) {} }, 6000);
+        }
+        // バックアップ: showToastも試みる
+        try { showToast(label, 6000); } catch(_) {}
       } catch(_) {}
     }
     // ✅ P0: JAN正規化（数字のみに統一・空白・ハイフン除去）
@@ -13836,6 +13845,7 @@ function spVisibleTrace(tag, payload, cls) {
           // v23.9.169 SP-260601-002: 段階9 商品情報が見つかりませんでした（旧 8 秒 showToast は append 方式のため置換）
           //   ※ JAN 詳細表示は debug 時のみに格下げ。通常運用ではステージトースト本文のみ表示
           try { if (typeof showLookupStageToast === 'function') showLookupStageToast(9, '商品情報が見つかりませんでした。手入力または再取得できます', { jan: jan, ev: 'barcode_lookup_stage_failed', final: true, ms: 5000 }); } catch (_) {}
+          _showSrcToast('none');
           // [v354] マイナー商品ヒントを表示（inputNameが空の時のみ）
           try {
             var _uhFail = document.getElementById('unknownProductHint');
@@ -13893,6 +13903,7 @@ function spVisibleTrace(tag, payload, cls) {
               } else {
                 // 段階9 は L10532 の fallback 側で既に最終表示済の場合もあるが、ここは念のため失敗確定として呼ぶ
                 showLookupStageToast(9, '商品情報が見つかりませんでした。手入力または再取得できます', { jan: jan, ev: 'barcode_lookup_stage_failed', final: true, ms: 5000 });
+                _showSrcToast('none');
               }
             }
           } catch (_) {}
@@ -13929,6 +13940,7 @@ function spVisibleTrace(tag, payload, cls) {
         try {
           if (typeof showLookupStageToast === 'function') {
             showLookupStageToast(9, '商品情報が見つかりませんでした。手入力または再取得できます', { jan: String(jan || ''), ev: 'barcode_lookup_stage_failed', final: true, ms: 5000, result: 'error' });
+            _showSrcToast('none');
           } else {
             showToast('エラーが発生しました', 5000);
           }
