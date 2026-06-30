@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.366  BUILD_ID=3660
+APP_VERSION=v23.9.367  BUILD_ID=3670
 
 === ChangeLog B-2 ===
+### v23.9.367
+- 仮説：スキャン時の進捗トースト（1/9〜8/9）が一切表示されない
+- 真因：showToast()がIIFE内に閉じ込められwindow.showToastが未定義のため、グローバルスコープのshowLookupStageToastからshowToastを呼べずtry-catchで無音失敗していた
+- 修正方法：showToastとclearToastsをwindowにエクスポート（window.showToast=showToast / window.clearToasts=clearToasts）
+
 ### v23.9.366
 - 仮説：友人の利用状況タップで「fbBase is not defined」エラー
 - 真因：fetchGrandchildren()がfbBase変数（未定義）をURLとして使用していた
@@ -617,8 +622,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.366";
-  const BUILD_ID    = "3660";
+  const APP_VERSION = "v23.9.367";
+  const BUILD_ID    = "3670";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -5045,6 +5050,10 @@ document.addEventListener('DOMContentLoaded', function() {
   window.addEventListener("resize", () => {
     __toastEnsureContainer();
   });
+
+  // [v367] showToast/clearToastsをグローバルに公開（showLookupStageToastなどIIFE外から参照できるようにする）
+  window.showToast = showToast;
+  window.clearToasts = clearToasts;
 function isQuotaError(e) {
     if (!e) return false;
     return (
