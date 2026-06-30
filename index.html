@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.367  BUILD_ID=3670
+APP_VERSION=v23.9.368  BUILD_ID=3680
 
 === ChangeLog B-2 ===
+### v23.9.368
+- 仮説：v367後もスキャン進捗トーストが出ない
+- 真因：showLookupStageToast内でshowToast識別子を直接使用しており、window.showToastエクスポートだけでは識別子解決できない
+- 修正方法：showLookupStageToast内のshowToast(...)をwindow.showToast(...)に変更。showLookupProgressToast内も同様に修正
+
 ### v23.9.367
 - 仮説：スキャン時の進捗トースト（1/9〜8/9）が一切表示されない
 - 真因：showToast()がIIFE内に閉じ込められwindow.showToastが未定義のため、グローバルスコープのshowLookupStageToastからshowToastを呼べずtry-catchで無音失敗していた
@@ -622,8 +627,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.367";
-  const BUILD_ID    = "3670";
+  const APP_VERSION = "v23.9.368";
+  const BUILD_ID    = "3680";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -23229,7 +23234,7 @@ function showLookupStageToast(stage, message, opts) {
       el.textContent = text;
     } else {
       // 既存要素が無い／削除済み → 新規 sticky 作成して参照保持
-      el = showToast(text, 0, { sticky: true });
+      el = window.showToast(text, 0, { sticky: true });
       window.__lookupStageToastEl = el;
     }
   } catch (_e) {}
@@ -23266,7 +23271,7 @@ function showLookupProgressToast() {
     if (typeof showLookupStageToast === 'function') {
       showLookupStageToast(2, '商品情報を確認しています', { jan: jan, ev: 'barcode_lookup_stage_start' });
     } else {
-      showToast('商品情報を確認しています', 6000);
+      if (typeof window.showToast === 'function') window.showToast('商品情報を確認しています', 6000);
     }
     spDbg('[LOOKUP_TOAST_SHOW]', { msg: '商品情報を確認しています' });
   } catch (_e) {}
