@@ -48,7 +48,7 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.378  BUILD_ID=3780
+APP_VERSION=v23.9.379  BUILD_ID=3790
 
 === ChangeLog B-2 ===
 ### v23.9.370
@@ -637,8 +637,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.378";
-  const BUILD_ID    = "3780";
+  const APP_VERSION = "v23.9.379";
+  const BUILD_ID    = "3790";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -5114,6 +5114,11 @@ document.addEventListener('DOMContentLoaded', function() {
         el = showToast(text, 0, { sticky: true });
         window.__lookupStageToastEl = el;
       }
+      // [v379] curStoreIndicatorにも進捗を表示（確実に見える）
+      try {
+        var _ind = document.getElementById('curStoreIndicator');
+        if (_ind) { _ind.textContent = text; _ind.style.color = '#aaa'; window.__storeIndOrig = window.__storeIndOrig || ''; }
+      } catch(_) {}
       if (opts.final) {
         // [v375] 取得元を showToast（確実に動く）＋ #lookupSourceBanner 両方に表示
         try {
