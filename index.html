@@ -48,7 +48,7 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.370  BUILD_ID=3700
+APP_VERSION=v23.9.371  BUILD_ID=3710
 
 === ChangeLog B-2 ===
 ### v23.9.370
@@ -637,8 +637,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.370";
-  const BUILD_ID    = "3700";
+  const APP_VERSION = "v23.9.371";
+  const BUILD_ID    = "3710";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -12638,6 +12638,8 @@ function spVisibleTrace(tag, payload, cls) {
   // ✅ バーコードデータ処理（スキャン/手入力共通）with OFF優先 + dirtyフラグ保護 + P0タイムラグ対策
   // v23.9.167 SP-250530-006: 第3引数 scannerFormat（EAN_13/EAN_8等）を任意で受け取り誤読取り調査用ログに記録
   async function processBarcodeData(code, debugSourceTag, scannerFormat) {
+    // [v371] デバッグ: processBarcodeData到達確認トースト
+    try { showToast('📷 読み取り中...', 0, { sticky: true }); } catch(_dbg) {}
     // ✅ P0: JAN正規化（数字のみに統一・空白・ハイフン除去）
     let jan = normalizeJan(code);
     // v23.9.167 SP-250530-006: 誤読取り調査ログ用の補助情報
