@@ -48,7 +48,7 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.374  BUILD_ID=3740
+APP_VERSION=v23.9.375  BUILD_ID=3750
 
 === ChangeLog B-2 ===
 ### v23.9.370
@@ -637,8 +637,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.374";
-  const BUILD_ID    = "3740";
+  const APP_VERSION = "v23.9.375";
+  const BUILD_ID    = "3750";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -5086,7 +5086,7 @@ document.addEventListener('DOMContentLoaded', function() {
         window.__lookupStageToastEl = el;
       }
       if (opts.final) {
-        // [v374] #lookupSourceBanner にソース表示（フォーム内・人間が読める時間）
+        // [v375] 取得元を showToast（確実に動く）＋ #lookupSourceBanner 両方に表示
         try {
           var _srcMap = {
             'manual_master': '✅ 手動登録済みデータ', 'jan_dict': '✅ JAN辞書から取得',
@@ -5096,12 +5096,13 @@ document.addEventListener('DOMContentLoaded', function() {
           };
           var _srcKey = String(opts.source || '');
           var _srcLabel = _srcMap[_srcKey] || (_srcKey ? '✅ ' + _srcKey + ' から取得' : '✅ 商品情報を取得しました');
-          var _banner = document.getElementById('lookupSourceBanner');
-          if (_banner) {
-            _banner.textContent = _srcLabel;
-            _banner.style.display = 'block';
-            setTimeout(function() { try { _banner.style.display = 'none'; } catch(_) {} }, 5000);
-          }
+          // ① showToast で確実に表示（8秒）
+          showToast(_srcLabel, 8000);
+          // ② #lookupSourceBanner にも表示
+          try {
+            var _banner = document.getElementById('lookupSourceBanner');
+            if (_banner) { _banner.textContent = _srcLabel; _banner.style.display = 'block'; setTimeout(function() { try { _banner.style.display = 'none'; } catch(_) {} }, 8000); }
+          } catch(_) {}
         } catch(_sb) {}
         var _doneEl = el;
         setTimeout(function() {
@@ -12656,17 +12657,6 @@ function spVisibleTrace(tag, payload, cls) {
   // ✅ バーコードデータ処理（スキャン/手入力共通）with OFF優先 + dirtyフラグ保護 + P0タイムラグ対策
   // v23.9.167 SP-250530-006: 第3引数 scannerFormat（EAN_13/EAN_8等）を任意で受け取り誤読取り調査用ログに記録
   async function processBarcodeData(code, debugSourceTag, scannerFormat) {
-    // [v373] デバッグ: showToastの動作確認
-    try {
-      var _toastResult = null;
-      var _toastErr = '';
-      try { _toastResult = showToast('🔍 テスト', 5000); } catch(e) { _toastErr = String(e); }
-      var _d = document.getElementById('spDbgBanner') || document.createElement('div');
-      _d.id = 'spDbgBanner';
-      _d.style.cssText = 'position:fixed;top:60px;left:0;right:0;background:orange;color:#000;font-weight:bold;font-size:14px;z-index:9999999;padding:8px;text-align:center;';
-      _d.textContent = 'showToast結果: ' + (typeof _toastResult) + ' / ' + (_toastResult ? 'OK' : 'null') + (_toastErr ? ' ERR:'+_toastErr : '');
-      if (!document.getElementById('spDbgBanner')) document.body.appendChild(_d);
-    } catch(_dbg) {}
     // ✅ P0: JAN正規化（数字のみに統一・空白・ハイフン除去）
     let jan = normalizeJan(code);
     // v23.9.167 SP-250530-006: 誤読取り調査ログ用の補助情報
