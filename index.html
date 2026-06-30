@@ -48,7 +48,7 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.380  BUILD_ID=3800
+APP_VERSION=v23.9.381  BUILD_ID=3810
 
 === ChangeLog B-2 ===
 ### v23.9.370
@@ -637,7 +637,7 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.380";
+  const APP_VERSION = "v23.9.381";
   const BUILD_ID    = "3800";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
@@ -7575,11 +7575,14 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         } catch(_yco) {}
       }
       tempImgData = null;
+      window.__spDbProductsAtOpen = { name: '', maker: '', category: '', imageUrl: '' }; // [v381] 新規商品はリセット
       // ※ 商品情報取得は processBarcodeData に一本化（openForm では行わない）
     } else {
       if(delProdBtn) delProdBtn.style.display = 'block';
       document.getElementById('inputName').value = p.name || "";
       document.getElementById('inputMaker').value = p.maker || "";
+      // [v381] openForm時点でのdb.products値を記録（メーカー誤表示の追跡用）
+      window.__spDbProductsAtOpen = { name: p.name || '', maker: p.maker || '', category: p.category || '', imageUrl: p.imageUrl || '' };
       // v23.9.167 SP-250530-004: 再取得ボタン表示判定（既存商品オープン時）
       try { if (typeof window.updateRefetchBtnVisibility === 'function') setTimeout(window.updateRefetchBtnVisibility, 50); } catch (_) {}
 
@@ -12692,7 +12695,29 @@ function spVisibleTrace(tag, payload, cls) {
   // v23.9.167 SP-250530-006: 第3引数 scannerFormat（EAN_13/EAN_8等）を任意で受け取り誤読取り調査用ログに記録
   async function processBarcodeData(code, debugSourceTag, scannerFormat) {
     // [v377] 取得元トースト（IIFE内でshowToastを直接使う・確実に動く）
-    function _showSrcToast(src) {
+    // [v381] フィールド別ソース表示パネル
+    function _showFieldSrcPanel(infoSrc) {
+      try {
+        var panel = document.getElementById('lookupSourceBanner');
+        if (!panel) return;
+        var srcLabel = { manual_master:'手動正本', jan_dict:'JAN辞書', local:'DB保存', 'server-confirmed':'Firebase',
+          cache:'キャッシュ', spkb:'SPKB', yahoo:'Yahoo', rakuten:'楽天', guess:'推定', jan:'JAN推定', none:'未取得', '':'-' };
+        var f = infoSrc || {};
+        var s = function(k) { return srcLabel[f[k]] || f[k] || '-'; };
+        var dbAtOpen = window.__spDbProductsAtOpen || {};
+        var warnParts = [];
+        if (dbAtOpen.maker && dbAtOpen.maker !== (f._finalMaker || '')) {
+          warnParts.push('DB保存メーカー:' + dbAtOpen.maker);
+        }
+        var lines = '名:' + s('name') + ' ／ 製:' + s('maker') + ' ／ 画:' + s('imageUrl') + ' ／ 類:' + s('category');
+        if (warnParts.length) lines += '\n⚠️ ' + warnParts.join(' ');
+        panel.textContent = '📍 ' + lines;
+        panel.style.display = '';
+        panel.style.whiteSpace = 'pre-line';
+        setTimeout(function() { try { panel.style.display = 'none'; panel.textContent = ''; } catch(_) {} }, 20000);
+      } catch(_) {}
+    }
+    function _showSrcToast(src, infoSrc) {
       try {
         var m = { manual_master:'✅ 手動登録済みデータ', jan_dict:'✅ JAN辞書から取得',
           local:'✅ 保存済みデータから取得', 'server-confirmed':'✅ サーバー確認済みデータ',
@@ -12700,6 +12725,7 @@ function spVisibleTrace(tag, payload, cls) {
           yahoo:'✅ Yahoo APIから取得', rakuten:'✅ 楽天市場から取得',
           none:'❌ 商品情報が見つかりませんでした', '':'❌ 商品情報が見つかりませんでした' };
         var label = m[src] !== undefined ? m[src] : (src ? '✅ ' + src : '❌ 商品情報が見つかりませんでした');
+        if (infoSrc) _showFieldSrcPanel(infoSrc);
         // [v378] curStoreIndicatorに直接書き込む（トースト不要・確実に見える）
         var ind = document.getElementById('curStoreIndicator');
         if (ind) {
@@ -12864,6 +12890,7 @@ function spVisibleTrace(tag, payload, cls) {
         let rakutenInfo = null;
         let offInfo = null;
         let finalInfo = { name: '', maker: '', imageUrl: '', imageRefType: '', areaId: '', category: '' };
+        let finalInfoSrc = { name: '', maker: '', imageUrl: '', category: '' }; // [v381] フィールド別ソース追跡
         let sourceUsed = 'none'; // デバッグ用：どのソースを採用したか
 
         // v23.9.102: 商品検索開始ログ（指示書対応）
@@ -12890,6 +12917,7 @@ function spVisibleTrace(tag, payload, cls) {
             if (_masterHit.maker) finalInfo.maker = _masterHit.maker;
             if (_masterHit.imageUrl) finalInfo.imageUrl = _masterHit.imageUrl;
             sourceUsed = 'manual_master';
+            finalInfoSrc = { name: 'manual_master', maker: _masterHit.maker ? 'manual_master' : '', imageUrl: _masterHit.imageUrl ? 'manual_master' : '', category: '' }; // [v381]
             // フォーム即反映
             const currentJanCheckM = String(curBarcode || '').trim();
             if (currentJanCheckM === jan) {
@@ -12914,7 +12942,7 @@ function spVisibleTrace(tag, payload, cls) {
             try { spDbg('[PRODUCT_LOOKUP_FINAL]', { name: finalInfo.name, maker: finalInfo.maker, source: sourceUsed }); } catch (_) {}
             // v23.9.169 SP-260601-002: 段階8 商品情報を表示しました（manual_master HIT 早期 return）
             try { if (typeof showLookupStageToast === 'function') showLookupStageToast(8, '商品情報を表示しました', { jan: jan, ev: 'barcode_lookup_stage_done', source: 'manual_master', final: true }); } catch (_) {}
-            _showSrcToast('manual_master');
+            _showSrcToast('manual_master', finalInfoSrc);
             return; // ✅ 手動正本マスターHIT → 以降の lookup をすべてスキップ
           }
         } catch (_mmErr) {
@@ -12931,6 +12959,7 @@ function spVisibleTrace(tag, payload, cls) {
             if (_jd.maker) finalInfo.maker = _jd.maker;
             if (_jd.category) finalInfo.category = normalizeCategory(_jd.category);
             sourceUsed = 'jan_dict';
+            finalInfoSrc = { name: 'jan_dict', maker: _jd.maker ? 'jan_dict' : '', imageUrl: '', category: _jd.category ? 'jan_dict' : '' }; // [v381]
             // フォームに即反映
             const _jdJanCheck = String(curBarcode || '').trim();
             if (_jdJanCheck === jan) {
@@ -12954,7 +12983,7 @@ function spVisibleTrace(tag, payload, cls) {
             processBarcodeInFlight.delete(jan);
             try { spDbg('[PRODUCT_LOOKUP_FINAL]', { name: finalInfo.name, maker: finalInfo.maker, source: 'jan_dict' }); } catch (_) {}
             try { if (typeof showLookupStageToast === 'function') showLookupStageToast(8, '商品情報を表示しました', { jan, ev: 'barcode_lookup_stage_done', source: 'jan_dict', final: true }); } catch (_) {}
-            _showSrcToast('jan_dict');
+            _showSrcToast('jan_dict', finalInfoSrc);
             return; // ✅ JAN辞書HIT → API をすべてスキップ
           }
         } catch (_jdErr) {
@@ -12989,6 +13018,14 @@ function spVisibleTrace(tag, payload, cls) {
           finalInfo.areaId = cachedData ? (cachedData.areaId || '') : '';
           finalInfo.category = normalizeCategory((cachedData && cachedData.category) || (p && p.category) || '');
           sourceUsed = 'local';
+          // [v381] ローカル: 名前はp.nameかcache、メーカーはp.makerかcache
+          finalInfoSrc = {
+            name: (p && p.name && !isWeakNameCandidate(String(p.name).trim(), jan)) ? 'local' : 'cache',
+            maker: (p && p.maker) ? 'local' : (cachedData && cachedData.maker ? 'cache' : ''),
+            imageUrl: (p && p.imageUrl) ? 'local' : (cachedData && cachedData.imageUrl ? 'cache' : ''),
+            category: (p && p.category) ? 'local' : (cachedData && cachedData.category ? 'cache' : ''),
+            _finalMaker: finalInfo.maker
+          };
 
           // フォームに即反映
           const currentJanCheckL = String(curBarcode || '').trim();
@@ -13019,7 +13056,7 @@ function spVisibleTrace(tag, payload, cls) {
           spDbg('[PRODUCT_LOOKUP_FINAL]', { name: finalInfo.name, maker: finalInfo.maker, source: sourceUsed });
           // v23.9.169 SP-260601-002: 段階8 商品情報を表示しました（localStorage HIT 早期 return）
           try { if (typeof showLookupStageToast === 'function') showLookupStageToast(8, '商品情報を表示しました', { jan: jan, ev: 'barcode_lookup_stage_done', source: 'local', final: true }); } catch (_) {}
-          _showSrcToast('local');
+          _showSrcToast('local', finalInfoSrc);
           return; // ✅ ローカルHIT → AI・外部API呼ばない
         }
         
@@ -13051,6 +13088,7 @@ function spVisibleTrace(tag, payload, cls) {
           finalInfo.maker = serverConfirmed.confirmedMaker || '';
           finalInfo.category = normalizeCategory(serverConfirmed.confirmedCategory || '');
           sourceUsed = 'server-confirmed';
+          finalInfoSrc = { name: 'server-confirmed', maker: serverConfirmed.confirmedMaker ? 'server-confirmed' : '', imageUrl: '', category: serverConfirmed.confirmedCategory ? 'server-confirmed' : '', _finalMaker: finalInfo.maker }; // [v381]
           // C: Firebase確定メーカーを辞書に追記
           try { learnMakerFromJan(jan, finalInfo.maker); } catch(_) {}
 
@@ -13091,7 +13129,7 @@ function spVisibleTrace(tag, payload, cls) {
             processBarcodeInFlight.delete(jan);
             spDbg('[PRODUCT_LOOKUP_FINAL]', { name: finalInfo.name, maker: finalInfo.maker, source: sourceUsed });
             try { if (typeof showLookupStageToast === 'function') showLookupStageToast(8, '商品情報を表示しました', { jan: jan, ev: 'barcode_lookup_stage_done', source: 'server-confirmed', final: true }); } catch (_) {}
-            _showSrcToast('server-confirmed');
+            _showSrcToast('server-confirmed', finalInfoSrc);
             return; // ✅ サーバーHIT・imageUrlあり → 外部API不要
           }
           // imageUrlなし → Yahoo lookupへ続ける（name/makerはspkbNameLockedで上書き防止）
@@ -13115,6 +13153,7 @@ function spVisibleTrace(tag, payload, cls) {
           finalInfo.areaId = cachedData.areaId || '';
           finalInfo.category = normalizeCategory(cachedData.category || '');
           sourceUsed = 'cache';
+          finalInfoSrc = { name: 'cache', maker: cachedData.maker ? 'cache' : '', imageUrl: cachedData.imageUrl ? 'cache' : '', category: cachedData.category ? 'cache' : '', _finalMaker: finalInfo.maker }; // [v381]
 
           // ✅ 即座にフォームに反映
           const currentJanCheck = String(curBarcode || '').trim();
@@ -13161,7 +13200,7 @@ function spVisibleTrace(tag, payload, cls) {
             markLookupPipelineStep(jan, 'Final', 'HIT', { name: finalInfo.name || '', maker: finalInfo.maker || '', reason: 'jan_cache_sufficient' });
             // v23.9.169 SP-260601-002: 段階8 商品情報を表示しました（cache HIT 早期 return）
             try { if (typeof showLookupStageToast === 'function') showLookupStageToast(8, '商品情報を表示しました', { jan: jan, ev: 'barcode_lookup_stage_done', source: 'cache', final: true }); } catch (_) {}
-            _showSrcToast('cache');
+            _showSrcToast('cache', finalInfoSrc);
             return;
           }
         }
@@ -13548,6 +13587,7 @@ function spVisibleTrace(tag, payload, cls) {
         finalInfo.maker = candidateMaker || '';
         finalInfo.imageUrl = candidateImageUrl || '';
         sourceUsed = candidateSource || 'none';
+        finalInfoSrc = { name: candidateSource || 'none', maker: candidateMaker ? candidateSource || 'none' : '', imageUrl: candidateImageUrl ? candidateSource || 'none' : '', category: candidateCategory ? candidateSource || 'none' : '', _finalMaker: candidateMaker || '' }; // [v381]
         
         // v23.9.102: AI検索ログ（クライアント側では未使用・トレースのみ）
         spDbg('[PRODUCT_LOOKUP_AI]', { called: false, result: null });
@@ -13850,7 +13890,7 @@ function spVisibleTrace(tag, payload, cls) {
           // v23.9.169 SP-260601-002: 段階9 商品情報が見つかりませんでした（旧 8 秒 showToast は append 方式のため置換）
           //   ※ JAN 詳細表示は debug 時のみに格下げ。通常運用ではステージトースト本文のみ表示
           try { if (typeof showLookupStageToast === 'function') showLookupStageToast(9, '商品情報が見つかりませんでした。手入力または再取得できます', { jan: jan, ev: 'barcode_lookup_stage_failed', final: true, ms: 5000 }); } catch (_) {}
-          _showSrcToast('none');
+          _showSrcToast('none', finalInfoSrc);
           // [v354] マイナー商品ヒントを表示（inputNameが空の時のみ）
           try {
             var _uhFail = document.getElementById('unknownProductHint');
@@ -13904,11 +13944,11 @@ function spVisibleTrace(tag, payload, cls) {
             if (typeof showLookupStageToast === 'function') {
               if (fn) {
                 showLookupStageToast(8, '商品情報を表示しました', { jan: jan, ev: 'barcode_lookup_stage_done', source: String(sourceUsed || ''), final: true });
-                _showSrcToast(String(sourceUsed || ''));
+                finalInfoSrc._finalMaker = finalInfo.maker || ''; _showSrcToast(String(sourceUsed || ''), finalInfoSrc);
               } else {
                 // 段階9 は L10532 の fallback 側で既に最終表示済の場合もあるが、ここは念のため失敗確定として呼ぶ
                 showLookupStageToast(9, '商品情報が見つかりませんでした。手入力または再取得できます', { jan: jan, ev: 'barcode_lookup_stage_failed', final: true, ms: 5000 });
-                _showSrcToast('none');
+                _showSrcToast('none', finalInfoSrc);
               }
             }
           } catch (_) {}
@@ -13945,7 +13985,7 @@ function spVisibleTrace(tag, payload, cls) {
         try {
           if (typeof showLookupStageToast === 'function') {
             showLookupStageToast(9, '商品情報が見つかりませんでした。手入力または再取得できます', { jan: String(jan || ''), ev: 'barcode_lookup_stage_failed', final: true, ms: 5000, result: 'error' });
-            _showSrcToast('none');
+            _showSrcToast('none', { name: 'none', maker: 'none', imageUrl: 'none', category: 'none', _finalMaker: '' });
           } else {
             showToast('エラーが発生しました', 5000);
           }
