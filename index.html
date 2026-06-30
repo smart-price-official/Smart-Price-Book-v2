@@ -48,7 +48,7 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.375  BUILD_ID=3750
+APP_VERSION=v23.9.376  BUILD_ID=3760
 
 === ChangeLog B-2 ===
 ### v23.9.370
@@ -637,8 +637,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.375";
-  const BUILD_ID    = "3750";
+  const APP_VERSION = "v23.9.376";
+  const BUILD_ID    = "3760";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -845,6 +845,35 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
     } catch(e) {
       // ignore
     }
+  })();
+  </script>
+
+  <script>
+  // [v376] SW登録＋新SW検出時に自動リロード
+  (function() {
+    if (!('serviceWorker' in navigator)) return;
+    // SW登録（更新チェックをブラウザに通知するために必須）
+    navigator.serviceWorker.register('./sw.js').then(function(reg) {
+      // 待機中の新SWがあればすぐ有効化
+      if (reg.waiting) { reg.waiting.postMessage({ type: 'SKIP_WAITING' }); }
+      reg.addEventListener('updatefound', function() {
+        var newSW = reg.installing;
+        if (!newSW) return;
+        newSW.addEventListener('statechange', function() {
+          if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+            // 新SWがインストール済み → skipWaiting要求してリロード
+            newSW.postMessage({ type: 'SKIP_WAITING' });
+          }
+        });
+      });
+    }).catch(function(e) { console.warn('[SW] register failed', e); });
+    // controllerchangeで自動リロード（新SWがcontrollerになった瞬間）
+    var _reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', function() {
+      if (_reloading) return;
+      _reloading = true;
+      location.reload();
+    });
   })();
   </script>
 
