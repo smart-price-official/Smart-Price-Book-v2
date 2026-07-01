@@ -54,7 +54,7 @@ APP_VERSION=v23.9.383  BUILD_ID=3830
 ### v23.9.383
 - 仮説：GASプロキシはクォータ上限があり、スタッフ複数人での利用に耐えられない
 - 真因：GAS URLフェッチは無料枠 20,000回/日。スタッフ4〜10人の検証開始で即日枯渇する
-- 修正方法：Xserver PHP API（https://smapri.jp/api/lookup.php）を第1優先に変更。config.json に serverLookupUrl を追加。GASは引き続きフォールバックとして残す
+- 修正方法：Xserver PHP API（https://smapri.jp/api/v1/lookup.php）を第1優先に変更。config.json に serverLookupUrl を追加。GASは引き続きフォールバックとして残す
 
 
 ### v23.9.370

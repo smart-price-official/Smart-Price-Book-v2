@@ -1,5 +1,5 @@
 {
-  "serverLookupUrl": "https://smapri.jp/api/lookup.php",
+  "serverLookupUrl": "https://smapri.jp/api/v1/lookup.php",
   "yahooProxyExecUrl": "https://script.google.com/macros/s/AKfycbyZ6T-tMowOe0GgbVINpLNtUDIxpH1A-LgZHBLGkxuzuSCSzOm49fiNzzi7yM1lCQU9/exec",
   "yahooProxyUrls": [
     "https://script.google.com/macros/s/AKfycbyZ6T-tMowOe0GgbVINpLNtUDIxpH1A-LgZHBLGkxuzuSCSzOm49fiNzzi7yM1lCQU9/exec",
