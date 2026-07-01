@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.383  BUILD_ID=3830
+APP_VERSION=v23.9.384  BUILD_ID=3840
 
 === ChangeLog B-2 ===
+### v23.9.384
+- 仮説：v383のPHP処理でresultをletより前に参照しているためTDZエラーが発生し実機ではPHPが呼ばれない
+- 真因：let result = null がGASセクション（L9707）にあり、PHP処理（L9653）から参照すると Temporal Dead Zone で ReferenceError になる
+- 修正方法：let result/let _proxyUsed/let _proxyResult をPHP処理の直前に移動。PHP失敗時・GAS全quota・Yahoo直接API使用時に curStoreIndicator で経路を常時表示
+
 ### v23.9.383
 - 仮説：GASプロキシはクォータ上限があり、スタッフ複数人での利用に耐えられない
 - 真因：GAS URLフェッチは無料枠 20,000回/日。スタッフ4〜10人の検証開始で即日枯渇する
@@ -643,8 +648,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.383";
-  const BUILD_ID    = "3830";
+  const APP_VERSION = "v23.9.384";
+  const BUILD_ID    = "3840";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -9650,6 +9655,11 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         } catch(e) {}
       }
 
+      // [v384] result/proxyUsed/proxyResult を PHP処理前に宣言（TDZ回避）
+      let result = null;
+      let _proxyUsed = '';
+      let _proxyResult = 'none'; // 'ok' | 'quota' | 'fail' | 'none'
+
       // [v383] ① PHP サーバー（第1優先・クォータなし）
       const _serverLookupUrl = (window.SP_CONFIG && window.SP_CONFIG.serverLookupUrl)
         ? window.SP_CONFIG.serverLookupUrl.trim() : '';
@@ -9674,8 +9684,28 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
               if (isDebug()) showToast(`[Yahoo] PHPok: ${_json.name.substring(0,20)}`, 3000);
               try { spDbg('[SERVER_LOG]', { jan, result: 'ok', source: 'php_server', cached: !!_json._cached }); } catch(_) {}
             }
+          } else {
+            // [v384] PHP HTTP エラー → curStoreIndicator に表示
+            try {
+              var _ind0 = document.getElementById('curStoreIndicator');
+              if (_ind0) {
+                _ind0.style.color = '#ff9800';
+                _ind0.textContent = `⚠️ 商品DBサーバーエラー(${_res.status})→GAS検索中...`;
+                setTimeout(function(){ try{ _ind0.textContent=''; _ind0.style.color=''; }catch(_){} }, 8000);
+              }
+            } catch(_) {}
+            try { spDbg('[SERVER_LOG]', { jan, result: 'http_error', status: _res.status }); } catch(_) {}
           }
         } catch(_e) {
+          // [v384] PHP 接続失敗（タイムアウト等）→ 常に画面表示
+          try {
+            var _ind1 = document.getElementById('curStoreIndicator');
+            if (_ind1) {
+              _ind1.style.color = '#ff9800';
+              _ind1.textContent = '⚠️ 商品DBサーバー接続失敗→GAS検索中...';
+              setTimeout(function(){ try{ _ind1.textContent=''; _ind1.style.color=''; }catch(_){} }, 8000);
+            }
+          } catch(_) {}
           if (isDebug()) showToast(`[Yahoo] PHP失敗→GASへ: ${_e.message}`, 3000);
           try { spDbg('[SERVER_LOG]', { jan, result: 'fail', error: _e.message }); } catch(_) {}
         }
@@ -9704,11 +9734,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         return json.ok === false && (e.indexOf('429') !== -1 || e.indexOf('urlfetch') !== -1 || e.indexOf('多すぎ') !== -1 || e.indexOf('quota') !== -1);
       }
 
-      let result = null;
-      let _proxyUsed = '';
-      let _proxyResult = 'none'; // 'ok' | 'quota' | 'fail' | 'none'
-
-      // [v382] ① GASプロキシ ローテーション（クォータ切れなら次へ）
+      // [v382] ② GASプロキシ ローテーション（クォータ切れなら次へ）
       if (_allProxies.length) {
         var _startIdx = (window.__spProxyIdx || 0) % _allProxies.length;
         for (var _pi = 0; _pi < _allProxies.length; _pi++) {
@@ -9768,6 +9794,17 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         try { spDbg('[PROXY_LOG]', { jan, result: _proxyResult, proxyUsed: _proxyUsed, totalProxies: _allProxies.length }); } catch(_) {}
       }
 
+      // [v384] ③ Yahoo直接API フォールバック通知（curStoreIndicator）
+      if (!result && appId) {
+        try {
+          var _indDirect = document.getElementById('curStoreIndicator');
+          if (_indDirect) {
+            _indDirect.style.color = '#ff9800';
+            _indDirect.textContent = '⚠️ GAS上限超過→Yahoo直接API検索中...';
+            setTimeout(function(){ try{ _indDirect.textContent=''; _indDirect.style.color=''; }catch(_){} }, 10000);
+          }
+        } catch(_) {}
+      }
       // ② Yahoo直接API（プロキシが失敗/未設定の場合）
       if (!result && appId) {
         try {
