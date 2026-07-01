@@ -48,9 +48,15 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.382  BUILD_ID=3820
+APP_VERSION=v23.9.383  BUILD_ID=3830
 
 === ChangeLog B-2 ===
+### v23.9.383
+- 仮説：GASプロキシはクォータ上限があり、スタッフ複数人での利用に耐えられない
+- 真因：GAS URLフェッチは無料枠 20,000回/日。スタッフ4〜10人の検証開始で即日枯渇する
+- 修正方法：Xserver PHP API（https://smapri.jp/api/lookup.php）を第1優先に変更。config.json に serverLookupUrl を追加。GASは引き続きフォールバックとして残す
+
+
 ### v23.9.370
 - 仮説：showLookupStageToastチェーン経由では永遠にトーストが出ない
 - 真因：IIFE内外の壁を何層経由しても解決できない構造問題
@@ -637,8 +643,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.382";
-  const BUILD_ID    = "3800";
+  const APP_VERSION = "v23.9.383";
+  const BUILD_ID    = "3830";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -9642,6 +9648,37 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
             if (isDebug()) console.log('[Yahoo] cache miss (not found)', jan);
           }
         } catch(e) {}
+      }
+
+      // [v383] ① PHP サーバー（第1優先・クォータなし）
+      const _serverLookupUrl = (window.SP_CONFIG && window.SP_CONFIG.serverLookupUrl)
+        ? window.SP_CONFIG.serverLookupUrl.trim() : '';
+      if (_serverLookupUrl && !result) {
+        try {
+          if (isDebug()) showToast(`[Yahoo] PHPサーバー検索中...`, 2000);
+          const _ctrl = new AbortController();
+          const _tid = setTimeout(() => _ctrl.abort(), 10000);
+          const _res = await fetch(`${_serverLookupUrl}?jan=${encodeURIComponent(jan)}`, {
+            cache: 'no-store', signal: _ctrl.signal
+          });
+          clearTimeout(_tid);
+          if (_res.ok) {
+            const _json = await _res.json();
+            if (_json && _json.ok && _json.name) {
+              result = normalizeYahooProductInfo({
+                name: _json.name, maker: _json.maker || '',
+                imageUrl: _json.imageUrl || '',
+                imageUrls: [],
+                category: _json.category || ''
+              });
+              if (isDebug()) showToast(`[Yahoo] PHPok: ${_json.name.substring(0,20)}`, 3000);
+              try { spDbg('[SERVER_LOG]', { jan, result: 'ok', source: 'php_server', cached: !!_json._cached }); } catch(_) {}
+            }
+          }
+        } catch(_e) {
+          if (isDebug()) showToast(`[Yahoo] PHP失敗→GASへ: ${_e.message}`, 3000);
+          try { spDbg('[SERVER_LOG]', { jan, result: 'fail', error: _e.message }); } catch(_) {}
+        }
       }
 
       // [v382] プロキシURL一覧（config.json の yahooProxyUrls 優先）
