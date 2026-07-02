@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.387  BUILD_ID=3870
+APP_VERSION=v23.9.388  BUILD_ID=3880
 
 === ChangeLog B-2 ===
+### v23.9.388
+- 仮説：Yahoo 429発生時にfallbackFromGoogle(jan)がinputName.valueにJANコードをセットするため、!inputName.value条件がfalseになり「商品名を登録する」ボタンが非表示になっていた
+- 真因：unknownProductHintの表示条件が `_uhFail && _niNow && !_niNow.value` と厳格すぎた。hasData=falseブロック内なのでMISS確定なのに、inputName値の有無で表示を分岐していた
+- 修正方法：条件を `if (_uhFail)` に変更。全MISS経路（Yahoo429/GAS quota/MISS）で必ず「✏️ 商品名を登録する」ボタンを表示
+
 ### v23.9.387
 - 仮説：ブランド辞書がなくGoogleのtype判定に依存しているため有名チェーンが誤分類される・SC内店舗が出ない・一度選んだ店舗が次回優先表示されない
 - 真因：①isShoppingStoreにブランド部分一致辞書がなかった ②department_storeタイプのSCが返ってきたとき内部店舗を追加検索しなかった ③店舗選択時にGPS座標を紐付け保存する仕組みがなかった
@@ -668,7 +673,7 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.387";
+  const APP_VERSION = "v23.9.388";
   const BUILD_ID    = "3850";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
@@ -14199,12 +14204,12 @@ function spVisibleTrace(tag, payload, cls) {
           //   ※ JAN 詳細表示は debug 時のみに格下げ。通常運用ではステージトースト本文のみ表示
           try { if (typeof showLookupStageToast === 'function') showLookupStageToast(9, '商品情報が見つかりませんでした。手入力または再取得できます', { jan: jan, ev: 'barcode_lookup_stage_failed', final: true, ms: 5000 }); } catch (_) {}
           _showSrcToast('none', finalInfoSrc);
-          // [v354] マイナー商品ヒントを表示（inputNameが空の時のみ）
+          // [v354] マイナー商品ヒントを表示
           // [v386] SPKB登録ボタン用のJANを保持
+          // [v388] Yahoo429/GAS quota含む全MISS経路で必ず表示（!inputName.value条件削除）
           try {
             var _uhFail = document.getElementById('unknownProductHint');
-            var _niNow = document.getElementById('inputName');
-            if (_uhFail && _niNow && !_niNow.value) {
+            if (_uhFail) {
               window._spkbMissJan = jan; // [v386] openSpkbRegisterModal に渡す
               _uhFail.style.display = 'block';
             }
