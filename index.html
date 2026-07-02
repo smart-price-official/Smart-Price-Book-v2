@@ -54,7 +54,7 @@ APP_VERSION=v23.9.387  BUILD_ID=3870
 ### v23.9.387
 - 仮説：ブランド辞書がなくGoogleのtype判定に依存しているため有名チェーンが誤分類される・SC内店舗が出ない・一度選んだ店舗が次回優先表示されない
 - 真因：①isShoppingStoreにブランド部分一致辞書がなかった ②department_storeタイプのSCが返ってきたとき内部店舗を追加検索しなかった ③店舗選択時にGPS座標を紐付け保存する仕組みがなかった
-- 修正方法：①GPS_BRAND_DICT（19ブランド辞書・部分一致）をisShoppingStoreの最優先評価に追加 ②SC補完：department_storeカテゴリ返却時に小半径0.15kmで追加GASリクエスト ③GPS学習：_spPersistStoreでsp_gps_learn_v1に{store,lat,lng,count}保存→fetchNearbyStoresのLayer0で同座標の最多選択店舗を先頭に配置
+- 修正方法：①GPS_BRAND_DICT（19ブランド辞書・部分一致）をisShoppingStoreの最優先評価に追加 ②GPS学習：_spPersistStoreでsp_gps_learn_v1に{store,lat,lng,count}保存→fetchNearbyStoresのLayer0で同座標の最多選択店舗を先頭に配置 ③⭐前回選択ラベル：Layer0ヒット店舗チップにgps-learnedクラス付与・黄色ハイライト表示 ④SC補完GAS追加リクエストは削除（ユイさん設計方針：GAS=API中継のみ・SC補完はHTMLブランド辞書で対応）
 
 ### v23.9.386-B
 - 仮説：ショッピングセンター内でドラッグストア・百貨店が出ない・病院/接骨院/鍼灸等が店舗候補に混入している
@@ -927,6 +927,9 @@ function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : un
     .store-tag.add-store:active { background: var(--sp-button-bg); opacity: 0.85; }
     .store-tag.ec-store { background: rgba(76, 175, 80, 0.14); color: #66d17a; border: 1px dashed rgba(76, 175, 80, 0.75); font-weight: bold; }
     .store-tag.ec-store:active { opacity: 0.85; }
+    /* [v387] GPS学習済み最優先店舗（⭐ 前回選択） */
+    .store-tag.gps-learned { background: rgba(255, 193, 7, 0.12); border: 1px solid rgba(255, 193, 7, 0.6); color: #ffd54f; font-weight: bold; }
+    .store-tag.gps-learned.active { background: var(--sp-primary); color: white; border-color: var(--sp-primary); }
     .gps-status { font-size: 0.6rem; margin-left: 4px; opacity: 0.9; }
 
     .card { background-color: var(--sp-card); border: 1px solid var(--sp-border); margin-bottom: 10px; border-radius: 12px; overflow: hidden; }
@@ -7105,12 +7108,15 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     } catch (_gRs) {}
     try { spDbg('[STORE_RENDER_GPS_BUTTON]', { innerLen: (list.innerHTML || '').length }); } catch (_sG) {}
 
+    // [v387] Layer0: GPS学習済み最優先店舗（⭐表示用）
+    const _learnedStoreLabel = (isGpsOn && window._gpsLearnedTopStore) ? window._gpsLearnedTopStore : '';
     finalSet.forEach(name => {
       const span = document.createElement('span');
       const isUnset = (name === '未設定');
       const isActive = (name === curStore);
-      span.className = 'store-tag' + (isActive ? ' active' : '') + (isUnset ? ' unset' : '');
-      span.innerText = name;
+      const isLearned = !!(_learnedStoreLabel && name === _learnedStoreLabel && !isUnset);
+      span.className = 'store-tag' + (isActive ? ' active' : '') + (isUnset ? ' unset' : '') + (isLearned ? ' gps-learned' : '');
+      span.innerText = isLearned ? '⭐ ' + name : name;
       span.onclick = () => {
         document.querySelectorAll('.store-tag').forEach(s => s.classList.remove('active'));
         span.classList.add('active');
@@ -10527,6 +10533,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         }).sort(function(a, b) { return (b.count || 0) - (a.count || 0); });
         if (_learnNearby.length > 0) {
           _gpsLearnedTopStore = _learnNearby[0].store;
+          window._gpsLearnedTopStore = _gpsLearnedTopStore; // [v387] renderStoreList で⭐表示に使用
           spDbg('[GPS_LAYER0_HIT]', { store: _gpsLearnedTopStore, count: _learnNearby[0].count, candidates: _learnNearby.length });
         }
       }
@@ -10613,31 +10620,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
             }
 
             const storesArr = json.stores;
-
-            // [v387] 大型SC補完: ショッピングセンタータイプが返ってきたとき小半径で内部店舗を追加検索
-            try {
-              const _scItems = storesArr.filter(s => s.category === 'ショッピングセンター');
-              if (_scItems.length > 0) {
-                for (const _sc of _scItems.slice(0, 2)) {
-                  if (!_sc.lat || !_sc.lng) continue;
-                  try {
-                    const _scUrl = `${proxyUrl}?action=stores&lat=${_sc.lat}&lng=${_sc.lng}&radius_km=0.15&limit=20`;
-                    const _scRes = await fetchWithTimeout(_scUrl, { cache: 'no-store' }, 8000);
-                    if (_scRes.ok) {
-                      const _scJ = await _scRes.json();
-                      if (_scJ.ok && Array.isArray(_scJ.stores)) {
-                        _scJ.stores.forEach(function(s) {
-                          if (s.category !== 'ショッピングセンター' && !storesArr.find(e => e.name === s.name)) {
-                            storesArr.push(s);
-                            spDbg('[GPS_SC_EXPAND]', { sc: _sc.name, added: s.name, cat: s.category });
-                          }
-                        });
-                      }
-                    }
-                  } catch (_scErr) { spDbg('[GPS_SC_EXPAND_ERR]', { sc: _sc.name, err: _scErr.message }); }
-                }
-              }
-            } catch (_scOuterErr) {}
+            // [v387] 大型SC補完は P2（将来実装）: ユイさん設計方針により GAS追加リクエストは使わない
+            // SC内店舗はブランド辞書(GPS_BRAND_DICT)で1回目の結果から正確に判定する
 
             const rawCount = storesArr.length;
             lastStoresForScore = storesArr.slice();
