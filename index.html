@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.385  BUILD_ID=3850
+APP_VERSION=v23.9.386  BUILD_ID=3860
 
 === ChangeLog B-2 ===
+### v23.9.386
+- 仮説：SPKB未登録・Yahoo取得失敗のMISS時にスタッフが商品名を登録できる手段がなく、未解決商品が蓄積していた
+- 真因：MISS時は unknownProductHint を表示するだけで、SPKBへの書き込み導線がなかった
+- 修正方法：①unknownProductHint に「商品名を登録」ボタン追加②モーダル（名前・内容量・メーカー）表示③Firebase global_products へ staff_candidate として書き込み④lookup.php POST でPHPキャッシュにも保存⑤spRecordSource(jan, 'STAFF_INPUT') 記録
+
 ### v23.9.385
 - 仮説：SPKBヒット後もYahoo APIを呼んでしまい、クォータを無駄に消費している
 - 真因：processBarcodeData でSPKB→Yahoo の間にPHPキャッシュ確認ステップが存在せず、candidateName があってもlookupYahooByJanを呼んでいた
@@ -653,7 +658,7 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.385";
+  const APP_VERSION = "v23.9.386";
   const BUILD_ID    = "3850";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
@@ -1916,10 +1921,13 @@ document.addEventListener('DOMContentLoaded', function() {
               <button id="refetchBtn" onclick="refetchProductInfo()" title="商品情報を再取得（AI+画像）" class="sp-ai-btn" style="display:none;">🔄</button>
             </div>
             <!-- [v354] 商品名不明ヒント：マイナー商品でルックアップ失敗時のみ表示 -->
+            <!-- [v386] SPKB手入力登録ボタン追加 -->
             <div id="unknownProductHint" style="display:none; margin-top:6px; padding:8px 10px; background:rgba(255,193,7,0.1); border:1px solid rgba(255,193,7,0.3); border-radius:8px; font-size:0.8rem; line-height:1.5;">
               <span style="color:#ffc107; font-weight:bold;">📦 マイナー商品のため自動取得できませんでした</span><br>
-              <span style="color:var(--sp-text,#ddd);">お時間があれば上の欄に商品名を入力いただけると助かります。</span><br>
-              <span style="color:var(--sp-text-secondary,#999);">急いでいる場合はそのまま登録してOKです。後日スタッフが調べて更新します。</span>
+              <span style="color:var(--sp-text,#ddd);">商品名を登録するとみんなで共有できます。</span>
+              <div style="margin-top:8px;">
+                <button type="button" onclick="try{openSpkbRegisterModal(window._spkbMissJan||'');}catch(_){}" style="width:100%;padding:8px;background:#1976d2;color:#fff;border:none;border-radius:8px;font-size:0.85rem;font-weight:bold;cursor:pointer;">✏️ 商品名を登録する</button>
+              </div>
             </div>
             <select id="inputCategory" class="form-control sp-bg-card sp-border-muted mb-2" style="font-size:0.85rem; padding:4px;"></select>
             <!-- ✅ サブカテゴリ復活（最小UI） -->
@@ -14088,10 +14096,14 @@ function spVisibleTrace(tag, payload, cls) {
           try { if (typeof showLookupStageToast === 'function') showLookupStageToast(9, '商品情報が見つかりませんでした。手入力または再取得できます', { jan: jan, ev: 'barcode_lookup_stage_failed', final: true, ms: 5000 }); } catch (_) {}
           _showSrcToast('none', finalInfoSrc);
           // [v354] マイナー商品ヒントを表示（inputNameが空の時のみ）
+          // [v386] SPKB登録ボタン用のJANを保持
           try {
             var _uhFail = document.getElementById('unknownProductHint');
             var _niNow = document.getElementById('inputName');
-            if (_uhFail && _niNow && !_niNow.value) _uhFail.style.display = 'block';
+            if (_uhFail && _niNow && !_niNow.value) {
+              window._spkbMissJan = jan; // [v386] openSpkbRegisterModal に渡す
+              _uhFail.style.display = 'block';
+            }
           } catch(_) {}
           if (isDebug()) { try { showToast(`商品情報が見つかりませんでした\nJAN: ${jan}\n商品名・メーカーを手入力してください`, 8000); } catch (_) {} }
           try { spDbg('[LOOKUP_TOAST_FALLBACK]', { reason: 'no_product_data', jan: jan }); } catch (_ltf) {}
@@ -24282,6 +24294,110 @@ window.spSetReportPeriod = spSetReportPeriod;
   }
   window.spShowSourceStats = spShowSourceStats;
 
+  // [v386] === SPKB手入力登録UI ===
+  window._spkbMissJan = '';
+
+  function openSpkbRegisterModal(jan) {
+    window._spkbMissJan = jan || window._spkbMissJan || '';
+    var modal = document.getElementById('spkbRegisterModal');
+    if (!modal) return;
+    var existingName = '';
+    try { existingName = (document.getElementById('inputName') || {}).value || ''; } catch(_) {}
+    var existingMaker = '';
+    try { existingMaker = (document.getElementById('inputMaker') || {}).value || ''; } catch(_) {}
+    document.getElementById('spkbRegModalName').value = existingName;
+    document.getElementById('spkbRegModalMaker').value = existingMaker;
+    document.getElementById('spkbRegModalVolume').value = '';
+    modal.style.display = 'flex';
+    try { document.getElementById('spkbRegModalName').focus(); } catch(_) {}
+  }
+
+  function closeSpkbRegisterModal() {
+    var modal = document.getElementById('spkbRegisterModal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  async function saveSpkbRegister() {
+    var jan = window._spkbMissJan || '';
+    var name = ((document.getElementById('spkbRegModalName') || {}).value || '').trim();
+    var maker = ((document.getElementById('spkbRegModalMaker') || {}).value || '').trim();
+    var volume = ((document.getElementById('spkbRegModalVolume') || {}).value || '').trim();
+
+    if (!jan || jan.length < 8) {
+      try { showToast('JANコードが不明です。スキャン後に登録してください', 3000); } catch(_) {}
+      return;
+    }
+    if (!name) {
+      try { showToast('商品名を入力してください', 3000); } catch(_) {}
+      try { document.getElementById('spkbRegModalName').focus(); } catch(_) {}
+      return;
+    }
+
+    var saveBtn = document.getElementById('spkbRegSaveBtn');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '登録中...'; }
+
+    try {
+      var fullName = name + (volume ? ' ' + volume : '');
+      var entry = {
+        jan: jan,
+        confirmed_name: fullName,
+        confirmed_maker: maker,
+        confirmed_imageUrl: '',
+        source: 'staff_candidate',
+        created_at: Date.now(),
+        updated_at: Date.now()
+      };
+
+      // 1. Firebase SPKB (global_products) へ staff_candidate として登録
+      if (window.firebaseDb) {
+        await window.firebaseDb.ref('global_products/' + jan).update(entry);
+        spDbg('[SPKB_STAFF_WRITE]', { jan, name: fullName, maker });
+      }
+
+      // 2. PHPキャッシュにPOST保存（fire-and-forget）
+      try {
+        var _sUrl = (window.SP_CONFIG && window.SP_CONFIG.serverLookupUrl) ? window.SP_CONFIG.serverLookupUrl.trim() : '';
+        var _sKey = (window.SP_CONFIG && window.SP_CONFIG.serverCacheKey) ? window.SP_CONFIG.serverCacheKey.trim() : '';
+        if (_sUrl) {
+          var _hdr = { 'Content-Type': 'application/json' };
+          if (_sKey) _hdr['X-SP-Cache-Key'] = _sKey;
+          fetch(_sUrl, {
+            method: 'POST',
+            headers: _hdr,
+            body: JSON.stringify({ jan: jan, name: fullName, maker: maker, imageUrl: '', source: 'staff_input' })
+          }).then(function(r) { spDbg('[PHP_CACHE_STAFF_WRITE]', { jan, ok: r.ok }); })
+            .catch(function(e) { spDbg('[PHP_CACHE_STAFF_ERR]', { jan, err: e.message }); });
+        }
+      } catch(_pe) {}
+
+      // 3. ソース統計記録
+      try { spRecordSource(jan, 'STAFF_INPUT'); } catch(_) {}
+
+      // 4. フォームに反映
+      try {
+        var ni = document.getElementById('inputName');
+        if (ni && !ni.value) ni.value = fullName;
+        var mi = document.getElementById('inputMaker');
+        if (mi && !mi.value) mi.value = maker;
+        var uh = document.getElementById('unknownProductHint');
+        if (uh) uh.style.display = 'none';
+      } catch(_) {}
+
+      closeSpkbRegisterModal();
+      try { showToast('✅ 商品名を登録しました（みんなで共有されます）', 4000); } catch(_) {}
+
+    } catch(err) {
+      spDbg('[STAFF_INPUT_ERROR]', { jan, err: err.message });
+      try { showToast('登録に失敗しました。もう一度お試しください', 3000); } catch(_) {}
+    } finally {
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '登録する'; }
+    }
+  }
+
+  window.openSpkbRegisterModal = openSpkbRegisterModal;
+  window.closeSpkbRegisterModal = closeSpkbRegisterModal;
+  window.saveSpkbRegister = saveSpkbRegister;
+
   // === v23.9.166 SP-250529-002: 動作ログ永続化ストア（localStorage 'sp_oplog' / 直近5000件リングバッファ[v23.9.167で拡大] / 書込デバウンス500ms） ===
   var _spOpLog = [];
   var _spOpLogTimer = null;
@@ -24716,6 +24832,35 @@ window.spSetReportPeriod = spSetReportPeriod;
 })();
 
 </script>
+
+<!-- [v386] SPKB手入力登録モーダル -->
+<div id="spkbRegisterModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:9900; align-items:center; justify-content:center; padding:16px;">
+  <div style="background:var(--sp-card,#1e1e2e); border-radius:16px; padding:20px; width:100%; max-width:420px; box-shadow:0 8px 32px rgba(0,0,0,0.5);">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+      <span style="font-size:1rem; font-weight:bold; color:var(--sp-text,#eee);">✏️ 商品名を登録</span>
+      <button type="button" onclick="closeSpkbRegisterModal()" style="background:none;border:none;color:var(--sp-text-secondary,#aaa);font-size:1.4rem;cursor:pointer;line-height:1;">×</button>
+    </div>
+    <div style="font-size:0.75rem; color:var(--sp-text-secondary,#aaa); margin-bottom:14px; padding:8px; background:rgba(255,255,255,0.05); border-radius:8px;">
+      登録するとSPKBに共有され、次回から自動表示されます。
+    </div>
+    <div style="margin-bottom:12px;">
+      <label style="font-size:0.8rem; color:var(--sp-text-secondary,#aaa); display:block; margin-bottom:4px;">商品名 <span style="color:#ff5252;">*必須</span></label>
+      <input id="spkbRegModalName" type="text" placeholder="例: キリン 一番搾り生ビール" style="width:100%; padding:10px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.2); border-radius:8px; color:var(--sp-text,#eee); font-size:0.9rem; box-sizing:border-box;">
+    </div>
+    <div style="margin-bottom:12px;">
+      <label style="font-size:0.8rem; color:var(--sp-text-secondary,#aaa); display:block; margin-bottom:4px;">内容量</label>
+      <input id="spkbRegModalVolume" type="text" placeholder="例: 350ml / 200g / 6個入" style="width:100%; padding:10px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.2); border-radius:8px; color:var(--sp-text,#eee); font-size:0.9rem; box-sizing:border-box;">
+    </div>
+    <div style="margin-bottom:20px;">
+      <label style="font-size:0.8rem; color:var(--sp-text-secondary,#aaa); display:block; margin-bottom:4px;">メーカー名</label>
+      <input id="spkbRegModalMaker" type="text" placeholder="例: キリンビール" style="width:100%; padding:10px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.2); border-radius:8px; color:var(--sp-text,#eee); font-size:0.9rem; box-sizing:border-box;">
+    </div>
+    <div style="display:flex; gap:10px;">
+      <button type="button" onclick="closeSpkbRegisterModal()" style="flex:1; padding:12px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); border-radius:10px; color:var(--sp-text-secondary,#aaa); font-size:0.9rem; cursor:pointer;">キャンセル</button>
+      <button id="spkbRegSaveBtn" type="button" onclick="saveSpkbRegister()" style="flex:2; padding:12px; background:#1976d2; border:none; border-radius:10px; color:#fff; font-size:0.9rem; font-weight:bold; cursor:pointer;">登録する</button>
+    </div>
+  </div>
+</div>
 
 </body>
 </html>
