@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.386  BUILD_ID=3860
+APP_VERSION=v23.9.387  BUILD_ID=3870
 
 === ChangeLog B-2 ===
+### v23.9.387
+- 仮説：ブランド辞書がなくGoogleのtype判定に依存しているため有名チェーンが誤分類される・SC内店舗が出ない・一度選んだ店舗が次回優先表示されない
+- 真因：①isShoppingStoreにブランド部分一致辞書がなかった ②department_storeタイプのSCが返ってきたとき内部店舗を追加検索しなかった ③店舗選択時にGPS座標を紐付け保存する仕組みがなかった
+- 修正方法：①GPS_BRAND_DICT（19ブランド辞書・部分一致）をisShoppingStoreの最優先評価に追加 ②SC補完：department_storeカテゴリ返却時に小半径0.15kmで追加GASリクエスト ③GPS学習：_spPersistStoreでsp_gps_learn_v1に{store,lat,lng,count}保存→fetchNearbyStoresのLayer0で同座標の最多選択店舗を先頭に配置
+
 ### v23.9.386-B
 - 仮説：ショッピングセンター内でドラッグストア・百貨店が出ない・病院/接骨院/鍼灸等が店舗候補に混入している
 - 真因：①GAS types リストに pharmacy/department_store がなくドラッグストア系・百貨店系がGPSヒットしない ②isShoppingStore NAME_DENY に接骨/整骨/鍼灸/動物病院/老人ホーム等が漏れていた
@@ -663,7 +668,7 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.386";
+  const APP_VERSION = "v23.9.387";
   const BUILD_ID    = "3850";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
@@ -6502,6 +6507,29 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       // GPS が ON のときは GPS 由来候補として別キーにも記録（誤登録調査・将来の優先表示用）
       try { if (typeof isGpsOn !== 'undefined' && isGpsOn && v && v !== '未設定') localStorage.setItem('sp_last_gps_store', v); } catch (_) {}
       try { spDbg('[STORE_PERSIST]', { store: v, gpsOn: (typeof isGpsOn !== 'undefined' ? !!isGpsOn : false) }); } catch (_) {}
+      // [v387] GPS座標付き店舗学習: 現在地と選択店舗を紐付けて記録（次回同座標で最優先表示）
+      try {
+        if (typeof isGpsOn !== 'undefined' && isGpsOn && v && v !== '未設定') {
+          var _cPos = (typeof curPos !== 'undefined') ? curPos : null;
+          if (_cPos && _cPos.lat && _cPos.lng) {
+            var _gLKey = 'sp_gps_learn_v1';
+            var _gLArr = [];
+            try { _gLArr = JSON.parse(localStorage.getItem(_gLKey) || '[]'); if (!Array.isArray(_gLArr)) _gLArr = []; } catch(_gl) {}
+            var _gFound = false;
+            _gLArr = _gLArr.map(function(e) {
+              if (e.store === v && Math.abs(e.lat - _cPos.lat) < 0.005 && Math.abs(e.lng - _cPos.lng) < 0.005) {
+                _gFound = true;
+                return { store: v, lat: _cPos.lat, lng: _cPos.lng, ts: Date.now(), count: (e.count || 0) + 1 };
+              }
+              return e;
+            });
+            if (!_gFound) _gLArr.push({ store: v, lat: _cPos.lat, lng: _cPos.lng, ts: Date.now(), count: 1 });
+            _gLArr = _gLArr.slice(-200);
+            localStorage.setItem(_gLKey, JSON.stringify(_gLArr));
+            spDbg('[GPS_LEARN_STORE_SAVE]', { store: v, lat: _cPos.lat, lng: _cPos.lng });
+          }
+        }
+      } catch (_glErr) {}
     } catch (_) {}
   }
 
@@ -9902,6 +9930,17 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     }
     if (!name || !String(name).trim()) return false;
 
+    // [v387] ブランド辞書優先（NAME_DENY より前に評価）
+    for (var _bdi = 0; _bdi < GPS_BRAND_DICT.length; _bdi++) {
+      var _bdEntry = GPS_BRAND_DICT[_bdi];
+      for (var _bdki = 0; _bdki < _bdEntry.keys.length; _bdki++) {
+        if (name.includes(_bdEntry.keys[_bdki])) {
+          spDbg('[GPS_BRAND_HIT]', { name, brand: _bdEntry.keys[_bdki], category: _bdEntry.category });
+          return true;
+        }
+      }
+    }
+
     const NAME_DENY = [
       'メガネ', '美容室', '不動産', '病院', '歯科', '銀行', '保険', '法人サービス',
       '専門職', '塾', '学校', '行政', '寺', '神社',
@@ -10232,6 +10271,19 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     { keys: ['ジョイフル本田','ジョイフル本田 '], canon: 'ジョイフル本田' },
   ];
 
+  // [v387] ブランド辞書（部分一致でカテゴリを判定・isShoppingStore優先評価）
+  const GPS_BRAND_DICT = [
+    { keys: ['イオンスタイル','イオン食品館','マックスバリュ','マルナカ','ザ・ビッグ','イオンリテール','ビッグ・エー'], category: 'スーパー' },
+    { keys: ['ウエルシア','ツルハ','マツモトキヨシ','マツキヨ','サンドラッグ','クスリのアオキ','スギ薬局','カワチ薬品','キリン堂','ドラッグユタカ','トモズ','クリエイト','ゲンキー','ドラッグセイムス','コクミン','ダルマ薬局','アイン薬局','ハックドラッグ','ドラッグコスモス','ドラッグストアモリ'], category: 'ドラッグストア' },
+    { keys: ['セブン-イレブン','セブンイレブン','ローソン','ファミリーマート','ファミマ','ミニストップ','デイリーヤマザキ','ポプラ','セイコーマート','ニューデイズ'], category: 'コンビニ' },
+    { keys: ['コストコ','ドン・キホーテ','ドンキホーテ','メガドンキ','ピカソ'], category: 'ディスカウントストア' },
+    { keys: ['業務スーパー','ロピア','トライアル','食品館あおば'], category: 'ディスカウントストア' },
+    { keys: ['ケーズデンキ','ヤマダ電機','ヤマダデンキ','ビックカメラ','ヨドバシ','エディオン','コジマ','ノジマ','ジョーシン','上新電機'], category: '家電量販店' },
+    { keys: ['コメリ','カインズ','ジョイフル本田','ホーマック','ケーヨーデイツー','DCMダイキ','コーナン','ナフコ','グッデイ','ビバホーム','ムサシ'], category: 'ホームセンター' },
+    { keys: ['ダイソー','セリア','キャンドゥ','ワッツ','スリーコインズ'], category: '100円ショップ' },
+    { keys: ['イオンモール','イオンタウン','ビバモール','アリオ','モラージュ','ユニモ'], category: 'ショッピングセンター' },
+  ];
+
   // [v23.9.137] 部分一致(includes)→完全一致(===)に変更。
   // 「カワチ薬品 土浦南店」等の正式店舗名が「カワチ」に短縮されないようにする。
   // 「カワチ薬品」単体（完全一致）は引き続きcanon化される。
@@ -10464,6 +10516,23 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
 
   // ===== fetchNearbyStores (v23.9.117: 116の半径段階維持 + 学習スコアリング) =====
   async function fetchNearbyStores() {
+    // ===== [v387] Layer0: GPS座標付き学習データから最優先候補（Layer1より前に評価） =====
+    var _gpsLearnedTopStore = null;
+    try {
+      if (curPos && curPos.lat && curPos.lng) {
+        var _gpsLearnArr = [];
+        try { _gpsLearnArr = JSON.parse(localStorage.getItem('sp_gps_learn_v1') || '[]'); } catch(_) {}
+        var _learnNearby = _gpsLearnArr.filter(function(e) {
+          return Math.abs(e.lat - curPos.lat) < 0.005 && Math.abs(e.lng - curPos.lng) < 0.005;
+        }).sort(function(a, b) { return (b.count || 0) - (a.count || 0); });
+        if (_learnNearby.length > 0) {
+          _gpsLearnedTopStore = _learnNearby[0].store;
+          spDbg('[GPS_LAYER0_HIT]', { store: _gpsLearnedTopStore, count: _learnNearby[0].count, candidates: _learnNearby.length });
+        }
+      }
+    } catch(_) {}
+    // ===== [v387] Layer0 ここまで =====
+
     // ===== [v23.9.128] Layer1: ローカルstoreLocations検索 =====
     try {
       if (curPos && db.storeLocations) {
@@ -10544,6 +10613,32 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
             }
 
             const storesArr = json.stores;
+
+            // [v387] 大型SC補完: ショッピングセンタータイプが返ってきたとき小半径で内部店舗を追加検索
+            try {
+              const _scItems = storesArr.filter(s => s.category === 'ショッピングセンター');
+              if (_scItems.length > 0) {
+                for (const _sc of _scItems.slice(0, 2)) {
+                  if (!_sc.lat || !_sc.lng) continue;
+                  try {
+                    const _scUrl = `${proxyUrl}?action=stores&lat=${_sc.lat}&lng=${_sc.lng}&radius_km=0.15&limit=20`;
+                    const _scRes = await fetchWithTimeout(_scUrl, { cache: 'no-store' }, 8000);
+                    if (_scRes.ok) {
+                      const _scJ = await _scRes.json();
+                      if (_scJ.ok && Array.isArray(_scJ.stores)) {
+                        _scJ.stores.forEach(function(s) {
+                          if (s.category !== 'ショッピングセンター' && !storesArr.find(e => e.name === s.name)) {
+                            storesArr.push(s);
+                            spDbg('[GPS_SC_EXPAND]', { sc: _sc.name, added: s.name, cat: s.category });
+                          }
+                        });
+                      }
+                    }
+                  } catch (_scErr) { spDbg('[GPS_SC_EXPAND_ERR]', { sc: _sc.name, err: _scErr.message }); }
+                }
+              }
+            } catch (_scOuterErr) {}
+
             const rawCount = storesArr.length;
             lastStoresForScore = storesArr.slice();
 
@@ -10611,12 +10706,23 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
           }
         }
 
+        // [v387] Layer0: GPS学習済み最優先店舗を先頭に配置（スコアより優先）
+        if (_gpsLearnedTopStore && !merged.includes(_gpsLearnedTopStore)) {
+          merged.unshift(_gpsLearnedTopStore);
+          spDbg('[GPS_LAYER0_PREPEND]', { store: _gpsLearnedTopStore });
+        } else if (_gpsLearnedTopStore && merged.includes(_gpsLearnedTopStore)) {
+          // 既にリストにある場合は先頭に移動
+          merged = [_gpsLearnedTopStore, ...merged.filter(n => n !== _gpsLearnedTopStore)];
+          spDbg('[GPS_LAYER0_REORDER]', { store: _gpsLearnedTopStore });
+        }
+
         spDbg('[GPS_STORE_MERGE_RESULT]', {
           gpsShoppingCount: bestShopping.length,
           gpsBroadCount: bestAllLabels.length,
           historyCandidatesCount: histAll.length,
           finalChipCount: merged.length,
-          learning117: !!(learn117 && learn117.rankedNames.length)
+          learning117: !!(learn117 && learn117.rankedNames.length),
+          layer0: _gpsLearnedTopStore || null
         });
 
         if (!shoppingHit) {
