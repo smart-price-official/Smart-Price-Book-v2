@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.384  BUILD_ID=3840
+APP_VERSION=v23.9.385  BUILD_ID=3850
 
 === ChangeLog B-2 ===
+### v23.9.385
+- 仮説：SPKBヒット後もYahoo APIを呼んでしまい、クォータを無駄に消費している
+- 真因：processBarcodeData でSPKB→Yahoo の間にPHPキャッシュ確認ステップが存在せず、candidateName があってもlookupYahooByJanを呼んでいた
+- 修正方法：①SPKB後にPHPキャッシュ確認ステップ追加（cache_only=1）②SPKB HIT時にPHPキャッシュへ書き込み（POST lookup.php）③candidateName があればlookupYahooByJan をスキップ ④spRecordSource でソース統計をLocalStorageに記録 ⑤lookupSourceBanner タップで統計表示
+
 ### v23.9.384
 - 仮説：v383のPHP処理でresultをletより前に参照しているためTDZエラーが発生し実機ではPHPが呼ばれない
 - 真因：let result = null がGASセクション（L9707）にあり、PHP処理（L9653）から参照すると Temporal Dead Zone で ReferenceError になる
@@ -648,8 +653,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.384";
-  const BUILD_ID    = "3840";
+  const APP_VERSION = "v23.9.385";
+  const BUILD_ID    = "3850";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -1883,7 +1888,7 @@ document.addEventListener('DOMContentLoaded', function() {
   <div id="formView" style="display:none;">
     <div class="card p-3 shadow-lg">
       <div id="curStoreIndicator" class="text-danger small fw-bold mb-2 text-center" style="opacity:0.8;"></div>
-      <div id="lookupSourceBanner" style="display:none;font-size:12px;color:#aaa;text-align:center;margin-bottom:6px;padding:4px 8px;background:rgba(255,255,255,0.07);border-radius:6px;"></div>
+      <div id="lookupSourceBanner" style="display:none;font-size:12px;color:#aaa;text-align:center;margin-bottom:6px;padding:4px 8px;background:rgba(255,255,255,0.07);border-radius:6px;" onclick="try{if(typeof spShowSourceStats==='function')spShowSourceStats();}catch(_){}" title="タップで今日の統計を表示"></div>
 
       <div class="text-center mb-2">
         <button id="storeJumpBtn" class="btn btn-sm btn-outline-secondary w-100" style="display:none;" onclick="jumpToStoreChips()">店名を変更（上に移動）</button>
@@ -9681,8 +9686,9 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
                 imageUrls: [],
                 category: _json.category || ''
               });
+              if (result) result._source = _json._cached ? 'php_cache' : 'php_server'; // [v385]
               if (isDebug()) showToast(`[Yahoo] PHPok: ${_json.name.substring(0,20)}`, 3000);
-              try { spDbg('[SERVER_LOG]', { jan, result: 'ok', source: 'php_server', cached: !!_json._cached }); } catch(_) {}
+              try { spDbg('[SERVER_LOG]', { jan, result: 'ok', source: result._source, cached: !!_json._cached }); } catch(_) {}
             }
           } else {
             // [v384] PHP HTTP エラー → curStoreIndicator に表示
@@ -9763,6 +9769,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
                   imageUrls: Array.isArray(json.imageUrls) ? json.imageUrls : [],
                   category: json.category || json.genreName || json.genreCategory || ''
                 });
+                if (result) result._source = 'gas'; // [v385]
                 _proxyUsed = _pUrl;
                 _proxyResult = 'ok';
                 if (isDebug()) showToast(`[Yahoo] プロキシOK: ${json.name.substring(0,20)}`, 3000);
@@ -9843,6 +9850,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
                   }
                 } catch(_) {}
                 result = normalizeYahooProductInfo({ name, maker, imageUrl, imageUrls: directImageUrls, category: yCat });
+                if (result) result._source = 'yahoo_direct'; // [v385]
                 if (isDebug()) showToast(`[Yahoo] 直接APIok: ${name.substring(0,20)}`, 3000);
               }
             }
@@ -13041,6 +13049,7 @@ function spVisibleTrace(tag, payload, cls) {
             if (_masterHit.maker) finalInfo.maker = _masterHit.maker;
             if (_masterHit.imageUrl) finalInfo.imageUrl = _masterHit.imageUrl;
             sourceUsed = 'manual_master';
+            try { spRecordSource(jan, 'MANUAL_MASTER'); } catch(_) {}
             finalInfoSrc = { name: 'manual_master', maker: _masterHit.maker ? 'manual_master' : '', imageUrl: _masterHit.imageUrl ? 'manual_master' : '', category: '' }; // [v381]
             // フォーム即反映
             const currentJanCheckM = String(curBarcode || '').trim();
@@ -13083,6 +13092,7 @@ function spVisibleTrace(tag, payload, cls) {
             if (_jd.maker) finalInfo.maker = _jd.maker;
             if (_jd.category) finalInfo.category = normalizeCategory(_jd.category);
             sourceUsed = 'jan_dict';
+            try { spRecordSource(jan, 'JAN_DICT'); } catch(_) {}
             finalInfoSrc = { name: 'jan_dict', maker: _jd.maker ? 'jan_dict' : '', imageUrl: '', category: _jd.category ? 'jan_dict' : '' }; // [v381]
             // フォームに即反映
             const _jdJanCheck = String(curBarcode || '').trim();
@@ -13142,6 +13152,7 @@ function spVisibleTrace(tag, payload, cls) {
           finalInfo.areaId = cachedData ? (cachedData.areaId || '') : '';
           finalInfo.category = normalizeCategory((cachedData && cachedData.category) || (p && p.category) || '');
           sourceUsed = 'local';
+          try { spRecordSource(jan, 'LOCAL'); } catch(_) {}
           // [v381] ローカル: 名前はp.nameかcache、メーカーはp.makerかcache
           finalInfoSrc = {
             name: (p && p.name && !isWeakNameCandidate(String(p.name).trim(), jan)) ? 'local' : 'cache',
@@ -13346,13 +13357,33 @@ function spVisibleTrace(tag, payload, cls) {
             spkbNameLocked = true;
             markLookupPipelineStep(jan, 'SPKB', 'HIT', { name: spkbSnap.confirmed_name, source: spkbSnap.confirmed_source || 'engine' });
             spDbg('[SPKB_HIT]', { jan, name: spkbSnap.confirmed_name });
-            // [v382] SPKB HIT 計測ログ
             try { spDbg('[SPKB_STAT]', { jan, hit: true, name: spkbSnap.confirmed_name }); } catch(_) {}
+            try { spRecordSource(jan, 'SPKB'); } catch(_) {}
             // フォームに即反映
             if (String(curBarcode || '').trim() === jan && nameInput && !nameInput.value) {
               nameInput.value = spkbSnap.confirmed_name;
               nameInput.placeholder = originalPlaceholder;
             }
+            // [v385] P1: SPKB HIT → PHPキャッシュに書き込む（次回は17ms で返却）
+            try {
+              const _sUrl = (window.SP_CONFIG && window.SP_CONFIG.serverLookupUrl) ? window.SP_CONFIG.serverLookupUrl.trim() : '';
+              const _sKey = (window.SP_CONFIG && window.SP_CONFIG.serverCacheKey) ? window.SP_CONFIG.serverCacheKey.trim() : '';
+              if (_sUrl) {
+                const _postHdr = { 'Content-Type': 'application/json' };
+                if (_sKey) _postHdr['X-SP-Cache-Key'] = _sKey;
+                fetch(_sUrl, {
+                  method: 'POST',
+                  headers: _postHdr,
+                  body: JSON.stringify({
+                    jan, name: spkbSnap.confirmed_name,
+                    maker: spkbSnap.confirmed_maker || '',
+                    imageUrl: spkbSnap.confirmed_imageUrl || '',
+                    source: 'spkb'
+                  })
+                }).then(function(r){ spDbg('[PHP_CACHE_WRITE]', { jan, ok: r.ok, status: r.status }); })
+                  .catch(function(_e){ spDbg('[PHP_CACHE_WRITE_ERR]', { jan, err: _e.message }); });
+              }
+            } catch (_pcw) {}
           } else {
             markLookupPipelineStep(jan, 'SPKB', 'MISS', {});
             // [v382] SPKB MISS 計測ログ
@@ -13385,12 +13416,49 @@ function spVisibleTrace(tag, payload, cls) {
           spDbg('[SPKB_ERR]', { jan, msg: _spkbErr && _spkbErr.message ? _spkbErr.message : String(_spkbErr) });
         }
 
+        // [v385] P0: PHPキャッシュ確認（SPKB後・Yahoo前 / Yahoo API を呼ばない）
+        if (!candidateName) {
+          try {
+            const _pcUrl = (window.SP_CONFIG && window.SP_CONFIG.serverLookupUrl) ? window.SP_CONFIG.serverLookupUrl.trim() : '';
+            if (_pcUrl) {
+              markLookupPipelineStepStart(jan, 'PHP_CACHE');
+              const _pcRes = await fetch(`${_pcUrl}?jan=${encodeURIComponent(jan)}&cache_only=1`, { cache: 'no-store' });
+              if (_pcRes.ok) {
+                const _pcJson = await _pcRes.json();
+                if (_pcJson && _pcJson.ok && _pcJson._cached && _pcJson.name) {
+                  candidateName   = _pcJson.name;
+                  candidateMaker  = _pcJson.maker  || '';
+                  candidateImageUrl = _pcJson.imageUrl || '';
+                  candidateSource = 'php_cache';
+                  markLookupPipelineStep(jan, 'PHP_CACHE', 'HIT', { name: _pcJson.name });
+                  spDbg('[PHP_CACHE_HIT]', { jan, name: _pcJson.name });
+                  spRecordSource(jan, 'PHP_CACHE');
+                } else {
+                  markLookupPipelineStep(jan, 'PHP_CACHE', 'MISS', {});
+                  spDbg('[PHP_CACHE_MISS]', { jan });
+                }
+              }
+            }
+          } catch (_pce) {
+            spDbg('[PHP_CACHE_ERR]', { jan, err: _pce.message });
+          }
+        }
+
         // ✅ 優先順位1: Yahoo最優先
         // v23.9.169 SP-260601-002: 段階5 外部の商品情報を検索中（Yahoo/Rakuten/OFF を包括）
         try { if (typeof showLookupStageToast === 'function') showLookupStageToast(5, '外部の商品情報を検索中', { jan: jan, ev: 'barcode_lookup_stage_external' }); } catch (_) {}
         markLookupPipelineStepStart(jan, 'Yahoo');
-        yahooInfo = await lookupYahooByJan(jan);
-        
+        yahooInfo = candidateName ? null : await lookupYahooByJan(jan); // [v385] PHPキャッシュ/SPKB HITなら呼ばない
+
+        // [v385] Yahoo/GAS ソース統計記録
+        if (yahooInfo && yahooInfo.name) {
+          const _ySrc = (yahooInfo._source === 'php_server' || yahooInfo._source === 'php_cache') ? 'PHP_CACHE'
+                      : (yahooInfo._source === 'gas') ? 'GAS' : 'YAHOO';
+          spRecordSource(jan, _ySrc);
+        } else if (!candidateName) {
+          spRecordSource(jan, 'MISS');
+        }
+
         // v23.9.104: Yahoo検索結果ログ（詳細化）
         const yahooHit = !!(yahooInfo && yahooInfo.name);
         markLookupPipelineStep(jan, 'Yahoo', yahooHit ? 'HIT' : 'MISS', {
@@ -24166,6 +24234,53 @@ window.spSetReportPeriod = spSetReportPeriod;
     } catch (e) {}
   }
   window.spDbg = spDbg;
+
+  // [v385] === ソース統計記録・表示 ===
+  // spRecordSource(jan, src): 今日のソース統計を localStorage 'sp_src_stats_YYYYMMDD' に記録
+  // src: 'MANUAL_MASTER' | 'JAN_DICT' | 'LOCAL' | 'SPKB' | 'PHP_CACHE' | 'YAHOO' | 'GAS' | 'MISS'
+  function spRecordSource(jan, src) {
+    try {
+      var today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      var key = 'sp_src_stats_' + today;
+      var stats = {};
+      try { stats = JSON.parse(localStorage.getItem(key) || '{}'); } catch(_) {}
+      stats[src] = (stats[src] || 0) + 1;
+      stats._total = (stats._total || 0) + 1;
+      localStorage.setItem(key, JSON.stringify(stats));
+    } catch(_) {}
+  }
+  window.spRecordSource = spRecordSource;
+
+  // spGetSourceStats(): 今日の統計を取得
+  function spGetSourceStats() {
+    try {
+      var today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      var key = 'sp_src_stats_' + today;
+      var stats = JSON.parse(localStorage.getItem(key) || '{}');
+      return stats;
+    } catch(_) { return {}; }
+  }
+  window.spGetSourceStats = spGetSourceStats;
+
+  // spShowSourceStats(): 統計をトーストで表示
+  function spShowSourceStats() {
+    try {
+      var stats = spGetSourceStats();
+      var total = stats._total || 0;
+      if (!total) { try { showToast('統計なし（本日スキャンなし）', 4000); } catch(_) {} return; }
+      var order = ['MANUAL_MASTER','JAN_DICT','LOCAL','SPKB','PHP_CACHE','YAHOO','GAS','MISS'];
+      var lines = ['📊 Today\'s Source (計' + total + '件)'];
+      order.forEach(function(k) {
+        if (stats[k]) {
+          var pct = Math.round(stats[k] / total * 100);
+          lines.push(k + ': ' + stats[k] + '件 (' + pct + '%)');
+        }
+      });
+      try { showToast(lines.join('\n'), 10000); } catch(_) {}
+      spDbg('[SOURCE_STATS]', { stats: stats, total: total });
+    } catch(_) {}
+  }
+  window.spShowSourceStats = spShowSourceStats;
 
   // === v23.9.166 SP-250529-002: 動作ログ永続化ストア（localStorage 'sp_oplog' / 直近5000件リングバッファ[v23.9.167で拡大] / 書込デバウンス500ms） ===
   var _spOpLog = [];
