@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.388  BUILD_ID=3880
+APP_VERSION=v23.9.389  BUILD_ID=3890
 
 === ChangeLog B-2 ===
+### v23.9.389
+- 仮説：「マイナー商品のため自動取得できない」という表示がユーザーに誤解を与えている。「本日の上限」「API上限」等の開発者向けメッセージが一般ユーザーにも見えていた
+- 真因：①unknownProductHintの文言が商品の問題（マイナー商品）と誤解させる表現だった ②全プロキシquota切れ時のshowToast/curStoreIndicatorが常時表示されており、APIの都合をユーザーに露出していた ③GAS上限超過のcurStoreIndicator表示も同様
+- 修正方法：①unknownProductHintを「商品情報を取得できませんでした。商品名を登録すると次回からすぐに表示されます。」に変更・登録ボタンを大きく ②全プロキシquota切れの表示をisDebug()ガードに変更（debug=1時のみ[DEBUG]プレフィックス付きで表示） ③GAS上限超過のcurStoreIndicator表示も同様にisDebug()ガードに変更
+
 ### v23.9.388
 - 仮説：Yahoo 429発生時にfallbackFromGoogle(jan)がinputName.valueにJANコードをセットするため、!inputName.value条件がfalseになり「商品名を登録する」ボタンが非表示になっていた
 - 真因：unknownProductHintの表示条件が `_uhFail && _niNow && !_niNow.value` と厳格すぎた。hasData=falseブロック内なのでMISS確定なのに、inputName値の有無で表示を分岐していた
@@ -673,7 +678,7 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.388";
+  const APP_VERSION = "v23.9.389";
   const BUILD_ID    = "3850";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
@@ -1938,13 +1943,14 @@ document.addEventListener('DOMContentLoaded', function() {
               <!-- v23.9.167 SP-250530-004: 商品情報を再取得（AI補完失敗 or 画像なしの時に出る） -->
               <button id="refetchBtn" onclick="refetchProductInfo()" title="商品情報を再取得（AI+画像）" class="sp-ai-btn" style="display:none;">🔄</button>
             </div>
-            <!-- [v354] 商品名不明ヒント：マイナー商品でルックアップ失敗時のみ表示 -->
+            <!-- [v354] 商品名不明ヒント：ルックアップ失敗時のみ表示 -->
             <!-- [v386] SPKB手入力登録ボタン追加 -->
+            <!-- [v389] 文言をユーザー向けに変更（「マイナー商品」廃止・API都合の表示禁止） -->
             <div id="unknownProductHint" style="display:none; margin-top:6px; padding:8px 10px; background:rgba(255,193,7,0.1); border:1px solid rgba(255,193,7,0.3); border-radius:8px; font-size:0.8rem; line-height:1.5;">
-              <span style="color:#ffc107; font-weight:bold;">📦 マイナー商品のため自動取得できませんでした</span><br>
-              <span style="color:var(--sp-text,#ddd);">商品名を登録するとみんなで共有できます。</span>
+              <span style="color:#ffc107; font-weight:bold;">📦 商品情報を取得できませんでした。</span><br>
+              <span style="color:var(--sp-text,#ddd);">商品名を登録すると、次回からすぐに表示されます。</span>
               <div style="margin-top:8px;">
-                <button type="button" onclick="try{openSpkbRegisterModal(window._spkbMissJan||'');}catch(_){}" style="width:100%;padding:8px;background:#1976d2;color:#fff;border:none;border-radius:8px;font-size:0.85rem;font-weight:bold;cursor:pointer;">✏️ 商品名を登録する</button>
+                <button type="button" onclick="try{openSpkbRegisterModal(window._spkbMissJan||'');}catch(_){}" style="width:100%;padding:10px;background:#1976d2;color:#fff;border:none;border-radius:8px;font-size:0.9rem;font-weight:bold;cursor:pointer;">✏️ 商品名を登録する</button>
               </div>
             </div>
             <select id="inputCategory" class="form-control sp-bg-card sp-border-muted mb-2" style="font-size:0.85rem; padding:4px;"></select>
@@ -9835,16 +9841,19 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
             if (isDebug()) showToast(`[Yahoo] プロキシ失敗: ${e.message}`, 3000);
           }
         }
-        // [v382] 全プロキシ クォータ切れ → ユーザーに明示
+        // [v382] 全プロキシ クォータ切れ
+        // [v389] API都合の表示はdebug時のみ。一般ユーザーには非表示（MISS画面で登録ボタンを案内）
         if (_proxyResult === 'quota' && !result) {
           try {
-            var _ind2 = document.getElementById('curStoreIndicator');
-            if (_ind2) {
-              _ind2.style.color = '#ff9800';
-              _ind2.textContent = '⚠️ 本日の商品情報取得上限に達しました。明日もう一度お試しください。';
-              setTimeout(function(){ try{ _ind2.textContent=''; _ind2.style.color=''; }catch(_){} }, 15000);
+            if (isDebug()) {
+              var _ind2 = document.getElementById('curStoreIndicator');
+              if (_ind2) {
+                _ind2.style.color = '#ff9800';
+                _ind2.textContent = '[DEBUG] 全プロキシquota切れ';
+                setTimeout(function(){ try{ _ind2.textContent=''; _ind2.style.color=''; }catch(_){} }, 15000);
+              }
+              try { showToast('[DEBUG] API上限 (quota)\nJAN: ' + jan, 10000); } catch(_) {}
             }
-            try { showToast('⚠️ 本日のAPI上限に達しました。明日お試しください。\nJAN: ' + jan, 10000); } catch(_) {}
           } catch(_) {}
           // 計測ログ
           try { spDbg('[PROXY_ALL_QUOTA]', { jan, proxies: _allProxies.length }); } catch(_) {}
@@ -9853,14 +9862,17 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         try { spDbg('[PROXY_LOG]', { jan, result: _proxyResult, proxyUsed: _proxyUsed, totalProxies: _allProxies.length }); } catch(_) {}
       }
 
-      // [v384] ③ Yahoo直接API フォールバック通知（curStoreIndicator）
+      // [v384] ③ Yahoo直接API フォールバック通知
+      // [v389] API都合の表示はdebug時のみ
       if (!result && appId) {
         try {
-          var _indDirect = document.getElementById('curStoreIndicator');
-          if (_indDirect) {
-            _indDirect.style.color = '#ff9800';
-            _indDirect.textContent = '⚠️ GAS上限超過→Yahoo直接API検索中...';
-            setTimeout(function(){ try{ _indDirect.textContent=''; _indDirect.style.color=''; }catch(_){} }, 10000);
+          if (isDebug()) {
+            var _indDirect = document.getElementById('curStoreIndicator');
+            if (_indDirect) {
+              _indDirect.style.color = '#ff9800';
+              _indDirect.textContent = '[DEBUG] GAS quota→Yahoo直接API検索中...';
+              setTimeout(function(){ try{ _indDirect.textContent=''; _indDirect.style.color=''; }catch(_){} }, 10000);
+            }
           }
         } catch(_) {}
       }

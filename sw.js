@@ -6,7 +6,7 @@
  * TITLE: PWAオフライン最小セット（安全寄り）
  */
 
-const CACHE_NAME = "smart-price-book-cache-v23.9.388";
+const CACHE_NAME = "smart-price-book-cache-v23.9.389";
 const RUNTIME_CACHE = "smart-price-book-runtime-v23.9.287";
 
 const PRECACHE_URLS = [
