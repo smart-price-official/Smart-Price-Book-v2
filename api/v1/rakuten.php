@@ -42,16 +42,19 @@ $url = 'https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20260701'
      . '&keyword='       . urlencode($jan)
      . '&hits=10&format=json';
 
-// cURLでRefererをsmapri.jpとして送信
+// cURLでReferer/Originをsmapri.jpとして送信（楽天新APIはOriginヘッダーで検証）
 $ch = curl_init();
 curl_setopt_array($ch, [
     CURLOPT_URL            => $url,
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_TIMEOUT        => 10,
-    CURLOPT_REFERER        => 'https://smapri.jp/',  // Allowed websites 制限対応
     CURLOPT_USERAGENT      => 'SmartPrice/1.0',
-    CURLOPT_HTTPHEADER     => ['Accept: application/json'],
     CURLOPT_SSL_VERIFYPEER => true,
+    CURLOPT_HTTPHEADER     => [
+        'Accept: application/json',
+        'Referer: https://smapri.jp/',
+        'Origin: https://smapri.jp',  // [v390] Allowed websites制限対応
+    ],
 ]);
 $body   = curl_exec($ch);
 $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
