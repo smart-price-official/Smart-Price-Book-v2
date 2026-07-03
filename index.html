@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.390  BUILD_ID=3900
+APP_VERSION=v23.9.391  BUILD_ID=3910
 
 === ChangeLog B-2 ===
+### v23.9.391
+- 仮説：楽天/Yahoo商品名の先頭に「訳あり」「在庫限り」等の販売文言が混入し、商品名表示が汚れていた。メーカーフィールドに店舗名（NRF等）が入り、花王等の正しいメーカー名が取得できなかった
+- 真因：①cleanProductName()に先頭プレフィックス除去ロジックがなかった ②normalizeMakerName()にブランド→メーカー辞書がなく、店舗名を正規メーカー名に変換できなかった
+- 修正方法：①cleanProductName()にwhileループで繰り返しプレフィックス除去（訳あり/在庫限り/数量限定/期間限定/アウトレット/箱つぶれ等）②MANUFACTURER_BRAND_DICT新設（GPS_BRAND_DICTとは分離）③normalizeMakerName()にproductName第2引数を追加し商品名でブランド辞書ルックアップ→花王/ユニ・チャーム/P&G等を自動補完
+
 ### v23.9.390
 - 仮説：GASのUrlFetchAppはHTTP Refererを楽天APIへ転送できないため、Allowed websites制限（REQUEST_CONTEXT_BODY_HTTP_REFERRER_MISSING）を回避できない
 - 真因：楽天APIの新エンドポイント（openapi.rakuten.co.jp/ichibams/...）はRefererによるAllowed websites制限を適用しているが、GASのUrlFetchAppはRefererを設定できない構造的制約がある
@@ -683,8 +688,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.390";
-  const BUILD_ID    = "3900";
+  const APP_VERSION = "v23.9.391";
+  const BUILD_ID    = "3910";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -9125,7 +9130,31 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
 
   // ========= Yahoo商品情報の自動整形（12本1箱問題対応） =========
   // ========= 汎用正規化関数（メーカー名/販売店名混入除去） =========
-  function normalizeMakerName(maker) {
+
+  // [v391] ブランド名→メーカー名辞書（GPS_BRAND_DICTとは別管理）
+  const MANUFACTURER_BRAND_DICT = {
+    'ビオレ': '花王',
+    'アタック': '花王',
+    'キュキュット': '花王',
+    'メリット': '花王',
+    'リーゼ': '花王',
+    'サクセス': '花王',
+    '超快適': 'ユニ・チャーム',
+    'ソフィ': 'ユニ・チャーム',
+    'ムーニー': 'ユニ・チャーム',
+    'マミーポコ': 'ユニ・チャーム',
+    'シルコット': 'ユニ・チャーム',
+    'ボールド': 'P&G',
+    'アリエール': 'P&G',
+    'レノア': 'P&G',
+    'パンパース': 'P&G',
+    'ネピア': '王子ネピア',
+    'エリエール': '大王製紙',
+    'GOO.N': '大王製紙',
+    'グーン': '大王製紙',
+  };
+
+  function normalizeMakerName(maker, productName) {
     if (!maker || !maker.trim()) return maker || '';
     let normalized = String(maker).trim();
     
@@ -9178,7 +9207,19 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     normalized = uniqueWords.join(' ');
     
     normalized = normalized.replace(/\s+/g, ' ').trim();
-    return normalized || maker; // 空になった場合は元に戻す
+    const resolvedMaker = normalized || maker;
+
+    // [v391] 商品名にブランドキーワードが含まれる場合、辞書からメーカー名を補完
+    if (productName) {
+      const pn = String(productName);
+      for (const [brand, mfr] of Object.entries(MANUFACTURER_BRAND_DICT)) {
+        if (pn.includes(brand)) {
+          return mfr;
+        }
+      }
+    }
+
+    return resolvedMaker;
   }
 
   function normalizeYahooProductInfo(info) {
@@ -9326,7 +9367,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     });
     
     // ✅ 5. メーカー名から販売店名を除去（汎用関数を使用）
-    maker = normalizeMakerName(maker);
+    maker = normalizeMakerName(maker, name);
     
     // ✅ 6. 空白・記号の整理
     name = name.replace(/\s+/g, ' ').trim();
@@ -9658,7 +9699,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         // ✅ 商品身元情報が1つでも取得できたら成功
         if (displayName || brand || imageUrl) {
           // ✅ メーカー名の正規化（汎用関数を使用）
-          brand = normalizeMakerName(brand);
+          brand = normalizeMakerName(brand, displayName);
 
           let catR = '';
           if (product.genreName && String(product.genreName).trim()) catR = String(product.genreName).trim();
@@ -12466,6 +12507,30 @@ function spVisibleTrace(tag, payload, cls) {
   function cleanProductName(name) {
     if (!name) return '';
     let cleaned = String(name).trim();
+
+    // [v391] 先頭の販売文言プレフィックスを繰り返し除去
+    const prefixPatterns = [
+      /^訳あり[・\s]*/,
+      /^在庫限り[・\s]*/,
+      /^数量限定[・\s]*/,
+      /^期間限定[・\s]*/,
+      /^アウトレット[・\s]*/,
+      /^お一人様\d*[個本枚]?(まで)?[・\s]*/,
+      /^箱つぶれ[・\s]*/,
+      /^わけあり[・\s]*/,
+      /^ワケあり[・\s]*/,
+      /^ワケアリ[・\s]*/,
+      /^処分品[・\s]*/,
+      /^見切り品[・\s]*/,
+      /^特価[！!]?[・\s]*/,
+      /^セール[！!]?[・\s]*/,
+    ];
+    let prev = '';
+    while (prev !== cleaned) {
+      prev = cleaned;
+      prefixPatterns.forEach(p => { cleaned = cleaned.replace(p, ''); });
+      cleaned = cleaned.replace(/^[\s　\-・|／]+/, '');
+    }
 
     // 箱売り・まとめ買い表記を除去
     cleaned = cleaned.replace(/[×xX]\s*\d+\s*[個本入枚缶袋パック]/g, '');
