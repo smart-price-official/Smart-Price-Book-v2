@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.391  BUILD_ID=3910
+APP_VERSION=v23.9.392  BUILD_ID=3920
 
 === ChangeLog B-2 ===
+### v23.9.392
+- 仮説：Yahoo/楽天から取得した商品名に販促ワードが混入しており、cleanProductName()の後処理だけでは対応できないパターンが残る
+- 真因：単一ソースの商品名をそのまま採用していたため、販促ワードが含まれる名前がそのまま確定していた
+- 修正方法：ProductNameConsensus()を新設。Yahoo候補+楽天rawCandidates10件を単語分割し、複数ソースに共通する単語だけで商品名を再構築（共通単語スコア方式）。SPKBがある場合は即採用。フォールバックはYahoo優先でclean後最長候補。ユイさん設計GO（2026-07-03）
+
 ### v23.9.391
 - 仮説：楽天/Yahoo商品名の先頭に「訳あり」「在庫限り」等の販売文言が混入し、商品名表示が汚れていた。メーカーフィールドに店舗名（NRF等）が入り、花王等の正しいメーカー名が取得できなかった
 - 真因：①cleanProductName()に先頭プレフィックス除去ロジックがなかった ②normalizeMakerName()にブランド→メーカー辞書がなく、店舗名を正規メーカー名に変換できなかった
@@ -688,8 +693,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.391";
-  const BUILD_ID    = "3910";
+  const APP_VERSION = "v23.9.392";
+  const BUILD_ID    = "3920";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -2605,6 +2610,16 @@ document.addEventListener('DOMContentLoaded', function() {
             <div class="small text-secondary mb-2">紹介登録済みフラグを消去します。URLを再度開くとオンボーディング画面が表示されます。</div>
             <button type="button" class="btn btn-outline-danger w-100 py-2" onclick="spResetReferralForTest()">🔄 紹介フラグをリセット</button>
             <div id="spReferralResetStatus" class="small mt-1 text-success" style="min-height:1.2em;"></div>
+          </div>
+
+          <!-- [v391] DBGパネルON→設定を閉じてホームへ -->
+          <div class="mt-3">
+            <button type="button" class="btn btn-outline-success w-100 py-2" onclick="(function(){
+              var p=document.getElementById('sp-dbg-panel');
+              if(p) p.style.display='flex';
+              var m=document.getElementById('settingsModal');
+              if(m){m.classList.remove('show','show-modal');m.style.display='none';}
+            })()">🔍 DBGパネルON（ホームへ戻る）</button>
           </div>
 
         </div>
@@ -9710,7 +9725,10 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
             name: displayName || '',
             maker: brand || '',
             imageUrl: imageUrl || '',
-            category: catR
+            category: catR,
+            rawCandidates: Array.isArray(json.rawCandidates)
+              ? json.rawCandidates.map(c => c.name || '').filter(Boolean)
+              : []
           };
 
           if (isDebug()) {
@@ -12506,7 +12524,8 @@ function spVisibleTrace(tag, payload, cls) {
 
   function cleanProductName(name) {
     if (!name) return '';
-    let cleaned = String(name).trim();
+    const _rawInput = String(name).trim();
+    let cleaned = _rawInput;
 
     // [v391] 先頭の販売文言プレフィックスを繰り返し除去
     const prefixPatterns = [
@@ -12562,15 +12581,82 @@ function spVisibleTrace(tag, payload, cls) {
     // ECサイト・店舗名を除去
     cleaned = cleaned.replace(/楽天|Amazon|ヤフー|Yahoo!?|Rakuten|公式|本店/gi, '');
 
-    // メーカー名が先頭に重複している場合を検出して除去
-    // 例：「日清食品 日清のどん兵衛 天ぷらそば」→「日清のどん兵衛 天ぷらそば」
-    // （メーカー名除去はlookupMakerByJanと連携して行う）
+    // [v391] 末尾の検索ワード系ゴミを除去（スペース区切りで末尾から）
+    // 例: "ブランデー ケーキマジック 100ml ギフト 父親 誕生日 プレゼント"
+    const trailNoiseWords = ['ギフト', 'プレゼント', '誕生日', '父親', '母親', '父の日', '母の日',
+      'お歳暮', 'お中元', '敬老の日', 'クリスマス', 'バレンタイン', 'ホワイトデー',
+      '贈り物', '贈答', '祝い', 'お祝い', '内祝い', '快気祝い', '御礼', 'お礼'];
+    let trailPrev = '';
+    while (trailPrev !== cleaned) {
+      trailPrev = cleaned;
+      trailNoiseWords.forEach(w => {
+        cleaned = cleaned.replace(new RegExp('\\s+' + w + '\\s*$'), '');
+      });
+    }
 
     // 余分な空白・記号を整理
     cleaned = cleaned.replace(/\s+/g, ' ').trim();
     cleaned = cleaned.replace(/^[\s　\-・|／]+|[\s　\-・|／]+$/g, '').trim();
 
+    // [v391-debug] DBGパネル常時ログ（cleanProductName入出力確認用）
+    try { if (typeof window.spDbgLog === 'function') window.spDbgLog('[cleanPN] ' + _rawInput + ' → ' + cleaned, 'i'); } catch(_) {}
+
     return cleaned;
+  }
+
+  // [v392] ProductNameConsensus: 複数ソースの共通単語スコアで商品名を決定
+  function ProductNameConsensus(yahooCandidates, rakutenCandidates, spkbName) {
+    // SPKBがあれば最優先
+    if (spkbName && spkbName.trim()) {
+      const c = cleanProductName(spkbName.trim());
+      if (c) return { finalName: c, confidence: 1.0, source: 'spkb' };
+    }
+
+    // 全候補をcleanして収集（ソース別）
+    const allCandidates = [];
+    (yahooCandidates  || []).forEach(n => { const c = cleanProductName(n); if (c) allCandidates.push({ name: c, src: 'yahoo'  }); });
+    (rakutenCandidates|| []).forEach(n => { const c = cleanProductName(n); if (c) allCandidates.push({ name: c, src: 'rakuten'}); });
+    if (allCandidates.length === 0) return { finalName: '', confidence: 0, source: 'none' };
+
+    // 単語分割（スペース・記号で分割、1文字除外）
+    function tokenize(s) {
+      return String(s || '').split(/[\s　・／|｜]+/).map(w => w.replace(/^[×x×【】「」\[\]()\(\)]+|[×x×【】「」\[\]()\(\)]+$/g, '')).filter(w => w.length > 1);
+    }
+
+    // 単語ごとに出現ソース数を集計
+    const wordSrcMap = {};
+    allCandidates.forEach(({ name, src }) => {
+      const seen = new Set();
+      tokenize(name).forEach(w => {
+        if (!seen.has(w)) {
+          seen.add(w);
+          if (!wordSrcMap[w]) wordSrcMap[w] = new Set();
+          wordSrcMap[w].add(src);
+        }
+      });
+    });
+
+    const srcCount = new Set(allCandidates.map(c => c.src)).size;
+    // 複数ソースがある場合は2ソース以上に出た単語のみ残す、1ソースのみなら全単語通す
+    const threshold = srcCount >= 2 ? 2 : 1;
+
+    // Yahoo最初の候補を基準に語順を維持しながらフィルタ
+    const reference = allCandidates.find(c => c.src === 'yahoo') || allCandidates[0];
+    const refWords = tokenize(reference.name);
+    const kept = refWords.filter(w => wordSrcMap[w] && wordSrcMap[w].size >= threshold);
+
+    if (kept.length < 2) {
+      // フォールバック: clean後で最も長い候補をYahoo優先で返す
+      const yahoo  = allCandidates.filter(c => c.src === 'yahoo' ).sort((a,b) => b.name.length - a.name.length)[0];
+      const best   = yahoo || allCandidates.sort((a,b) => b.name.length - a.name.length)[0];
+      return { finalName: best.name, confidence: 0.3, source: best.src + '_fallback' };
+    }
+
+    return {
+      finalName: kept.join(' '),
+      confidence: kept.length / refWords.length,
+      source: srcCount >= 2 ? 'consensus' : reference.src
+    };
   }
 
   // [yahoo-name-relax] Yahoo商品名の軽い整形・最低限の除外のみ行う
@@ -13349,8 +13435,8 @@ function spVisibleTrace(tag, payload, cls) {
           });
           spDbg('[LOOKUP_LOCAL_HIT]', { jan, name: localConfirmedName });
           console.log('[LOOKUP_LOCAL_HIT]', jan, localConfirmedName);
-          // ローカルから復元
-          finalInfo.name = localConfirmedName;
+          // ローカルから復元（[v391] cleanProductNameを通して販売文言を除去）
+          finalInfo.name = cleanProductName(localConfirmedName);
           finalInfo.maker = (p && p.maker) ? p.maker : (cachedData ? cachedData.maker || '' : '');
           finalInfo.imageUrl = (p && p.imageUrl) ? p.imageUrl : (cachedData ? cachedData.imageUrl || '' : '');
           finalInfo.imageRefType = cachedData ? (cachedData.imageRefType || '') : '';
@@ -13385,8 +13471,8 @@ function spVisibleTrace(tag, payload, cls) {
           markLookupPipelineStep(jan, 'localStorage', 'HIT', { name: localConfirmedName, maker: (p && p.maker) || (cachedData && cachedData.maker) || '', reason: 'db.products_or_cache' });
           markLookupPipelineStep(jan, 'Final', 'HIT', { name: finalInfo.name || '', maker: finalInfo.maker || '', reason: 'local_early_return' });
           applyPreviewImage(finalInfo.imageUrl || '');
-          // DBへの同期保存（既にあるはずだが念のため）
-          if (finalInfo.name && (!p.name || !p.name.trim())) p.name = finalInfo.name;
+          // DBへの同期保存（[v391] cleanした名前で上書き保存してローカルキャッシュも更新）
+          if (finalInfo.name) p.name = finalInfo.name;
           if (finalInfo.maker && (!p.maker || !p.maker.trim())) p.maker = finalInfo.maker;
           if (finalInfo.category && (!p.category || !String(p.category).trim())) p.category = finalInfo.category;
           db.products[jan] = p;
@@ -13800,6 +13886,20 @@ function spVisibleTrace(tag, payload, cls) {
               console.log('[BARCODE] rakuten result name', rakutenInfo?.name || '');
             }
             if (rakutenInfo) {
+              if (!spkbNameLocked) {
+                // [v392] ProductNameConsensus: Yahoo候補 + 楽天rawCandidates10件で共通単語スコア決定
+                const _yahooCands = yahooInfo && yahooInfo.name ? [yahooInfo.name] : [];
+                const _rakutenCands = [
+                  ...(rakutenInfo.name ? [rakutenInfo.name] : []),
+                  ...(Array.isArray(rakutenInfo.rawCandidates) ? rakutenInfo.rawCandidates : [])
+                ];
+                const _consensus = ProductNameConsensus(_yahooCands, _rakutenCands, null);
+                spDbg('[CONSENSUS]', { finalName: _consensus.finalName, confidence: _consensus.confidence, source: _consensus.source });
+                if (_consensus.finalName) {
+                  candidateName = _consensus.finalName;
+                  candidateSource = _consensus.source === 'consensus' ? 'yahoo+rakuten' : _consensus.source;
+                }
+              }
               if (!candidateName && !spkbNameLocked && rakutenInfo.name) {
                 // v23.9.103: 商品名候補ログ（RAW→CLEANED）
                 spDbg('[NAME_CANDIDATE_RAW]', { source: 'rakuten', name: rakutenInfo.name });
@@ -14002,10 +14102,15 @@ function spVisibleTrace(tag, payload, cls) {
         try { spDbg('[PRODUCT_NAME_SOURCE]', { source: sourceUsed, name: finalInfo.name, maker: finalInfo.maker, jan }); } catch (_pns) {}
 
         // [name-stabilize / maker-image-fix] 名前・メーカー・画像の最終整形
+        // 0. [v391] 販売文言プレフィックスを除去してからshorten
+        finalInfo.name = cleanProductName(finalInfo.name);
         // 1. まず shortenName で beforeStrip を保持（削りすぎ救済用）
         const beforeStrip = shortenName(finalInfo.name);
-        // 2. MAKER_MAP でメーカーを先に確定
+        // 2. MAKER_MAP でメーカーを先に確定（v391: MANUFACTURER_BRAND_DICTも参照）
         finalInfo.maker = applyMakerMap(finalInfo.name, finalInfo.maker);
+        if (!finalInfo.maker || finalInfo.maker === 'NRF' || finalInfo.maker.length > 20) {
+          finalInfo.maker = normalizeMakerName(finalInfo.maker, finalInfo.name);
+        }
         // 3. 確定したメーカー名を商品名から削除
         const stripped = stripMakerFromName(finalInfo.name, finalInfo.maker);
         // 4. 削った結果が空なら元の短縮名を救済として使う
@@ -24397,6 +24502,7 @@ window.spSetReportPeriod = spSetReportPeriod;
     <button onclick="document.getElementById('sp-dbg-log').innerHTML='<div class=ok>cleared</div>'">CLR</button>
     <button onclick="(function(){var lines=Array.from(document.querySelectorAll('#sp-dbg-log div')).map(function(d){return d.textContent});var extra='';try{if(typeof buildLookupTraceMarkdown==='function'){extra='\n---\n'+buildLookupTraceMarkdown();try{if(typeof spDbg==='function')spDbg('[LOOKUP_TRACE_INCLUDED_IN_AUDIT]',{via:'dbg_panel_copy'});}catch(e1){}}catch(e2){}var t=document.createElement('textarea');t.value=lines.join('\n')+extra;t.style.cssText='position:fixed;top:-9999px';document.body.appendChild(t);t.select();document.execCommand('copy');t.remove();document.getElementById('sp-dbg-toggle').textContent='📋Copied!';setTimeout(function(){document.getElementById('sp-dbg-toggle').textContent='🔍DBG'},2000);})()">📋COPY LOG</button>
     <button onclick="spDbgDump()">DUMP STATE</button>
+    <button onclick="(function(){var lines=Array.from(document.querySelectorAll('#sp-dbg-log div')).map(function(d){return d.textContent});var text=lines.join('\n');if(navigator.share){navigator.share({title:'SP-DBG',text:text}).catch(function(){});}else{var t=document.createElement('textarea');t.value=text;t.style.cssText='position:fixed;top:-9999px';document.body.appendChild(t);t.select();document.execCommand('copy');t.remove();alert('コピーしました');}})()">📤共有</button>
     <span id="sp-dbg-count" style="color:#fa0;margin-left:auto;"></span>
   </div>
 </div>
