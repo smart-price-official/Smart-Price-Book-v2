@@ -1,5 +1,6 @@
 {
   "serverLookupUrl": "https://smapri.jp/api/v1/lookup.php",
+  "rakutenProxyUrl": "https://smapri.jp/api/v1/rakuten.php",
   "yahooProxyExecUrl": "https://script.google.com/macros/s/AKfycbyZ6T-tMowOe0GgbVINpLNtUDIxpH1A-LgZHBLGkxuzuSCSzOm49fiNzzi7yM1lCQU9/exec",
   "yahooProxyUrls": [
     "https://script.google.com/macros/s/AKfycbyZ6T-tMowOe0GgbVINpLNtUDIxpH1A-LgZHBLGkxuzuSCSzOm49fiNzzi7yM1lCQU9/exec",

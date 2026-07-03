@@ -48,9 +48,14 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.389  BUILD_ID=3890
+APP_VERSION=v23.9.390  BUILD_ID=3900
 
 === ChangeLog B-2 ===
+### v23.9.390
+- 仮説：GASのUrlFetchAppはHTTP Refererを楽天APIへ転送できないため、Allowed websites制限（REQUEST_CONTEXT_BODY_HTTP_REFERRER_MISSING）を回避できない
+- 真因：楽天APIの新エンドポイント（openapi.rakuten.co.jp/ichibams/...）はRefererによるAllowed websites制限を適用しているが、GASのUrlFetchAppはRefererを設定できない構造的制約がある
+- 修正方法：楽天API呼び出しをGAS経由からXserver PHP（smapri.jp/api/v1/rakuten.php）経由に移行。smapri.jpからのリクエストはReferer制限を通過する。lookupRakutenByJanをrakutenProxyUrl（PHP）優先・GASフォールバックに変更
+
 ### v23.9.389
 - 仮説：「マイナー商品のため自動取得できない」という表示がユーザーに誤解を与えている。「本日の上限」「API上限」等の開発者向けメッセージが一般ユーザーにも見えていた
 - 真因：①unknownProductHintの文言が商品の問題（マイナー商品）と誤解させる表現だった ②全プロキシquota切れ時のshowToast/curStoreIndicatorが常時表示されており、APIの都合をユーザーに露出していた ③GAS上限超過のcurStoreIndicator表示も同様
@@ -678,8 +683,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.389";
-  const BUILD_ID    = "3850";
+  const APP_VERSION = "v23.9.390";
+  const BUILD_ID    = "3900";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -9568,20 +9573,26 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         console.log("[Rakuten] JAN:", jan, "Keyword:", keyword);
       }
 
-      // ✅ Yahoo Proxy経由で楽天データを取得（action=rakuten）
-      const proxyUrl = (window.SP_CONFIG && window.SP_CONFIG.yahooProxyExecUrl) ? window.SP_CONFIG.yahooProxyExecUrl.trim() : '';
-      
+      // [v390] PHP経由（smapri.jp）優先 → GAS フォールバック
+      const _phpUrl = (window.SP_CONFIG && window.SP_CONFIG.rakutenProxyUrl) ? window.SP_CONFIG.rakutenProxyUrl.trim() : '';
+      const _gasUrl = (window.SP_CONFIG && window.SP_CONFIG.yahooProxyExecUrl) ? window.SP_CONFIG.yahooProxyExecUrl.trim() : '';
+      const proxyUrl = _phpUrl || _gasUrl;
+
       if (!proxyUrl) {
         if (isDebug()) showToast('[楽天] ProxyURL未設定、スキップ', 2000);
         return null;
       }
 
-      // ✅ リクエストURL（JAN優先、ダメならキーワード）
+      // リクエストURL構築（PHP: ?jan= / GAS: ?action=rakuten&jan=）
       let requestUrl = '';
       if (jan) {
-        requestUrl = `${proxyUrl}?action=rakuten&jan=${encodeURIComponent(jan)}`;
+        requestUrl = _phpUrl
+          ? `${_phpUrl}?jan=${encodeURIComponent(jan)}`
+          : `${_gasUrl}?action=rakuten&jan=${encodeURIComponent(jan)}`;
       } else if (keyword) {
-        requestUrl = `${proxyUrl}?action=rakuten&keyword=${encodeURIComponent(keyword)}`;
+        requestUrl = _phpUrl
+          ? `${_phpUrl}?keyword=${encodeURIComponent(keyword)}`
+          : `${_gasUrl}?action=rakuten&keyword=${encodeURIComponent(keyword)}`;
       } else {
         return null;
       }
