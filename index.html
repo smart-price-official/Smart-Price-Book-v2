@@ -693,8 +693,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.395";
-  const BUILD_ID    = "3950";
+  const APP_VERSION = "v23.9.396";
+  const BUILD_ID    = "3960";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -1969,8 +1969,10 @@ document.addEventListener('DOMContentLoaded', function() {
             <div id="unknownProductHint" style="display:none; margin-top:6px; padding:8px 10px; background:rgba(255,193,7,0.1); border:1px solid rgba(255,193,7,0.3); border-radius:8px; font-size:0.8rem; line-height:1.5;">
               <span style="color:#ffc107; font-weight:bold;">📦 商品情報を取得できませんでした。</span><br>
               <span style="color:var(--sp-text,#ddd);">商品名を登録すると、次回からすぐに表示されます。</span>
-              <div style="margin-top:8px;">
-                <button type="button" onclick="try{openSpkbRegisterModal(window._spkbMissJan||'');}catch(_){}" style="width:100%;padding:10px;background:#1976d2;color:#fff;border:none;border-radius:8px;font-size:0.9rem;font-weight:bold;cursor:pointer;">✏️ 商品名を登録する</button>
+              <div style="margin-top:8px; display:flex; gap:6px;">
+                <button type="button" onclick="try{openSpkbRegisterModal(window._spkbMissJan||'');}catch(_){}" style="flex:1;padding:10px;background:#1976d2;color:#fff;border:none;border-radius:8px;font-size:0.9rem;font-weight:bold;cursor:pointer;">✏️ 商品名を登録する</button>
+                <!-- [v396-B] Google画像検索（手入力補助） -->
+                <button type="button" onclick="try{var _q=encodeURIComponent((document.getElementById('inputName')&&document.getElementById('inputName').value&&document.getElementById('inputName').value.trim()&&!(/^\d{8,14}$/.test(document.getElementById('inputName').value.trim())))?document.getElementById('inputName').value.trim():(window._spkbMissJan||curBarcode||''));window.open('https://www.google.com/search?q='+_q+'&tbm=isch','_blank');}catch(_){}" style="flex:0 0 auto;padding:10px 12px;background:rgba(255,255,255,0.12);color:#fff;border:1px solid rgba(255,255,255,0.3);border-radius:8px;font-size:0.85rem;cursor:pointer;" title="Googleで画像を検索">🔍 画像</button>
               </div>
             </div>
             <select id="inputCategory" class="form-control sp-bg-card sp-border-muted mb-2" style="font-size:0.85rem; padding:4px;"></select>
@@ -8521,7 +8523,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       p.maker = safeMaker;
 
       // v23.9.250 SP-260616-JANDICT-001: 手動保存時に human_verified フラグ + JAN辞書登録
-      if (!isWeakNameCandidate(safeName, jan)) {
+      // [v396-A] safeName が JANコードそのものでなければ（短い名前でも）human_verified を付与
+      if (safeName && safeName !== jan) {
         p.human_verified = true;
         if (!db.jan_dict) db.jan_dict = {};
         db.jan_dict[jan] = {
@@ -13509,6 +13512,8 @@ function spVisibleTrace(tag, payload, cls) {
           if (finalInfo.name) p.name = finalInfo.name;
           if (finalInfo.maker && (!p.maker || !p.maker.trim())) p.maker = finalInfo.maker;
           if (finalInfo.category && (!p.category || !String(p.category).trim())) p.category = finalInfo.category;
+          // [v396-A] バックグラウンド処理の誤上書き防止: 最新DBの強い名前を保護
+          { const _dbn = db.products[jan]; if (_dbn && !isWeakNameCandidate(String(_dbn.name||''), jan)) { p.name = _dbn.name; if (_dbn.human_verified) p.human_verified = true; if (_dbn.history) p.history = _dbn.history; } }
           db.products[jan] = p;
           saveLocalOnly();
           processBarcodeInFlight.delete(jan);
@@ -13564,6 +13569,8 @@ function spVisibleTrace(tag, payload, cls) {
           if (finalInfo.name && (!p.name || !p.name.trim())) p.name = finalInfo.name;
           if (finalInfo.maker && (!p.maker || !p.maker.trim())) p.maker = finalInfo.maker;
           if (finalInfo.category && (!p.category || !String(p.category).trim())) p.category = finalInfo.category;
+          // [v396-A] バックグラウンド処理の誤上書き防止
+          { const _dbn = db.products[jan]; if (_dbn && !isWeakNameCandidate(String(_dbn.name||''), jan)) { p.name = _dbn.name; if (_dbn.human_verified) p.human_verified = true; if (_dbn.history) p.history = _dbn.history; } }
           db.products[jan] = p;
           saveLocalOnly();
 
@@ -13652,6 +13659,8 @@ function spVisibleTrace(tag, payload, cls) {
             if (finalInfo.category && (!p.category || !String(p.category).trim())) {
               p.category = finalInfo.category;
             }
+            // [v396-A] バックグラウンド処理の誤上書き防止
+            { const _dbn = db.products[jan]; if (_dbn && !isWeakNameCandidate(String(_dbn.name||''), jan)) { p.name = _dbn.name; if (_dbn.human_verified) p.human_verified = true; if (_dbn.history) p.history = _dbn.history; } }
             db.products[jan] = p;
             saveLocalOnly();
 
@@ -14313,7 +14322,9 @@ function spVisibleTrace(tag, payload, cls) {
             }
           });
         }
-          
+
+          // [v396-A] バックグラウンド処理の誤上書き防止
+          { const _dbn = db.products[jan]; if (_dbn && !isWeakNameCandidate(String(_dbn.name||''), jan)) { p.name = _dbn.name; if (_dbn.human_verified) p.human_verified = true; if (_dbn.history) p.history = _dbn.history; } }
           db.products[jan] = p;
           saveLocalOnly();
 
