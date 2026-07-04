@@ -693,8 +693,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.394";
-  const BUILD_ID    = "3940";
+  const APP_VERSION = "v23.9.395";
+  const BUILD_ID    = "3950";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -1921,6 +1921,11 @@ document.addEventListener('DOMContentLoaded', function() {
       <button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2" style="font-size:0.78rem; line-height:1;" onclick="dismissStartupBanner()" aria-label="閉じる">×</button>
     </div>
     <div id="cloudSyncStatusBanner" class="mb-3 p-2" style="display:none; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:8px; font-size:0.82rem; line-height:1.4;"></div>
+    <!-- [v395] 商品だけ登録モード中バナー（ホーム画面） -->
+    <div id="masterModeBanner" style="display:none; background:rgba(59,130,246,0.15); border:1px solid rgba(59,130,246,0.4); border-radius:10px; padding:10px 14px; margin-bottom:12px; align-items:center; justify-content:space-between; gap:8px;">
+      <span style="font-size:0.9rem;">🔖 <strong>商品だけ登録モード中</strong></span>
+      <button type="button" onclick="stopProductMasterSetup()" style="font-size:0.8rem; padding:5px 14px; background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.35); border-radius:8px; color:#fff; white-space:nowrap;">通常に戻す</button>
+    </div>
     <div class="row g-2 mb-4">
       <div class="col-7"><button id="scanBtnTop" class="btn sp-btn-primary w-100 py-3 rounded-4 shadow" onclick="startScanner()"><i class="bi bi-upc-scan fs-1"></i><br>スキャン</button></div>
       <div class="col-5"><button class="btn sp-btn-secondary w-100 py-3 rounded-4 shadow" onclick="window.openBarcodeManual && window.openBarcodeManual()"><i class="bi bi-keyboard fs-1"></i><br>手入力</button></div>
@@ -7265,6 +7270,10 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       return;
     }
       
+      // [v395] スクロール位置を保存してから再描画（勝手に上に戻るバグ対策）
+      const _scrollEl = list.closest('.sp-scroll-container') || list.parentElement;
+      const _savedScroll = _scrollEl ? _scrollEl.scrollTop : (document.documentElement.scrollTop || document.body.scrollTop || 0);
+
       // ✅ 必ずまっさらにする
     list.innerHTML = "";
 
@@ -7605,6 +7614,16 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       try {
         spDbg('[BOOT_RENDER_HISTORY_DONE]', { displayed: (typeof window.__historyRenderDisplayed === 'number') ? window.__historyRenderDisplayed : -1 });
       } catch (_bfh) {}
+      // [v395] スクロール位置復元（renderHistory後に上に戻るバグ対策）
+      try {
+        if (_savedScroll > 20) {
+          if (_scrollEl) {
+            _scrollEl.scrollTop = _savedScroll;
+          } else {
+            window.scrollTo(0, _savedScroll);
+          }
+        }
+      } catch (_sr) {}
       // ✅ ロック解除
       renderHistoryInFlight = false;
     }
@@ -8004,13 +8023,17 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     const priceBtn = document.getElementById('priceModeBtn');
     const masterBtn = document.getElementById('masterModeBtn');
     const scanBtn = document.getElementById('scanBtnTop');
-    if (priceBtn) priceBtn.classList.toggle('active', spRegistrationMode !== 'master');
-    if (masterBtn) masterBtn.classList.toggle('active', spRegistrationMode === 'master');
+    const banner = document.getElementById('masterModeBanner');
+    const isMaster = spRegistrationMode === 'master';
+    if (priceBtn) priceBtn.classList.toggle('active', !isMaster);
+    if (masterBtn) masterBtn.classList.toggle('active', isMaster);
     if (scanBtn) {
-      scanBtn.innerHTML = spRegistrationMode === 'master'
+      scanBtn.innerHTML = isMaster
         ? '<i class="bi bi-upc-scan fs-1"></i><br>商品だけ登録'
         : '<i class="bi bi-upc-scan fs-1"></i><br>スキャン';
     }
+    // [v395] 商品だけ登録モード中バナーの表示切替
+    if (banner) banner.style.display = isMaster ? 'flex' : 'none';
   }
 
   function applyRegistrationModeToForm() {
@@ -13270,6 +13293,8 @@ function spVisibleTrace(tag, payload, cls) {
     
     if (jan && /^\d{8,14}$/.test(jan)) {
       processBarcodeInFlight.add(jan);
+      // [v395] 10秒タイムアウト（検索が完了しなかった場合の安全弁）
+      setTimeout(function() { processBarcodeInFlight.delete(jan); }, 10000);
     }
     
     try {
