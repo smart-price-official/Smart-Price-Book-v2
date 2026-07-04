@@ -693,8 +693,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.392";
-  const BUILD_ID    = "3920";
+  const APP_VERSION = "v23.9.393";
+  const BUILD_ID    = "3930";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -10631,18 +10631,20 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     try {
       if (curPos && db.storeLocations) {
         const nearby = searchStoreLocationsNearby(curPos.lat, curPos.lng, 3.0);
-        if (nearby.length >= 3) {
-          try { spDbg('[GPS_LAYER1_HIT]', { count: nearby.length, stores: nearby.map(s => s.canonName) }); } catch (e) {}
+        // [v393] 買い物系のみにフィルタ（学習塾・飲食店・行政機関等を除外）
+        const nearbyShopping = nearby.filter(s => isShoppingStore(s.canonName || s.name || ''));
+        if (nearbyShopping.length >= 3) {
+          try { spDbg('[GPS_LAYER1_HIT]', { total: nearby.length, shopping: nearbyShopping.length, filtered: nearby.length - nearbyShopping.length, stores: nearbyShopping.map(s => s.canonName) }); } catch (e) {}
           window.historyStoreCandidates = collectHistoryStoreCandidatesForGps(40);
-          window.nearbyStoreNames       = nearby.map(s => s.canonName);
-          window.nearbyStoreDisplayNames = nearby.map(s => {
+          window.nearbyStoreNames       = nearbyShopping.map(s => s.canonName);
+          window.nearbyStoreDisplayNames = nearbyShopping.map(s => {
             const disp = displayStoreName(s.name || s.canonName) || s.canonName;
             if (isDebug()) console.log('[GPS_NAME_TRACE_L1]', { originalName: s.name || '', canonName: s.canonName || '', finalDisplayName: disp });
             return disp;
           });
           return window.nearbyStoreNames;
         }
-        try { spDbg('[GPS_LAYER1_MISS]', { nearbyCount: nearby.length }); } catch (e) {}
+        try { spDbg('[GPS_LAYER1_MISS]', { nearbyCount: nearby.length, shoppingCount: nearbyShopping.length }); } catch (e) {}
       }
     } catch (e) {
       try { spDbg('[GPS_LAYER1_ERROR]', { error: String(e) }); } catch (e2) {}
