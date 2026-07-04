@@ -693,8 +693,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.393";
-  const BUILD_ID    = "3930";
+  const APP_VERSION = "v23.9.394";
+  const BUILD_ID    = "3940";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -13240,7 +13240,14 @@ function spVisibleTrace(tag, payload, cls) {
       }
       return;
     }
-    
+
+    // [v394-B] 別JANが検索中なら次スキャンを一時停止（ユイさん指示）
+    if (jan && processBarcodeInFlight.size > 0 && !processBarcodeInFlight.has(jan)) {
+      showToast('🔍 商品情報を取得中です\n少々お待ちください', 2500);
+      try { spDbg('[SCAN_BLOCKED_IN_FLIGHT]', { newJan: jan, inFlight: [...processBarcodeInFlight] }); } catch (_) {}
+      return;
+    }
+
     // ✅ P0: 同じJANを0.8〜1.2秒以内に再検出したら無視（クールダウン）
     if (jan && /^\d{8,14}$/.test(jan)) {
       const now = Date.now();
@@ -14163,13 +14170,34 @@ function spVisibleTrace(tag, payload, cls) {
         // ✅ P0: 古い結果の上書き防止（現在のJANと一致する時だけ反映）
         const currentJan = String(curBarcode || '').trim();
         if (currentJan !== jan) {
-          if (isDebug()) {
-            console.log("[ProcessBarcode] JAN mismatch, skip update:", currentJan, "!=", jan);
-            showToast("処理がキャンセルされました", 2000);
+          // [v394-A] 破棄せず救済トーストで通知（ユイさん指示）
+          if (finalInfo.name) {
+            try {
+              const _rn = finalInfo.name.length > 22 ? finalInfo.name.slice(0, 22) + '…' : finalInfo.name;
+              const _rescueName = finalInfo.name;
+              const _rescueMaker = finalInfo.maker || '';
+              const _rescueToast = showToast('📦 ' + _rn + '\nタップして商品名を反映', 10000);
+              if (_rescueToast) {
+                _rescueToast.style.cursor = 'pointer';
+                _rescueToast.style.borderColor = 'rgba(100,200,100,0.4)';
+                _rescueToast.addEventListener('click', function(e) {
+                  e.stopPropagation();
+                  try {
+                    const _ni = document.getElementById('inputName');
+                    const _mi = document.getElementById('inputMaker');
+                    if (_ni && !_ni.value.trim()) { _ni.value = _rescueName; }
+                    if (_mi && !_mi.value.trim() && _rescueMaker) { _mi.value = _rescueMaker; }
+                    _rescueToast.remove();
+                    showToast('✅ 商品情報を反映しました', 2000);
+                  } catch (_) {}
+                }, { once: true });
+              }
+              spDbg('[JAN_MISMATCH_RESCUE]', { oldJan: jan, currentJan, name: _rescueName });
+            } catch (_rt) {}
           }
-          try { markLookupPipelineStep(jan, 'Final', 'MISS', { reason: 'jan_mismatch_cancel', error: 'currentJan=' + currentJan }); } catch (_mj) {}
+          try { markLookupPipelineStep(jan, 'Final', 'MISS', { reason: 'jan_mismatch_rescue', error: 'currentJan=' + currentJan }); } catch (_mj) {}
           processBarcodeInFlight.delete(jan);
-          return; // 古い結果は反映しない
+          return;
         }
 
         // ✅ デバッグ: どのソースを採用したか
