@@ -7700,7 +7700,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     } else {
       if(delProdBtn) delProdBtn.style.display = 'block';
       document.getElementById('inputName').value = p.name || "";
-      document.getElementById('inputMaker').value = p.maker || "";
+      // [v397] 保存済みのショップ名は表示しない（既存データの誤保存対策）
+      document.getElementById('inputMaker').value = (p.maker && !isShopName(p.maker)) ? p.maker : "";
       // [v381] openForm時点でのdb.products値を記録（メーカー誤表示の追跡用）
       window.__spDbProductsAtOpen = { name: p.name || '', maker: p.maker || '', category: p.category || '', imageUrl: p.imageUrl || '' };
       // v23.9.167 SP-250530-004: 再取得ボタン表示判定（既存商品オープン時）
@@ -8472,7 +8473,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
 
       // [save-guard-relax] maker は空でも通す
       const rawMaker = document.getElementById('inputMaker').value;
-      const safeMaker = rawMaker ? String(rawMaker).trim() : '';
+      // [v397] 保存時にショップ名は除外（openFormで空にしても念のため保存側でも防御）
+      const safeMaker = (rawMaker && !isShopName(String(rawMaker).trim())) ? String(rawMaker).trim() : '';
 
       // v23.9.115: 保存直前カテゴリ補完（saveはブロックしない）
       let catResolved = safeCategory;
