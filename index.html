@@ -9198,11 +9198,26 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     '氷砂糖': 'パールエース',
   };
 
+  // [v397] 複数ソースの maker を同時比較するためのショップ名判定
+  // 「リコメン堂生活館」「ホームセンター〇〇」等の販売店名を一発で除外
+  function isShopName(v) {
+    if (!v || !typeof v === 'string') return false;
+    const s = String(v).trim();
+    if (!s) return false;
+    // 複合ショップ名パターンを含む
+    if (/堂|生活館|本舗|商会|商店|倉庫|問屋|専門店|通販|ネットショッピング|センター|デポ/.test(s)) return true;
+    // 既知の物販プラットフォーム名
+    if (/楽天|Amazon|ヤフー|Yahoo|Rakuten|メルカリ/i.test(s)) return true;
+    // 長すぎる（12文字超）は通常ブランド名ではなくショップ名
+    if (s.length > 12) return true;
+    return false;
+  }
+
   function normalizeMakerName(maker, productName) {
     if (!maker || !maker.trim()) return maker || '';
     let normalized = String(maker).trim();
     
-    // ✅ 販売店名パターンを除去（強化版）
+    // ✅ 販売店名パターンを除去（単純な単一パターンのみ）
     const storePatterns = [
       /\s*店\s*$/gi,
       /\s*ストア\s*$/gi,
@@ -9230,20 +9245,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       /\s*inc\s*$/gi,
       /\s*ltd\s*$/gi,
       /\s*corp\s*$/gi,
-      /\s*group\s*$/gi,
-      // [v397] 楽天ショップ名パターン追加（「リコメン堂生活館」等の販売店名除去）
-      /\s*堂\s*$/gi,
-      /\s*生活館\s*$/gi,
-      /\s*館\s*$/gi,
-      /\s*本舗\s*$/gi,
-      /\s*商会\s*$/gi,
-      /\s*商店\s*$/gi,
-      /\s*問屋\s*$/gi,
-      /\s*倉庫\s*$/gi,
-      /\s*センター\s*$/gi,
-      /\s*専門店\s*$/gi,
-      /\s*ネットショッピング\s*$/gi,
-      /\s*通販\s*$/gi
+      /\s*group\s*$/gi
     ];
     
     storePatterns.forEach(pattern => {
@@ -9264,12 +9266,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     normalized = uniqueWords.join(' ');
     
     normalized = normalized.replace(/\s+/g, ' ').trim();
-    // [v397] 除去後に断片（「リコメン」等）が残る場合も空にする
-    // 元の長さの半分以下かつ4文字以下に縮んだらショップ名の残骸とみなす
-    if (normalized && normalized.length <= 4 && normalized.length < String(maker).trim().length / 2) {
-      normalized = '';
-    }
-    const resolvedMaker = normalized || '';
+    const resolvedMaker = normalized || maker;
 
     // [v391] 商品名にブランドキーワードが含まれる場合、辞書からメーカー名を補完
     if (productName) {
@@ -9743,10 +9740,11 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         }
 
         // ✅ ブランド/メーカー
+        // [v397] isShopName で販売店名を除外（Yahoo等の他ソースを優先させるため空にする）
         let brand = '';
-        if (product.brand && product.brand.trim()) {
+        if (product.brand && product.brand.trim() && !isShopName(product.brand.trim())) {
           brand = product.brand.trim();
-        } else if (product.maker && product.maker.trim()) {
+        } else if (product.maker && product.maker.trim() && !isShopName(product.maker.trim())) {
           brand = product.maker.trim();
         }
 
@@ -11975,9 +11973,15 @@ return true;
   // ========= AI商品名補助 =========
   // ✅ maker fallback v23.9.56: 優先順位付きでベストメーカーを選ぶ
   function pickBestMaker(aiMaker, yahooMaker, rakutenMaker, existingMaker) {
-    const candidates = [aiMaker, yahooMaker, rakutenMaker, existingMaker];
-    for (const v of candidates) {
-      if (typeof v === 'string' && v.trim()) return v.trim();
+    // [v397] AI/Yahoo/既存を優先、楽天はショップ名混入リスクがあるため最後
+    // isShopName でショップ名らしい候補をスキップ（複数ソースの同時比較）
+    const highTrust = [aiMaker, yahooMaker, existingMaker];
+    for (const v of highTrust) {
+      if (typeof v === 'string' && v.trim() && !isShopName(v.trim())) return v.trim();
+    }
+    // 楽天は最後の手段（isShopNameを通過した場合のみ採用）
+    if (typeof rakutenMaker === 'string' && rakutenMaker.trim() && !isShopName(rakutenMaker.trim())) {
+      return rakutenMaker.trim();
     }
     return '';
   }
