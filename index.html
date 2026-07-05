@@ -693,8 +693,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.396";
-  const BUILD_ID    = "3960";
+  const APP_VERSION = "v23.9.397";
+  const BUILD_ID    = "3970";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -9193,6 +9193,9 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     'エリエール': '大王製紙',
     'GOO.N': '大王製紙',
     'グーン': '大王製紙',
+    // [v397] 砂糖・調味料
+    'パールエース': 'パールエース',
+    '氷砂糖': 'パールエース',
   };
 
   function normalizeMakerName(maker, productName) {
@@ -9227,7 +9230,20 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       /\s*inc\s*$/gi,
       /\s*ltd\s*$/gi,
       /\s*corp\s*$/gi,
-      /\s*group\s*$/gi
+      /\s*group\s*$/gi,
+      // [v397] 楽天ショップ名パターン追加（「リコメン堂生活館」等の販売店名除去）
+      /\s*堂\s*$/gi,
+      /\s*生活館\s*$/gi,
+      /\s*館\s*$/gi,
+      /\s*本舗\s*$/gi,
+      /\s*商会\s*$/gi,
+      /\s*商店\s*$/gi,
+      /\s*問屋\s*$/gi,
+      /\s*倉庫\s*$/gi,
+      /\s*センター\s*$/gi,
+      /\s*専門店\s*$/gi,
+      /\s*ネットショッピング\s*$/gi,
+      /\s*通販\s*$/gi
     ];
     
     storePatterns.forEach(pattern => {
@@ -9248,7 +9264,12 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
     normalized = uniqueWords.join(' ');
     
     normalized = normalized.replace(/\s+/g, ' ').trim();
-    const resolvedMaker = normalized || maker;
+    // [v397] 除去後に断片（「リコメン」等）が残る場合も空にする
+    // 元の長さの半分以下かつ4文字以下に縮んだらショップ名の残骸とみなす
+    if (normalized && normalized.length <= 4 && normalized.length < String(maker).trim().length / 2) {
+      normalized = '';
+    }
+    const resolvedMaker = normalized || '';
 
     // [v391] 商品名にブランドキーワードが含まれる場合、辞書からメーカー名を補完
     if (productName) {
