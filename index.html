@@ -693,8 +693,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.400";
-  const BUILD_ID    = "4000";
+  const APP_VERSION = "v23.9.401";
+  const BUILD_ID    = "4010";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -10478,7 +10478,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         const hlist = Array.isArray(p.history) ? p.history : [];
         hlist.forEach(h => {
           const st = h && h.store != null ? String(h.store).trim() : '';
-          if (!st || st === '未設定') return;
+          // [v401] 文字化け(�)を含む店名は除外
+          if (!st || st === '未設定' || st.includes('�')) return;
           freq[st] = (freq[st] || 0) + 1;
         });
       });
@@ -10911,10 +10912,11 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       // 優先順位2: 生活圏（area）— v23.9.127: 複数クエリ種別
       const area = (db && db.config && db.config.homeCity) ? String(db.config.homeCity).trim() : '';
       if (area) {
-        const radiusKm = 15;
+        // [v401] areaモード半径段階式：3→5→10km（買い物系1件以上でstop）
+        const AREA_RADIUS_LADDER_KM = [3, 5, 10];
         const limit = 40;
         const GPS_QUERY_KEYWORDS = buildGpsQueryKeywords(area);
-        try { spDbg('[GPS_QUERY_ATTEMPTS]', { keywords: GPS_QUERY_KEYWORDS, radiusKm: radiusKm }); } catch (e) {}
+        try { spDbg('[GPS_QUERY_ATTEMPTS]', { keywords: GPS_QUERY_KEYWORDS, radiusLadder: AREA_RADIUS_LADDER_KM }); } catch (e) {}
 
         const histAll = collectHistoryStoreCandidatesForGps(40);
         try { spDbg('[GPS_HISTORY_CANDIDATES]', { candidates: histAll.slice(0, 15) }); } catch (e) {}
@@ -10923,31 +10925,43 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         let lastJson = null;
         let lastGasDebug = null;
         let requestUrl = '';
+        let radiusKm = AREA_RADIUS_LADDER_KM[0];
 
-        for (let qi = 0; qi < GPS_QUERY_KEYWORDS.length; qi++) {
-          const kw = GPS_QUERY_KEYWORDS[qi];
-          requestUrl = `${proxyUrl}?action=stores&area=${encodeURIComponent(kw)}&radius_km=${radiusKm}&limit=${limit}`;
-          spDbg('[GPS] stores loaded', { mode: 'area', area: kw, radiusKm, url: requestUrl });
-          if (isDebug()) console.log('[FetchStores] Area mode:', kw, requestUrl);
+        for (let ari = 0; ari < AREA_RADIUS_LADDER_KM.length; ari++) {
+          radiusKm = AREA_RADIUS_LADDER_KM[ari];
+          mergedStores = [];
+          for (let qi = 0; qi < GPS_QUERY_KEYWORDS.length; qi++) {
+            const kw = GPS_QUERY_KEYWORDS[qi];
+            requestUrl = `${proxyUrl}?action=stores&area=${encodeURIComponent(kw)}&radius_km=${radiusKm}&limit=${limit}`;
+            spDbg('[GPS] stores loaded', { mode: 'area', area: kw, radiusKm, url: requestUrl });
+            if (isDebug()) console.log('[FetchStores] Area mode:', kw, requestUrl);
 
-          try {
-            const res = await fetchWithTimeout(requestUrl, { cache: 'no-store' }, 15000);
-            if (!res.ok) continue;
-            const json = await res.json();
-            lastJson = json;
-            lastGasDebug = json.debug || null;
             try {
-              spDbg('[GPS_RAW_RESULTS]', {
-                count: json.stores?.length || 0,
-                stores: (json.stores || []).slice(0, 10).map(s => s.name || s.storeName || s.label || '')
-              });
-            } catch (e) {}
-            if (json && json.ok && Array.isArray(json.stores)) {
-              mergedStores = mergedStores.concat(json.stores);
+              const res = await fetchWithTimeout(requestUrl, { cache: 'no-store' }, 15000);
+              if (!res.ok) continue;
+              const json = await res.json();
+              lastJson = json;
+              lastGasDebug = json.debug || null;
+              try {
+                spDbg('[GPS_RAW_RESULTS]', {
+                  count: json.stores?.length || 0,
+                  stores: (json.stores || []).slice(0, 10).map(s => s.name || s.storeName || s.label || '')
+                });
+              } catch (e) {}
+              if (json && json.ok && Array.isArray(json.stores)) {
+                mergedStores = mergedStores.concat(json.stores);
+              }
+            } catch (areaErr) {
+              spDbg('[GPS_AREA_QUERY_ERR]', { keyword: kw, error: String(areaErr && areaErr.message) });
             }
-          } catch (areaErr) {
-            spDbg('[GPS_AREA_QUERY_ERR]', { keyword: kw, error: String(areaErr && areaErr.message) });
           }
+          // 買い物系が1件以上取れたらこの半径で確定
+          const _areaShopping = mergedStores.filter(s => isShoppingStore(buildNearbyStoreLabel(s)));
+          if (_areaShopping.length > 0) {
+            spDbg('[GPS_AREA_RADIUS_HIT]', { radiusKm, shoppingCount: _areaShopping.length });
+            break;
+          }
+          spDbg('[GPS_AREA_RADIUS_EXPAND]', { from: radiusKm, next: AREA_RADIUS_LADDER_KM[ari + 1] || 'none' });
         }
 
         const seenStoreKey = new Set();
