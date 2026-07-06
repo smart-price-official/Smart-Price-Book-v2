@@ -48,7 +48,7 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.403  BUILD_ID=4030
+APP_VERSION=v23.9.404  BUILD_ID=4040
 
 === ChangeLog B-2 ===
 ### v23.9.392
@@ -693,8 +693,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.403";
-  const BUILD_ID    = "4030";
+  const APP_VERSION = "v23.9.404";
+  const BUILD_ID    = "4040";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -4837,6 +4837,35 @@ document.addEventListener('DOMContentLoaded', function() {
     } catch (e) {
       try { spDbg('[BOOT_STEP_ERROR]', { step: 'syncFirebase', message: String(e && e.message), stack: String(e && e.stack) }); } catch (_) {}
     }
+
+    // [v404] db.storeLocations 汚染データクリーンアップ（一回限り・syncFirebase完了後）
+    try {
+      if (typeof db !== 'undefined' && db && db.config && !db.config.storeLocationsCleanedV404) {
+        const _locs = db.storeLocations || {};
+        const _keys = Object.keys(_locs);
+        const _beforeCount = _keys.length;
+        // バックアップ（ユイさん指示: 誤削除時の復元用）
+        try { db.config.storeLocationsBackupV404 = JSON.parse(JSON.stringify(_locs)); } catch (_bk) {}
+        const _removed = [];
+        _keys.forEach(function(k) {
+          const _e = _locs[k];
+          const _n = (_e && (_e.name || _e.storeName)) ? String(_e.name || _e.storeName) : k;
+          if (!isShoppingStore(_n)) {
+            _removed.push(_n);
+            delete db.storeLocations[k];
+          }
+        });
+        const _afterCount = Object.keys(db.storeLocations).length;
+        db.config.storeLocationsCleanedV404 = true;
+        try { saveData(); } catch (_sv) {}
+        spDbg('[V404_STORE_LOCATIONS_CLEANUP]', {
+          before: _beforeCount,
+          after: _afterCount,
+          removed: _beforeCount - _afterCount,
+          removedNames: _removed
+        });
+      }
+    } catch (_v4) { spDbg('[V404_CLEANUP_ERROR]', { error: String(_v4) }); }
 
     try {
       migrateHistoryCandidatesToStoreLocations();  // [v23.9.128] history移行
