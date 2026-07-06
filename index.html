@@ -48,7 +48,7 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.404  BUILD_ID=4040
+APP_VERSION=v23.9.405  BUILD_ID=4050
 
 === ChangeLog B-2 ===
 ### v23.9.392
@@ -693,8 +693,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.404";
-  const BUILD_ID    = "4040";
+  const APP_VERSION = "v23.9.405";
+  const BUILD_ID    = "4050";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -10128,7 +10128,10 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       '訪問看護', '訪問介護', '居宅介護', '特別養護', '有料老人', '障害者', '就労支援',
       '葬儀', '葬祭', '斎場', '火葬', '霊園', '墓地',
       '予備校', '進学', '英会話', '語学', 'スポーツクラブ', 'フィットネス', 'ジム',
-      '歯医者', '矯正歯科', '口腔'
+      '歯医者', '矯正歯科', '口腔',
+      // [v405] 追加：買取・飲食・公共施設等（パターンマッチ廃止に伴い明示的に追加）
+      '買取', '質屋', 'リサイクル', '飲食', '居酒屋', '焼肉', '焼き鳥',
+      '生涯学習', '男女共同参画', '市民センター', '行政センター'
     ];
     const CATEGORY_DENY = [
       '法人サービス', '専門職', '不動産', '銀行', '金融', '病院', '医療',
@@ -10188,10 +10191,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         }
       }
     }
-    if (/店|ストア|マート|モール|センター/.test(name)) {
-      spDbg('[GPS_STORE_FILTER_ALLOW]', { name, category, reason: 'name_pattern' });
-      return true;
-    }
+    // [v405] パターンマッチ削除：/店|ストア|マート|モール|センター/ は広すぎるため廃止
+    // 買い物系判定は NAME_ALLOW / CATEGORY_ALLOW のホワイトリストのみで行う
     spDbg('[GPS_STORE_FILTER_REJECT]', { name, category, reason: 'no_match' });
     return false;
   }
