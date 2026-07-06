@@ -693,8 +693,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.399";
-  const BUILD_ID    = "3990";
+  const APP_VERSION = "v23.9.400";
+  const BUILD_ID    = "4000";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -10867,7 +10867,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         window.nearbyStoreShopping = merged.filter(n => isShoppingStore(n));
         window.nearbyStoreGpsBroad = broadFromStores.length ? broadFromStores : bestAllLabels;
         window.historyStoreCandidates = histAll;
-        window.nearbyStoreNames = merged;
+        // [v400] nearbyStoreNames にも買い物系のみ（学習塾・行政機関等を表示しない）
+        window.nearbyStoreNames = merged.filter(n => isShoppingStore(n));
 
         const displayNameMap = buildDisplayNameMap(lastStoresForScore);
         window.nearbyStoreDisplayNames = merged.map(c => displayNameMap[c] || c);
@@ -10995,7 +10996,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
           window.nearbyStoreShopping = merged.filter(n => isShoppingStore(n));
           window.nearbyStoreGpsBroad = allLabels;
           window.historyStoreCandidates = histAll;
-          window.nearbyStoreNames = merged;
+          // [v400] nearbyStoreNames にも買い物系のみ（学習塾・行政機関等を表示しない）
+          window.nearbyStoreNames = merged.filter(n => isShoppingStore(n));
 
           const displayNameMapArea = buildDisplayNameMap(json.stores);
           window.nearbyStoreDisplayNames = merged.map(c => displayNameMapArea[c] || c);
@@ -23894,7 +23896,8 @@ function shareFullAuditForYui() {
     return;
   }
   if (navigator.share) {
-    navigator.share({ title: 'Smart Price 全体検証データ', text: md }).then(function () {
+    var _auditTs = (function(){ try { var d=new Date(); var pad=function(n){return String(n).padStart(2,'0');}; return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+' '+pad(d.getHours())+pad(d.getMinutes())+' JST'; } catch(_){return '';} })();
+    navigator.share({ title: 'Smart Price 全体検証データ ' + _auditTs, text: md }).then(function () {
       try { showToast('✅ 共有しました', 2000); } catch (e1) {}
     }).catch(function (err) {
       if (!err || err.name !== 'AbortError') copyFullAuditForYui();
