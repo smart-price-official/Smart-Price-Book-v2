@@ -693,8 +693,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.397";
-  const BUILD_ID    = "3970";
+  const APP_VERSION = "v23.9.398";
+  const BUILD_ID    = "3980";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -10669,6 +10669,15 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
           _gpsLearnedTopStore = _learnNearby[0].store;
           window._gpsLearnedTopStore = _gpsLearnedTopStore; // [v387] renderStoreList で⭐表示に使用
           spDbg('[GPS_LAYER0_HIT]', { store: _gpsLearnedTopStore, count: _learnNearby[0].count, candidates: _learnNearby.length });
+          // [v398-P01] curStore が未設定の場合、GPS学習済み第1候補を自動セット
+          try {
+            if ((typeof curStore === 'undefined' || !curStore || curStore === '未設定') && _gpsLearnedTopStore) {
+              curStore = _gpsLearnedTopStore;
+              try { localStorage.setItem('sp_last_store', curStore); } catch (_) {}
+              try { spDbg('[GPS_AUTO_CURSTORE]', { store: curStore, source: 'layer0_learned' }); } catch (_) {}
+              try { var _ind = document.getElementById('curStoreIndicator'); if (_ind) _ind.innerText = `【 ${curStore} 】で保存します`; } catch (_) {}
+            }
+          } catch (_) {}
         }
       }
     } catch(_) {}
@@ -13218,6 +13227,8 @@ function spVisibleTrace(tag, payload, cls) {
     }
     // ✅ P0: JAN正規化（数字のみに統一・空白・ハイフン除去）
     let jan = normalizeJan(code);
+    // [v398-P02] スキャン開始時点で _spkbMissJan を更新。非同期競合による JAN 混入を防ぐ
+    window._spkbMissJan = jan;
     // v23.9.167 SP-250530-006: 誤読取り調査ログ用の補助情報
     var _spRaw = String(code != null ? code : '');
     var _spFormat = String(scannerFormat || '');
@@ -25013,6 +25024,8 @@ window.spSetReportPeriod = spSetReportPeriod;
     _log('SESSION_END', { store: s.storeName, scanCount: s.scanCount });
     // [Fix4] curStore リセット（main script の window hook 経由 — let 変数に直接アクセス不可のため）
     try { if (typeof window._spCurStoreReset === 'function') window._spCurStoreReset(); } catch(_) {}
+    // [v398-P01] SESSION_END後のGPS→STORE_RESTORE再実行を可能にする
+    window._spStoreRestored = false;
     try { if (typeof showToast === 'function') showToast('お買い物おつかれさまでした 🛒', 3000); } catch(_) {}
   }
   window._spSessionEnd = _end;
