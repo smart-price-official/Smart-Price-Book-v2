@@ -48,7 +48,7 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.402  BUILD_ID=4020
+APP_VERSION=v23.9.403  BUILD_ID=4030
 
 === ChangeLog B-2 ===
 ### v23.9.392
@@ -693,8 +693,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.402";
-  const BUILD_ID    = "4020";
+  const APP_VERSION = "v23.9.403";
+  const BUILD_ID    = "4030";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -8978,9 +8978,10 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       if (normalizedCount === 0) return '店名候補は取得できたが、正規化後に0件になりました';
       return null;
     }
-    if (err.code === 1) return '位置情報の許可がありません';
-    if (err.code === 2) return 'GPS取得がタイムアウトしました（位置情報を取得できません）';
-    if (err.code === 3) return 'GPS取得がタイムアウトしました';
+    // [v403] エラーコード別の具体的なメッセージ
+    if (err.code === 1) return '📍 位置情報が拒否されています。\n【設定方法】Android: 設定→アプリ→SmartPrice→権限→位置情報→許可\nブラウザ使用中: アドレスバー横の🔒→位置情報→許可';
+    if (err.code === 2) return '📍 位置情報を取得できません（電波・屋内など）。屋外で再度タップしてください';
+    if (err.code === 3) return '📍 GPS取得がタイムアウトしました。もう一度タップしてください';
     return `GPSエラー: ${err.message}`;
   }
 
@@ -9137,7 +9138,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
       }, (err) => {
         const elapsedMs = Date.now() - gpsStartMs;
         const errMsg = getGpsErrorMessage(err, 0, 0);
-        showToast(errMsg, 8000);
+        // [v403] 権限拒否(code=1)は設定案内が長いので15秒表示
+        showToast(errMsg, err.code === 1 ? 15000 : 8000);
         spDbg('[GPS_DEBUG_ERROR]', { message: errMsg, code: err.code });
         isGpsOn = false; curPos = null; lastGpsTime = ""; renderStoreList();
 
