@@ -693,8 +693,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.398";
-  const BUILD_ID    = "3980";
+  const APP_VERSION = "v23.9.399";
+  const BUILD_ID    = "3990";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -10689,7 +10689,7 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         const nearby = searchStoreLocationsNearby(curPos.lat, curPos.lng, 3.0);
         // [v393] 買い物系のみにフィルタ（学習塾・飲食店・行政機関等を除外）
         const nearbyShopping = nearby.filter(s => isShoppingStore(s.canonName || s.name || ''));
-        if (nearbyShopping.length >= 3) {
+        if (nearbyShopping.length >= 1) {  // [v399] 保存時フィルターで品質保証済みのため >= 1 で十分
           try { spDbg('[GPS_LAYER1_HIT]', { total: nearby.length, shopping: nearbyShopping.length, filtered: nearby.length - nearbyShopping.length, stores: nearbyShopping.map(s => s.canonName) }); } catch (e) {}
           window.historyStoreCandidates = collectHistoryStoreCandidatesForGps(40);
           window.nearbyStoreNames       = nearbyShopping.map(s => s.canonName);
@@ -10816,7 +10816,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
         }
 
         if (lastStoresForScore.length > 0) {
-          saveStoresToStoreLocations(lastStoresForScore);  // [v23.9.128]
+          // [v399] 保存前に買い物系のみに絞る（学習塾・行政機関等の混入防止）
+          saveStoresToStoreLocations(lastStoresForScore.filter(s => isShoppingStore(buildNearbyStoreLabel(s))));
         }
 
         let merged = [];
@@ -10959,7 +10960,8 @@ const taxModeId = db.config.lastTax === "in" ? 'taxIn' : 'taxEx';
 
         const json = { ok: true, stores: dedupedStores, debug: lastGasDebug };
 
-        saveStoresToStoreLocations(json.stores || []);  // [v23.9.128]
+        // [v399] 保存前に買い物系のみに絞る（学習塾・行政機関等の混入防止）
+        saveStoresToStoreLocations((json.stores || []).filter(s => isShoppingStore(buildNearbyStoreLabel(s))));
 
         if (json && json._note) {
           spDbg('[GPS_GAS_NOTE]', { note: json._note, mode: 'area', area });
