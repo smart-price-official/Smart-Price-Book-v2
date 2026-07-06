@@ -48,7 +48,7 @@ NOTE: バージョンはAPP_VERSION/BUILD_IDの1箇所のみで管理（SSOT）-
 APP: Smart Price VERSION SSOT CORE
 AUTHOR: Yui + Claude
 現在の版（ここにも同期表示・正本は下の const のみ）
-APP_VERSION=v23.9.392  BUILD_ID=3920
+APP_VERSION=v23.9.402  BUILD_ID=4020
 
 === ChangeLog B-2 ===
 ### v23.9.392
@@ -693,8 +693,8 @@ function spSetCodeLen(len){ try{ return (window.spSetCodeLen ? window.spSetCodeL
 function spNumpad(key){ try{ return (window.spNumpad ? window.spNumpad(key) : undefined); }catch(e){} }
 (() => {
   // ===== 正本（ここだけ編集可） =====
-  const APP_VERSION = "v23.9.401";
-  const BUILD_ID    = "4010";
+  const APP_VERSION = "v23.9.402";
+  const BUILD_ID    = "4020";
   // v23.9.173 SP-260601-007: SmartPrice API（Railway + Supabase）エンドポイント
   const SP_API_URL  = "https://smartprice-api-production.up.railway.app";
   window.SP_API_URL = SP_API_URL;
@@ -2950,9 +2950,9 @@ document.addEventListener('DOMContentLoaded', function() {
     <div class="mb-3">
       <label class="small text-secondary">GPS店舗検索範囲</label>
       <select id="gps-range-select" class="form-select sp-bg-card sp-border-muted">
-        <option value="0.1" selected>📍 100m（徒歩圏内）</option>
+        <option value="0.1">📍 100m（徒歩圏内）</option>
         <option value="0.5">🚶 500m（近所）</option>
-        <option value="1">🚗 1km（車で数分）</option>
+        <option value="1" selected>🚗 1km（車で数分）</option>
         <option value="2">🚙 2km（ドライブ圏内）</option>
       </select>
     </div>
@@ -2961,6 +2961,8 @@ document.addEventListener('DOMContentLoaded', function() {
       <button class="btn btn-primary py-3 fw-bold" onclick="saveHomeCityFromModal()">保存</button>
       <!-- v23.9.166 SP-250529-001: 買い物エリアクリア（ローカル+Firebase両方を空に＝リロードで復活しない） -->
       <button class="btn btn-outline-danger" onclick="clearHomeCityEverywhere()">買い物エリアをクリア</button>
+      <!-- [v402] GPS学習データクリア -->
+      <button class="btn btn-outline-warning" onclick="clearGpsLearningData()">⭐ GPS学習データをクリア</button>
       <button class="btn btn-outline-secondary" onclick="closeHomeCityModal()">閉じる</button>
     </div>
   </div>
@@ -18003,7 +18005,7 @@ function openHomeCityModal() {
     if (typeof db !== 'undefined' && db.config) {
       input.value = db.config.homeCity || '';
       if (gpsRange) {
-        gpsRange.value = db.config.gpsRange || 0.1;
+        gpsRange.value = db.config.gpsRange || 1; // [v402] デフォルト100m→1km
       }
     }
     
@@ -18016,6 +18018,18 @@ function closeHomeCityModal() {
   const modal = document.getElementById('homeCityModal');
   if (modal) {
     modal.style.display = 'none';
+  }
+}
+
+// [v402] GPS学習データ（⭐表示用）をクリア
+function clearGpsLearningData() {
+  try {
+    localStorage.removeItem('sp_gps_learn_v1');
+    try { window._gpsLearnedTopStore = null; } catch(_) {}
+    showToast('GPS学習データをクリアしました', 2500);
+    try { renderStoreList(); } catch(_) {}
+  } catch(e) {
+    showToast('クリア失敗: ' + e.message, 3000);
   }
 }
 
